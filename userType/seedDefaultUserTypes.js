@@ -1,5 +1,8 @@
+// backend/userType/seedUserTypes.js
 const UserType = require("./models");
+const slugify = require("slugify");
 
+// List of default user types
 const defaultTypes = [
   "Residential",
   "Commercial",
@@ -10,14 +13,21 @@ const defaultTypes = [
 const seedUserTypes = async () => {
   try {
     for (const typeName of defaultTypes) {
+      const slug = slugify(typeName, { lower: true });
+
       await UserType.findOrCreate({
-        where: { typeName },
-        defaults: { isActive: true },
+        where: { slug },
+        defaults: {
+          typeName,
+          slug,
+          isActive: true,
+        },
       });
     }
-    console.log("✅ Default user types inserted");
+
+    console.log("✅ Default user types seeded successfully.");
   } catch (error) {
-    console.error("❌ Error seeding user types:", error);
+    console.error("❌ Failed to seed user types:", error.message);
   }
 };
 

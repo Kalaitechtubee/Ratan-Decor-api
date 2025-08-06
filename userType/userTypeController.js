@@ -1,13 +1,17 @@
+// backend/userType/controller.js
 const UserType = require("./models");
+const slugify = require("slugify");
 
-// Create a new user type
+// Create new user type
 exports.createUserType = async (req, res) => {
   try {
     const { typeName } = req.body;
-    const existing = await UserType.findOne({ where: { typeName } });
-    if (existing) return res.status(400).json({ message: "UserType already exists" });
+    const slug = slugify(typeName, { lower: true });
 
-    const userType = await UserType.create({ typeName });
+    const exists = await UserType.findOne({ where: { slug } });
+    if (exists) return res.status(400).json({ message: "User type already exists." });
+
+    const userType = await UserType.create({ typeName, slug });
     res.status(201).json(userType);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -17,14 +21,14 @@ exports.createUserType = async (req, res) => {
 // Get all user types
 exports.getAllUserTypes = async (req, res) => {
   try {
-    const types = await UserType.findAll();
+    const types = await UserType.findAll({ order: [["id", "ASC"]] });
     res.status(200).json(types);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Change user type active status
+// Toggle active/inactive
 exports.toggleUserTypeStatus = async (req, res) => {
   try {
     const { id } = req.params;
