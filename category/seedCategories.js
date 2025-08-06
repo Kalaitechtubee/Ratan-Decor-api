@@ -20,13 +20,21 @@ const defaultStructure = {
 
 const seedCategoriesAndSubcategories = async () => {
   try {
+
     for (const [categoryName, subcategories] of Object.entries(defaultStructure)) {
       const [category] = await Category.findOrCreate({ where: { name: categoryName } });
 
       for (const subName of subcategories) {
-        await Subcategory.findOrCreate({
-          where: { name: subName, categoryId: category.id },
+        // Check if subcategory with this name already exists (unique on name)
+        const [subcategory, created] = await Subcategory.findOrCreate({
+          where: { name: subName },
+          defaults: { categoryId: category.id },
         });
+        // If it exists but categoryId is different, update it to match the current category
+        if (!created && subcategory.categoryId !== category.id) {
+          subcategory.categoryId = category.id;
+          await subcategory.save();
+        }
       }
     }
 

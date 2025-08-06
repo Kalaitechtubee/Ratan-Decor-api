@@ -1,3 +1,4 @@
+// Basic category controller
 const Category = require("./models");
 
 exports.createCategory = async (req, res) => {
@@ -13,7 +14,7 @@ exports.createCategory = async (req, res) => {
 exports.getAllCategories = async (req, res) => {
   try {
     const categories = await Category.findAll();
-    res.status(200).json(categories);
+    res.json(categories);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
