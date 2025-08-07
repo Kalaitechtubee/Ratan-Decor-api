@@ -42,6 +42,8 @@
 // module.exports = Product;
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+
+const ProductUsageType = require("../models/productUsageType");
 const Category = require("../category/models");
 
 const Product = sequelize.define("Product", {
@@ -56,10 +58,12 @@ const Product = sequelize.define("Product", {
   },
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
 
-  basePrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false }, // ✅ Added
+  basePrice: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
   generalPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   architectPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   dealerPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  productUsageTypeId: { type: DataTypes.INTEGER, allowNull: false },
+
 
   categoryId: { type: DataTypes.INTEGER, allowNull: true },
 }, {
@@ -67,6 +71,8 @@ const Product = sequelize.define("Product", {
   timestamps: true,
 });
 
+
 Product.belongsTo(Category, { foreignKey: "categoryId" });
+Product.belongsTo(ProductUsageType, { foreignKey: "productUsageTypeId", as: "ProductUsageType" });
 
 module.exports = Product;

@@ -70,13 +70,15 @@
 // };
 
 // module.exports = { createProduct, getProducts, updateProduct, deleteProduct };
-const { Product } = require("../models");
+const { Product, Category, ProductUsageType } = require("../models");
+const { Op } = require('sequelize');
 
 const createProduct = async (req, res) => {
   try {
+
     const {
       name, description, image, specifications, visibleTo,
-      basePrice, generalPrice, architectPrice, dealerPrice, categoryId
+      basePrice, generalPrice, architectPrice, dealerPrice, categoryId, productUsageTypeId
     } = req.body;
 
     if (!basePrice || !generalPrice || !architectPrice || !dealerPrice) {
@@ -89,6 +91,7 @@ const createProduct = async (req, res) => {
       });
     }
 
+
     const product = await Product.create({
       name,
       description,
@@ -99,7 +102,8 @@ const createProduct = async (req, res) => {
       generalPrice,
       architectPrice,
       dealerPrice,
-      categoryId
+      categoryId,
+      productUsageTypeId
     });
 
     res.status(201).json(product);
