@@ -1,8 +1,10 @@
+// backend/product/models.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 const Category = require("../category/models");
 const Subcategory = require("../subcategory/models");
-const UserType = require("../userType/models");
+const CustomerType = require("../customerType/models");
+const ProductUsageType = require("../productUsageType/models");
 
 const Product = sequelize.define("Product", {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -11,12 +13,19 @@ const Product = sequelize.define("Product", {
   imageUrl: { type: DataTypes.STRING },
   attributes: { type: DataTypes.JSON },
   isVisible: { type: DataTypes.BOOLEAN, defaultValue: true },
-  userTypeId: { type: DataTypes.INTEGER, allowNull: false },
 
-  // Pricing for different user types
-  generalPrice: { type: DataTypes.FLOAT, allowNull: false },
-  architectPrice: { type: DataTypes.FLOAT, allowNull: false },
-  dealerPrice: { type: DataTypes.FLOAT, allowNull: false },
+  // Base price (before any customer type discounts)
+  basePrice: { type: DataTypes.FLOAT, allowNull: false },
+
+  // Optional: Store specific prices for different customer types
+  generalPrice: { type: DataTypes.FLOAT },
+  architectPrice: { type: DataTypes.FLOAT },
+  dealerPrice: { type: DataTypes.FLOAT },
+
+  // Foreign Keys
+  categoryId: { type: DataTypes.INTEGER, allowNull: true },
+  subcategoryId: { type: DataTypes.INTEGER, allowNull: true },
+  productUsageTypeId: { type: DataTypes.INTEGER, allowNull: false }, // Required
 }, {
   tableName: "products",
   timestamps: true,
@@ -25,6 +34,9 @@ const Product = sequelize.define("Product", {
 // Associations
 Product.belongsTo(Category, { foreignKey: "categoryId" });
 Product.belongsTo(Subcategory, { foreignKey: "subcategoryId" });
-Product.belongsTo(UserType, { foreignKey: "userTypeId" });
+Product.belongsTo(ProductUsageType, { 
+  foreignKey: "productUsageTypeId",
+  as: "ProductUsageType"
+});
 
 module.exports = Product;

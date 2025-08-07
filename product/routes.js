@@ -1,3 +1,4 @@
+// backend/product/routes.js
 const express = require('express');
 const router = express.Router();
 const productController = require('./productController');
@@ -5,6 +6,7 @@ const productController = require('./productController');
 // Product Routes
 router.post('/', productController.createProduct);
 router.get('/all', productController.getAllProducts);
+router.get('/usage/:usageType', productController.getProductsByUsageType);
 router.get('/:id', productController.getProductById);
 router.put('/:id', productController.updateProduct);
 router.delete('/:id', productController.deleteProduct);

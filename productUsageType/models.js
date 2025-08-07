@@ -1,8 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-// UserType model for user types
-const UserType = sequelize.define("UserType", {
+const ProductUsageType = sequelize.define("ProductUsageType", {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -11,20 +10,28 @@ const UserType = sequelize.define("UserType", {
   typeName: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
+    // Residential, Commercial, Modular Kitchen, Others
   },
   slug: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
   },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  imageUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
 }, {
-  tableName: "UserTypes",
+  tableName: "product_usage_types",
   timestamps: true,
 });
 
-module.exports = UserType;
+module.exports = ProductUsageType;

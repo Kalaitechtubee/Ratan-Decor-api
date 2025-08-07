@@ -1,8 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-// UserType model for user types
-const UserType = sequelize.define("UserType", {
+const CustomerType = sequelize.define("CustomerType", {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -11,20 +10,24 @@ const UserType = sequelize.define("UserType", {
   typeName: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
+    // General, Architect, Dealer
   },
   slug: {
     type: DataTypes.STRING,
     allowNull: false,
     unique: true,
   },
+  discountPercentage: {
+    type: DataTypes.FLOAT,
+    defaultValue: 0, // For future discount calculations
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
 }, {
-  tableName: "UserTypes",
+  tableName: "customer_types",
   timestamps: true,
 });
 
-module.exports = UserType;
+module.exports = CustomerType;
