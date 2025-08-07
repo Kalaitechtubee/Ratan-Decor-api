@@ -7,23 +7,25 @@ const { Cart, Product } = require('../models');
 const addToCart = async (req, res) => {
   try {
     const { productId, quantity } = req.body;
+
     const product = await Product.findByPk(productId);
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    
+
     const [cartItem, created] = await Cart.findOrCreate({
       where: { userId: req.user.id, productId },
       defaults: { quantity }
     });
-    
+
     if (!created) {
       await cartItem.update({ quantity: cartItem.quantity + quantity });
     }
-    
+
     res.status(201).json(cartItem);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
+
 
 const getCart = async (req, res) => {
   try {

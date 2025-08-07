@@ -1,7 +1,6 @@
 // models/index.js
 const sequelize = require('../config/database');
 
-const ProductUsageType = require('./productUsageType');
 const { DataTypes } = require('sequelize');
 
 const User = sequelize.define('User', {
@@ -100,4 +99,4 @@ Enquiry.belongsTo(Product);
 // Sync database
 sequelize.sync();
 
-module.exports = { User, Category, Product, Enquiry, Address, Cart, Order, OrderItem, ProductUsageType };
+module.exports = { User, Category, Product, Enquiry, Address, Cart, Order, OrderItem };

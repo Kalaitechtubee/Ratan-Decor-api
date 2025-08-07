@@ -13,6 +13,7 @@ const cartRoutes = require('./cart/routes');
 const orderRoutes = require('./order/routes');
 const profileRoutes = require('./profile/routes');
 const categoryRoutes = require('./category/routes');
+const userRoutes = require('./user/routes'); // adjust path if needed
 
 const app = express();
 
@@ -37,6 +38,8 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/users', userRoutes);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK' });
