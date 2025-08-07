@@ -1,140 +1,71 @@
-const User = require("./models");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const dotenv = require("dotenv");
-dotenv.config();
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { User } = require('../models');
 
-// REGISTER
 const register = async (req, res) => {
   try {
     const {
-      name, email, password, mobile,
-      userTypeId, customerTypeId,
-      address, country, state, city, pincode
+      name, email, password, role,
+      mobile, address, country, state, city, pincode,
+      userTypeId, customerTypeId
     } = req.body;
 
-    // Required fields validation
-    if (!name || !email || !password || !mobile || !userTypeId || !customerTypeId) {
-      return res.status(400).json({ error: "All required fields must be provided." });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: "User already exists" });
-    }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
+      role: role || 'General',
+      status: (role === 'Architect' || role === 'Dealer') ? 'Pending' : 'Approved',
       mobile,
-      userTypeId,
-      customerTypeId,
       address,
       country,
       state,
       city,
-      pincode
+      pincode,
+      userTypeId,
+      customerTypeId
     });
 
-    // JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email, userTypeId: user.userTypeId },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
-    );
-
-    // Success response
-    res.status(201).json({
-      message: "User registered successfully",
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        mobile: user.mobile,
-        userTypeId: user.userTypeId,
-        customerTypeId: user.customerTypeId,
-        address: user.address,
-        country: user.country,
-        state: user.state,
-        city: user.city,
-        pincode: user.pincode
-      },
-    });
-
+    res.status(201).json({ message: 'User registered successfully', userId: user.id });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// LOGIN
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required." });
-    }
 
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(400).json({ error: "Invalid credentials" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Invalid credentials" });
+    if (user.status !== 'Approved') {
+      return res.status(403).json({ message: 'Account not approved' });
     }
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, userTypeId: user.userTypeId },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { id: user.id, role: user.role, status: user.status },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '1d' }
     );
 
-    res.status(200).json({
-      message: "Login successful",
+    res.json({
       token,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        mobile: user.mobile,
-        userTypeId: user.userTypeId,
-        customerTypeId: user.customerTypeId,
-        address: user.address,
-        country: user.country,
-        state: user.state,
-        city: user.city,
-        pincode: user.pincode
-      },
+        role: user.role,
+        status: user.status
+      }
     });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// FORGOT PASSWORD (Mock)
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-
-    const user = await User.findOne({ where: { email } });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    // In a real implementation, you would send a reset link or OTP here
-    res.status(200).json({ message: "Reset instructions sent to email (mocked)." });
-
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-module.exports = { register, login, forgotPassword };
+module.exports = { register, login };

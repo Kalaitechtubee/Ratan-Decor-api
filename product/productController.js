@@ -1,286 +1,198 @@
-// Get Products by Usage Type
-exports.getProductsByUsageType = async (req, res) => {
-  try {
-    const { usageType } = req.params;
-    const { customerType } = req.query;
+// const { Product, Category } = require('../models');
+// const { Op } = require('sequelize');
 
-    const usage = await ProductUsageType.findOne({
-      where: { slug: usageType.toLowerCase() }
-    });
+// const createProduct = async (req, res) => {
+//   try {
+//     const { name, description, image, specifications, categoryId, visibleTo, generalPrice, architectPrice, dealerPrice } = req.body;
+//     if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
+//       return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
+//     }
+//     const product = await Product.create({
+//       name, description, image, specifications, categoryId, visibleTo, 
+//       generalPrice, architectPrice, dealerPrice
+//     });
+//     res.status(201).json(product);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
-    if (!usage) {
-      return res.status(404).json({ error: 'Usage type not found' });
-    }
+// const getProducts = async (req, res) => {
+//   try {
+//     const { categoryId, userType, minPrice, maxPrice, search } = req.query;
+//     const where = {};
+//     if (categoryId) where.categoryId = categoryId;
+//     if (userType) where.visibleTo = { [Op.contains]: [userType] };
+//     if (minPrice) where.generalPrice = { [Op.gte]: minPrice };
+//     if (maxPrice) where.generalPrice = { [Op.lte]: maxPrice };
+//     if (search) where.name = { [Op.like]: `%${search}%` };
 
-    const products = await Product.findAll({
-      where: {
-        productUsageTypeId: usage.id,
-        isVisible: true
-      },
-      include: [
-        { model: ProductUsageType, as: "ProductUsageType" },
-        { model: Category, required: false },
-        { model: Subcategory, required: false },
-      ],
-    });
+//     const products = await Product.findAll({ where, include: [Category] });
+//     const userRole = req.user?.role || 'General';
+//     const formattedProducts = products.map(product => ({
+//       ...product.toJSON(),
+//       price: userRole === 'Dealer' ? product.dealerPrice :
+//              userRole === 'Architect' ? product.architectPrice :
+//              product.generalPrice
+//     }));
+//     res.json(formattedProducts);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
-    const data = products.map((product) => {
-      let price;
-      switch ((customerType || '').toLowerCase()) {
-        case 'architect':
-          price = product.architectPrice || product.basePrice * 0.9;
-          break;
-        case 'dealer':
-          price = product.dealerPrice || product.basePrice * 0.85;
-          break;
-        case 'general':
-        default:
-          price = product.generalPrice || product.basePrice;
-      }
-      return {
-        id: product.id,
-        title: product.title,
-        description: product.description,
-        imageUrl: product.imageUrl,
-        attributes: product.attributes,
-        price,
-        basePrice: product.basePrice,
-        usageType: product.ProductUsageType?.typeName,
-        category: product.Category?.name,
-        subcategory: product.Subcategory?.name,
-        isVisible: product.isVisible,
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt,
-      };
-    });
+// const updateProduct = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { name, description, image, specifications, categoryId, visibleTo, generalPrice, architectPrice, dealerPrice } = req.body;
+//     if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
+//       return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
+//     }
+//     const product = await Product.findByPk(id);
+//     if (!product) return res.status(404).json({ message: 'Product not found' });
+//     await product.update({ name, description, image, specifications, categoryId, visibleTo, generalPrice, architectPrice, dealerPrice });
+//     res.json(product);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
-    res.status(200).json(data);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-// ...existing code...
-// backend/product/controller.js
-const Product = require('./models');
-const CustomerType = require('../customerType/models');
-const ProductUsageType = require('../productUsageType/models');
-const Category = require('../category/models');
-const Subcategory = require('../subcategory/models');
+// const deleteProduct = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const product = await Product.findByPk(id);
+//     if (!product) return res.status(404).json({ message: 'Product not found' });
+//     await product.destroy();
+//     res.json({ message: 'Product deleted' });
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
-// Create Product
-exports.createProduct = async (req, res) => {
+// module.exports = { createProduct, getProducts, updateProduct, deleteProduct };
+const { Product } = require("../models");
+
+const createProduct = async (req, res) => {
   try {
     const {
-      title,
+      name, description, image, specifications, visibleTo,
+      basePrice, generalPrice, architectPrice, dealerPrice, categoryId
+    } = req.body;
+
+    if (!basePrice || !generalPrice || !architectPrice || !dealerPrice) {
+      return res.status(400).json({ message: 'All pricing fields are required.' });
+    }
+
+    if (dealerPrice >= architectPrice || architectPrice >= generalPrice || generalPrice > basePrice) {
+      return res.status(400).json({
+        message: 'Invalid pricing order: dealer < architect < general < basePrice'
+      });
+    }
+
+    const product = await Product.create({
+      name,
       description,
-      imageUrl,
-      attributes,
+      image,
+      specifications,
+      visibleTo,
       basePrice,
       generalPrice,
       architectPrice,
       dealerPrice,
-      categoryId,
-      subcategoryId,
-      productUsageTypeId, // Required
-    } = req.body;
-
-    // Validate productUsageTypeId exists
-    const usageType = await ProductUsageType.findByPk(productUsageTypeId);
-    if (!usageType) {
-      return res.status(400).json({ error: 'Invalid productUsageTypeId: referenced usage type does not exist.' });
-    }
-
-    const product = await Product.create({
-      title,
-      description,
-      imageUrl,
-      attributes,
-      basePrice,
-      generalPrice: generalPrice || basePrice,
-      architectPrice: architectPrice || basePrice * 0.9, // 10% discount
-      dealerPrice: dealerPrice || basePrice * 0.85, // 15% discount
-      categoryId,
-      subcategoryId,
-      productUsageTypeId,
+      categoryId
     });
 
     res.status(201).json(product);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// Get All Products with customer-type-based pricing
-exports.getAllProducts = async (req, res) => {
+
+const getProducts = async (req, res) => {
   try {
-    const { customerType, usageType } = req.query;
+    const { categoryId, userType, minPrice, maxPrice, search } = req.query;
+    const where = {};
 
-    let whereClause = { isVisible: true };
-    
-    // Filter by usage type if provided
-    if (usageType) {
-      const usage = await ProductUsageType.findOne({ 
-        where: { slug: usageType.toLowerCase() } 
-      });
-      if (usage) {
-        whereClause.productUsageTypeId = usage.id;
-      }
-    }
+    if (categoryId) where.categoryId = categoryId;
+    if (userType) where.visibleTo = { [Op.contains]: [userType] };
+    if (minPrice) where.generalPrice = { [Op.gte]: minPrice };
+    if (maxPrice) where.generalPrice = { [Op.lte]: maxPrice };
+    if (search) where.name = { [Op.like]: `%${search}%` };
 
-    const products = await Product.findAll({
-      where: whereClause,
-      include: [
-        { model: ProductUsageType, as: "ProductUsageType" },
-        { model: Category, required: false },
-        { model: Subcategory, required: false },
-      ],
-    });
+    const products = await Product.findAll({ where, include: [Category] });
 
-    const data = products.map((product) => {
-      let price;
+    // No login role – always return general price
+    const formatted = products.map((product) => ({
+      ...product.toJSON(),
+      price: product.generalPrice
+    }));
 
-      // Determine price based on customer type
-      switch ((customerType || '').toLowerCase()) {
-        case 'architect':
-          price = product.architectPrice || product.basePrice * 0.9;
-          break;
-        case 'dealer':
-          price = product.dealerPrice || product.basePrice * 0.85;
-          break;
-        case 'general':
-        default:
-          price = product.generalPrice || product.basePrice;
-      }
-
-      return {
-        id: product.id,
-        title: product.title,
-        description: product.description,
-        imageUrl: product.imageUrl,
-        attributes: product.attributes,
-        price,
-        basePrice: product.basePrice,
-        usageType: product.ProductUsageType?.typeName,
-        category: product.Category?.name,
-        subcategory: product.Subcategory?.name,
-        isVisible: product.isVisible,
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt,
-      };
-    });
-
-    res.status(200).json(data);
+    res.json(formatted);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// Get Product by ID with customer-type-based pricing
-exports.getProductById = async (req, res) => {
+const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerType } = req.query;
-
-    const product = await Product.findByPk(id, {
-      include: [
-        { model: ProductUsageType, as: "ProductUsageType" },
-        { model: Category, required: false },
-        { model: Subcategory, required: false },
-      ],
-    });
-
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-
-    let price;
-
-    // Determine price based on customer type
-    switch ((customerType || '').toLowerCase()) {
-      case 'architect':
-        price = product.architectPrice || product.basePrice * 0.9;
-        break;
-      case 'dealer':
-        price = product.dealerPrice || product.basePrice * 0.85;
-        break;
-      case 'general':
-      default:
-        price = product.generalPrice || product.basePrice;
-    }
-
-    res.status(200).json({
-      id: product.id,
-      title: product.title,
-      description: product.description,
-      imageUrl: product.imageUrl,
-      attributes: product.attributes,
-      price,
-      basePrice: product.basePrice,
-      usageType: product.ProductUsageType?.typeName,
-      category: product.Category?.name,
-      subcategory: product.Subcategory?.name,
-      isVisible: product.isVisible,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// ...existing code...
-
-// Update Product
-exports.updateProduct = async (req, res) => {
-  try {
     const {
-      title,
+      name,
       description,
-      imageUrl,
-      attributes,
-      isVisible,
-      basePrice,
+      image,
+      specifications,
+      categoryId,
+      visibleTo,
       generalPrice,
       architectPrice,
-      dealerPrice,
-      categoryId,
-      subcategoryId,
-      productUsageTypeId,
+      dealerPrice
     } = req.body;
 
-    const product = await Product.findByPk(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
+      return res.status(400).json({
+        message: 'Invalid pricing: dealer < architect < general'
+      });
+    }
+
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
 
     await product.update({
-      title,
+      name,
       description,
-      imageUrl,
-      attributes,
-      isVisible,
-      basePrice,
-      generalPrice: generalPrice || basePrice,
-      architectPrice: architectPrice || basePrice * 0.9,
-      dealerPrice: dealerPrice || basePrice * 0.85,
+      image,
+      specifications,
       categoryId,
-      subcategoryId,
-      productUsageTypeId,
+      visibleTo,
+      generalPrice,
+      architectPrice,
+      dealerPrice
     });
 
-    res.status(200).json(product);
+    res.json(product);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
-// Delete Product
-exports.deleteProduct = async (req, res) => {
+const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findByPk(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found' });
+    const { id } = req.params;
+
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
 
     await product.destroy();
-    res.status(200).json({ message: 'Product deleted successfully' });
+    res.json({ message: 'Product deleted' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
+};
+
+module.exports = {
+  createProduct,
+  getProducts,
+  updateProduct,
+  deleteProduct
 };
