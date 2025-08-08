@@ -7,19 +7,13 @@ const {
   updateProduct,
   deleteProduct
 } = require('./productController');
-const {
-  allowedUserTypes,
-  isValidUserType,
-  validateVisibleTo
-} = require('../models/productUsageType');
-
-module.exports = { allowedUserTypes, isValidUserType, validateVisibleTo };
+const { uploadSingle, handleUploadError } = require('../middleware/upload');
 
 // Routes
-router.post('/', createProduct);
+router.post('/', uploadSingle, handleUploadError, createProduct);
 router.get('/', getProducts);
 router.get('/:id', getProductById);
-router.put('/:id', updateProduct);
+router.put('/:id', uploadSingle, handleUploadError, updateProduct);
 router.delete('/:id', deleteProduct);
 
 module.exports = router;

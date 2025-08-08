@@ -1,7 +1,9 @@
 const { Product, Category } = require('../models');
 const { Op } = require('sequelize');
-const sequelize = require('../config/database'); // Add this line
+const sequelize = require('../config/database');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
 
 const allowedUserTypes = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
 
@@ -27,12 +29,17 @@ const validateVisibleTo = (visibleTo) => {
   return visibleTo.every(v => allowedUserTypes.includes(v));
 };
 
+// Helper function to get image URL
+const getImageUrl = (filename) => {
+  if (!filename) return null;
+  return `/uploads/products/${filename}`;
+};
+
 const createProduct = async (req, res) => {
   try {
     const {
       name,
       description,
-      image,
       specifications,
       visibleTo,
       generalPrice,
@@ -42,7 +49,33 @@ const createProduct = async (req, res) => {
       productUsageTypeId
     } = req.body;
 
-    if (!validateVisibleTo(visibleTo)) {
+    // Handle image upload
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = getImageUrl(req.file.filename);
+    }
+
+    // Parse specifications if it's a string
+    let parsedSpecifications = specifications;
+    if (typeof specifications === 'string') {
+      try {
+        parsedSpecifications = JSON.parse(specifications);
+      } catch (e) {
+        parsedSpecifications = {};
+      }
+    }
+
+    // Parse visibleTo if it's a string
+    let parsedVisibleTo = visibleTo;
+    if (typeof visibleTo === 'string') {
+      try {
+        parsedVisibleTo = JSON.parse(visibleTo);
+      } catch (e) {
+        parsedVisibleTo = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
+      }
+    }
+
+    if (!validateVisibleTo(parsedVisibleTo)) {
       return res.status(400).json({ message: 'Invalid visibleTo values' });
     }
 
@@ -65,9 +98,9 @@ const createProduct = async (req, res) => {
     const product = await Product.create({
       name,
       description,
-      image,
-      specifications,
-      visibleTo,
+      image: imageUrl,
+      specifications: parsedSpecifications,
+      visibleTo: parsedVisibleTo,
       generalPrice,
       architectPrice,
       dealerPrice,
@@ -169,7 +202,6 @@ const updateProduct = async (req, res) => {
     const {
       name,
       description,
-      image,
       specifications,
       categoryId,
       visibleTo,
@@ -179,7 +211,33 @@ const updateProduct = async (req, res) => {
       isActive
     } = req.body;
 
-    if (visibleTo && !validateVisibleTo(visibleTo)) {
+    // Handle image upload
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = getImageUrl(req.file.filename);
+    }
+
+    // Parse specifications if it's a string
+    let parsedSpecifications = specifications;
+    if (typeof specifications === 'string') {
+      try {
+        parsedSpecifications = JSON.parse(specifications);
+      } catch (e) {
+        parsedSpecifications = {};
+      }
+    }
+
+    // Parse visibleTo if it's a string
+    let parsedVisibleTo = visibleTo;
+    if (typeof visibleTo === 'string') {
+      try {
+        parsedVisibleTo = JSON.parse(visibleTo);
+      } catch (e) {
+        parsedVisibleTo = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
+      }
+    }
+
+    if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
       return res.status(400).json({ message: 'Invalid visibleTo values' });
     }
 
@@ -197,18 +255,32 @@ const updateProduct = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    await product.update({
+    // Delete old image if new image is uploaded
+    if (req.file && product.image) {
+      const oldImagePath = path.join(__dirname, '..', product.image);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    }
+
+    const updateData = {
       name,
       description,
-      image,
-      specifications,
+      specifications: parsedSpecifications,
       categoryId,
-      visibleTo,
+      visibleTo: parsedVisibleTo,
       generalPrice,
       architectPrice,
       dealerPrice,
       isActive
-    });
+    };
+
+    // Only update image if new file is uploaded
+    if (imageUrl) {
+      updateData.image = imageUrl;
+    }
+
+    await product.update(updateData);
 
     res.json(product);
   } catch (error) {
@@ -222,6 +294,14 @@ const deleteProduct = async (req, res) => {
 
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    // Delete associated image
+    if (product.image) {
+      const imagePath = path.join(__dirname, '..', product.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
 
     await product.destroy();
     res.json({ message: 'Product deleted' });
