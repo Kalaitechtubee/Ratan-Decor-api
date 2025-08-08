@@ -1,30 +1,25 @@
-// const express = require('express');
-// const router = express.Router();
-// const { createProduct, getProducts, updateProduct, deleteProduct } = require('./productController');
-// const { authenticate, authorize } = require('../middleware/auth');
-
-// router.post('/', authenticate, authorize(['Admin', 'Manager']), createProduct);
-// router.get('/', getProducts);
-// router.put('/:id', authenticate, authorize(['Admin', 'Manager']), updateProduct);
-// router.delete('/:id', authenticate, authorize(['Admin', 'Manager']), deleteProduct);
-
-// module.exports = router;
-// backend/product/routes.js
 const express = require('express');
 const router = express.Router();
 const {
   createProduct,
   getProducts,
+  getProductById,
   updateProduct,
   deleteProduct
 } = require('./productController');
+const {
+  allowedUserTypes,
+  isValidUserType,
+  validateVisibleTo
+} = require('../models/productUsageType');
 
-// TEMPORARY: Remove authentication for manual Postman testing
-router.post('/', createProduct); // <-- Public route for manual testing
+module.exports = { allowedUserTypes, isValidUserType, validateVisibleTo };
+
+// Routes
+router.post('/', createProduct);
 router.get('/', getProducts);
-
-// Keep update and delete protected (optional)
-router.put('/:id', updateProduct);  // <-- You can re-add auth here if needed
+router.get('/:id', getProductById);
+router.put('/:id', updateProduct);
 router.delete('/:id', deleteProduct);
 
 module.exports = router;

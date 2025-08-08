@@ -11,7 +11,8 @@ const User = sequelize.define('User', {
   email: {
     type: Sequelize.STRING,
     allowNull: false,
-    unique: true,
+    // Remove unique: true temporarily
+    // unique: true,
   },
   password: {
     type: Sequelize.STRING,
@@ -110,9 +111,17 @@ const Product = sequelize.define('Product', {
     type: Sequelize.DECIMAL(10, 2),
     allowNull: false,
   },
+  categoryId: {
+    type: Sequelize.INTEGER,
+    allowNull: true,
+  },
+  productUsageTypeId: {
+    type: Sequelize.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'products',
-  timestamps: false,
+  timestamps: true,
 });
 
 const Enquiry = sequelize.define('Enquiry', {
@@ -227,10 +236,32 @@ const OrderItem = sequelize.define('OrderItem', {
   timestamps: false,
 });
 
+const ProductUsageType = sequelize.define('ProductUsageType', {
+  id: {
+    type: Sequelize.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  name: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  description: {
+    type: Sequelize.TEXT,
+  },
+  isActive: {
+    type: Sequelize.BOOLEAN,
+    defaultValue: true,
+  },
+}, {
+  tableName: 'product_usage_types',
+  timestamps: true, // Change this to true
+});
+
 // Associations
 Category.hasMany(Category, { as: 'SubCategories', foreignKey: 'parentId' });
 Category.belongsTo(Category, { as: 'Parent', foreignKey: 'parentId' });
-Product.belongsTo(Category);
+Product.belongsTo(Category, { foreignKey: 'categoryId' }); // Use categoryId, not CategoryId
 User.hasMany(Address);
 Address.belongsTo(User);
 User.hasMany(Cart);
@@ -247,6 +278,10 @@ Product.hasMany(Cart);
 Cart.belongsTo(Product);
 Enquiry.belongsTo(Product);
 
+// Add ProductUsageType associations
+Product.belongsTo(ProductUsageType, { foreignKey: 'productUsageTypeId' });
+ProductUsageType.hasMany(Product, { foreignKey: 'productUsageTypeId' });
+
 // Database sync is handled in server.js
 
 // Export models and Sequelize instance
@@ -254,6 +289,7 @@ const db = {
   User,
   Category,
   Product,
+  ProductUsageType, // Add this
   Enquiry,
   Address,
   Cart,

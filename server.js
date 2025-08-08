@@ -13,7 +13,10 @@ const orderRoutes = require('./order/routes');
 const profileRoutes = require('./profile/routes');
 const categoryRoutes = require('./category/routes');
 const userTypeRoutes = require('./routes/userType');
-const userRoutes = require('./user/routes'); // adjust path if needed
+const userRoutes = require('./user/routes');
+
+// Import initializers
+const { initializeCategories } = require('./category/initializeCategories');
 
 const app = express();
 
@@ -40,38 +43,49 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-type', userTypeRoutes);
-// server.js
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK' });
 });
 
-// Initialize categories
-const initializeCategories = async () => {
+// Initialize product usage types
+const initializeProductUsageTypes = async () => {
   try {
-    console.log('✅ Categories initialization skipped for now');
-    // Temporarily skip category initialization to avoid timestamp issues
+    const { ProductUsageType } = require('./models');
+    
+    const usageTypes = [
+      { name: 'Residential', description: 'For residential use' },
+      { name: 'Commercial', description: 'For commercial use' },
+      { name: 'Modular Kitchen', description: 'For modular kitchen applications' },
+      { name: 'Others', description: 'Other usage types' }
+    ];
+
+    for (const usageType of usageTypes) {
+      await ProductUsageType.findOrCreate({
+        where: { name: usageType.name },
+        defaults: usageType
+      });
+    }
+
+    console.log('✅ ProductUsageType data initialized');
   } catch (error) {
-    console.error('❌ Category initialization failed:', error);
-    // Don't throw error, just log it
+    console.error('❌ ProductUsageType initialization failed:', error);
   }
 };
 
 // Database and server startup
 const startServer = async () => {
   try {
-    // Test database connection
     await sequelize.authenticate();
     console.log('✅ Database connection established');
 
-    // Simple sync without force or alter
     await sequelize.sync();
     console.log('✅ Database synchronized');
 
-    // Initialize default data
     await initializeCategories();
+    await initializeProductUsageTypes();
 
-    // Start server
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
@@ -85,12 +99,10 @@ const startServer = async () => {
 // Error handling
 process.on('uncaughtException', (error) => {
   console.error('⚠️ Uncaught Exception:', error);
-  // Don't exit for uncaught exceptions to keep server running
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-// Start the application
 startServer();
