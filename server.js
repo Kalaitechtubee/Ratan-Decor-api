@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const sequelize = require('./config/database');
-const { Category } = require('./models');
 
 // Import routes
 const authRoutes = require('./auth/routes');
@@ -13,6 +12,7 @@ const cartRoutes = require('./cart/routes');
 const orderRoutes = require('./order/routes');
 const profileRoutes = require('./profile/routes');
 const categoryRoutes = require('./category/routes');
+const userTypeRoutes = require('./routes/userType');
 const userRoutes = require('./user/routes'); // adjust path if needed
 
 const app = express();
@@ -39,7 +39,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
-
+app.use('/api/user-type', userTypeRoutes);
+// server.js
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK' });
@@ -48,31 +49,11 @@ app.get('/health', (req, res) => {
 // Initialize categories
 const initializeCategories = async () => {
   try {
-    const categories = [
-      { name: 'Plywood', subCategories: ['Commercial', 'Waterproof'] },
-      { name: 'Mica', subCategories: ['1 mm Regular', '1 mm Texture', '1 mm Acrylic'] },
-      { name: 'Veneer', subCategories: ['Natural', 'Recon', 'Smoked'] },
-      { name: 'Flush Door & Frames', subCategories: ['Solid wood', 'Plain', 'PVC'] },
-      { name: 'PVC', subCategories: ['Charcoal', 'Solid wood', 'Flexi'] },
-      { name: 'Decorative sheets', subCategories: ['Albaster sheets', 'Corian Sheets'] }
-    ];
-
-    for (const category of categories) {
-      const [parent] = await Category.findOrCreate({ 
-        where: { name: category.name } 
-      });
-      
-      for (const subCategory of category.subCategories) {
-        await Category.findOrCreate({
-          where: { name: subCategory },
-          defaults: { parentId: parent.id }
-        });
-      }
-    }
-    console.log('✅ Categories initialized');
+    console.log('✅ Categories initialization skipped for now');
+    // Temporarily skip category initialization to avoid timestamp issues
   } catch (error) {
     console.error('❌ Category initialization failed:', error);
-    throw error;
+    // Don't throw error, just log it
   }
 };
 
@@ -83,15 +64,15 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ Database connection established');
 
-    // Sync models
-    await sequelize.sync({ alter: false });
+    // Simple sync without force or alter
+    await sequelize.sync();
     console.log('✅ Database synchronized');
 
     // Initialize default data
     await initializeCategories();
 
     // Start server
-    const PORT = process.env.PORT || 3001;
+    const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
