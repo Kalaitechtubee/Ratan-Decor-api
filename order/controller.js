@@ -1,5 +1,6 @@
 // order/controller.js
-const { Order, OrderItem, Product, sequelize } = require('../models');
+const { Order, OrderItem, Product, Cart, sequelize } = require('../models');
+const { Op } = require('sequelize');
 const axios = require('axios');
 
 const createOrder = async (req, res) => {

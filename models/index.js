@@ -4,6 +4,11 @@ const sequelize = require('../config/database');
 
 // Define models
 const User = sequelize.define('User', {
+  id: {
+    type: Sequelize.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
   name: {
     type: Sequelize.STRING,
     allowNull: false,
@@ -11,15 +16,14 @@ const User = sequelize.define('User', {
   email: {
     type: Sequelize.STRING,
     allowNull: false,
-    // Remove unique: true temporarily
-    // unique: true,
+    unique: true,
   },
   password: {
     type: Sequelize.STRING,
     allowNull: false,
   },
   role: {
-    type: Sequelize.ENUM('General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support', 'customer'),
+    type: Sequelize.ENUM('General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'),
     defaultValue: 'General',
   },
   status: {
@@ -51,10 +55,6 @@ const User = sequelize.define('User', {
     allowNull: true,
   },
   company: {
-    type: Sequelize.STRING,
-    allowNull: true,
-  },
-  gstNumber: {
     type: Sequelize.STRING,
     allowNull: true,
   },
@@ -258,6 +258,57 @@ const ProductUsageType = sequelize.define('ProductUsageType', {
   timestamps: true, // Change this to true
 });
 
+const ShippingAddress = sequelize.define('ShippingAddress', {
+  id: {
+    type: Sequelize.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  userId: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+  },
+  name: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  phone: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  address: {
+    type: Sequelize.TEXT,
+    allowNull: false,
+  },
+  city: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  state: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  country: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  pincode: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  isDefault: {
+    type: Sequelize.BOOLEAN,
+    defaultValue: false,
+  },
+  addressType: {
+    type: Sequelize.ENUM('Home', 'Office', 'Other'),
+    defaultValue: 'Home',
+  },
+}, {
+  tableName: 'shipping_addresses',
+  timestamps: true,
+});
+
 // Associations
 Category.hasMany(Category, { as: 'SubCategories', foreignKey: 'parentId' });
 Category.belongsTo(Category, { as: 'Parent', foreignKey: 'parentId' });
@@ -282,6 +333,10 @@ Enquiry.belongsTo(Product);
 Product.belongsTo(ProductUsageType, { foreignKey: 'productUsageTypeId' });
 ProductUsageType.hasMany(Product, { foreignKey: 'productUsageTypeId' });
 
+// Add ShippingAddress associations
+User.hasMany(ShippingAddress, { foreignKey: 'userId' });
+ShippingAddress.belongsTo(User, { foreignKey: 'userId' });
+
 // Database sync is handled in server.js
 
 // Export models and Sequelize instance
@@ -292,6 +347,7 @@ const db = {
   ProductUsageType, // Add this
   Enquiry,
   Address,
+  ShippingAddress, // Add this
   Cart,
   Order,
   OrderItem,

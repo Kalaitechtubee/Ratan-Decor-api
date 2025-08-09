@@ -1,25 +1,66 @@
 
 // middleware/auth.js
 const jwt = require('jsonwebtoken');
+const { User } = require('../models');
 
-const authenticate = async (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'No token provided' });
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     
+    if (!token) {
+      console.log('No token provided');
+      return res.status(401).json({ message: 'Access denied. No token provided.' });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    req.user = decoded;
+    
+    const user = await User.findByPk(decoded.id);
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid token. User not found.' });
+    }
+
+    // Check if user is approved
+    if (user.status !== 'Approved') {
+      return res.status(403).json({ 
+        message: 'Account not approved. Please wait for admin approval.',
+        status: user.status
+      });
+    }
+
+    req.user = user;
+    req.token = token;
     next();
   } catch (error) {
-    res.status(401).json({ message: 'Invalid token' });
+    res.status(401).json({ message: 'Invalid token.' });
   }
 };
 
-const authorize = (roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) {
-    return res.status(403).json({ message: 'Unauthorized' });
-  }
-  next();
+// Role-based middleware
+const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        message: 'Access denied. Insufficient permissions.' 
+      });
+    }
+
+    next();
+  };
 };
 
-module.exports = { authenticate, authorize };
+// Admin middleware
+const requireAdmin = requireRole(['Admin', 'Manager']);
+
+// Architect/Dealer middleware
+const requireApprovedRole = requireRole(['Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support']);
+
+module.exports = { 
+  authMiddleware, 
+  requireRole, 
+  requireAdmin, 
+  requireApprovedRole 
+};

@@ -1,28 +1,41 @@
 // models/User.js
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
-    // Existing fields (add these if not already present)
+    // Full name of the user
     name: {
       type: DataTypes.STRING,
       allowNull: false,
     },
+
+    // Email address (must be unique)
     email: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+      validate: {
+        isEmail: true,
+      },
     },
+
+    // Hashed password
     password: {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    // New userType field
+
+    // User type (optional field)
     userType: {
-      type: DataTypes.ENUM('residential', 'commercial', 'modular-kitchen', 'others'),
+      type: DataTypes.ENUM(
+        'Residential',
+        'Commercial',
+        'Modular Kitchen',
+        'Others'
+      ),
       allowNull: true,
     },
   }, {
-    tableName: 'users', // Optional: specify table name if different
-    timestamps: true,  // Adds createdAt and updatedAt fields
+    tableName: 'users', // DB table name
+    timestamps: true,   // createdAt & updatedAt
   });
 
   return User;

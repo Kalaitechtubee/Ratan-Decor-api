@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const sequelize = require('./config/database');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 
 // Import routes
 const authRoutes = require('./auth/routes');
@@ -15,21 +16,30 @@ const profileRoutes = require('./profile/routes');
 const categoryRoutes = require('./category/routes');
 const userTypeRoutes = require('./routes/userType');
 const userRoutes = require('./user/routes');
+const shippingAddressRoutes = require('./shipping-address/routes');
 
 // Import initializers
 const { initializeCategories } = require('./category/initializeCategories');
 
 const app = express();
 
+// Trust proxy (fix for rate limiter)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json()); // ✅ Needed for req.body to work
+
+// Serve static files (uploads)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Rate limiting
-const rateLimit = require('express-rate-limit');
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests from this IP, please try again later.' }
 });
 app.use(limiter);
 
@@ -38,15 +48,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/addresses', addressRoutes);
+app.use('/api/shipping-address', shippingAddressRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-type', userTypeRoutes);
-
-// Serve static files (uploads)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -57,7 +65,6 @@ app.get('/health', (req, res) => {
 const initializeProductUsageTypes = async () => {
   try {
     const { ProductUsageType } = require('./models');
-    
     const usageTypes = [
       { name: 'Residential', description: 'For residential use' },
       { name: 'Commercial', description: 'For commercial use' },

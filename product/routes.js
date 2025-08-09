@@ -8,12 +8,16 @@ const {
   deleteProduct
 } = require('./productController');
 const { uploadSingle, handleUploadError } = require('../middleware/upload');
+const { validateImage } = require('../middleware/imageValidation');
+const { authMiddleware, requireRole } = require('../middleware/auth');
 
-// Routes
-router.post('/', uploadSingle, handleUploadError, createProduct);
+// Public routes
 router.get('/', getProducts);
 router.get('/:id', getProductById);
-router.put('/:id', uploadSingle, handleUploadError, updateProduct);
-router.delete('/:id', deleteProduct);
+
+// Protected routes (Admin/Manager only)
+router.post('/', authMiddleware, requireRole(['Admin', 'Manager']), uploadSingle, handleUploadError, validateImage, createProduct);
+router.put('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadSingle, handleUploadError, updateProduct);
+router.delete('/:id', authMiddleware, requireRole(['Admin', 'Manager']), deleteProduct);
 
 module.exports = router;

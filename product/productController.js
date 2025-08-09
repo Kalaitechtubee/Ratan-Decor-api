@@ -5,8 +5,10 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
 
+// Allowed values for visibleTo
 const allowedUserTypes = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
 
+// Extract user role from JWT
 const getReqUserRole = (req) => {
   const auth = req.header('Authorization');
   if (!auth) return 'General';
@@ -19,22 +21,39 @@ const getReqUserRole = (req) => {
   }
 };
 
+// Compute price based on user role
 const computePrice = (product, role) =>
-  role === 'Dealer' ? product.dealerPrice :
-  role === 'Architect' ? product.architectPrice :
-  product.generalPrice;
+  role === 'Dealer'
+    ? product.dealerPrice
+    : role === 'Architect'
+    ? product.architectPrice
+    : product.generalPrice;
 
+// Validate visibleTo array
 const validateVisibleTo = (visibleTo) => {
   if (!Array.isArray(visibleTo) || visibleTo.length === 0) return false;
   return visibleTo.every(v => allowedUserTypes.includes(v));
 };
 
-// Helper function to get image URL
-const getImageUrl = (filename) => {
+// Generate full image URL
+const getImageUrl = (filename, req) => {
   if (!filename) return null;
-  return `/uploads/products/${filename}`;
+  if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
+  if (filename.startsWith('/uploads/')) return filename;
+  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
+  return `${baseUrl}/uploads/products/${filename}`;
 };
 
+// Convert Sequelize object to plain JSON and add imageUrl
+const processProductData = (product, req) => {
+  const productData = product.toJSON ? product.toJSON() : product;
+  if (productData.image) {
+    productData.imageUrl = getImageUrl(productData.image, req);
+  }
+  return productData;
+};
+
+// Create product
 const createProduct = async (req, res) => {
   try {
     const {
@@ -49,29 +68,23 @@ const createProduct = async (req, res) => {
       productUsageTypeId
     } = req.body;
 
-    // Handle image upload
-    let imageUrl = null;
-    if (req.file) {
-      imageUrl = getImageUrl(req.file.filename);
-    }
+    let imageFilename = req.file ? req.file.filename : null;
 
-    // Parse specifications if it's a string
     let parsedSpecifications = specifications;
     if (typeof specifications === 'string') {
       try {
         parsedSpecifications = JSON.parse(specifications);
-      } catch (e) {
+      } catch {
         parsedSpecifications = {};
       }
     }
 
-    // Parse visibleTo if it's a string
     let parsedVisibleTo = visibleTo;
     if (typeof visibleTo === 'string') {
       try {
         parsedVisibleTo = JSON.parse(visibleTo);
-      } catch (e) {
-        parsedVisibleTo = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
+      } catch {
+        parsedVisibleTo = allowedUserTypes;
       }
     }
 
@@ -79,13 +92,8 @@ const createProduct = async (req, res) => {
       return res.status(400).json({ message: 'Invalid visibleTo values' });
     }
 
-    if (
-      dealerPrice >= architectPrice ||
-      architectPrice >= generalPrice
-    ) {
-      return res.status(400).json({
-        message: 'Invalid pricing order: dealer < architect < general'
-      });
+    if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
+      return res.status(400).json({ message: 'Invalid pricing order: dealer < architect < general' });
     }
 
     if (categoryId) {
@@ -98,7 +106,7 @@ const createProduct = async (req, res) => {
     const product = await Product.create({
       name,
       description,
-      image: imageUrl,
+      image: imageFilename,
       specifications: parsedSpecifications,
       visibleTo: parsedVisibleTo,
       generalPrice,
@@ -109,93 +117,118 @@ const createProduct = async (req, res) => {
       isActive: true
     });
 
-    res.status(201).json(product);
+    res.status(201).json({
+      message: 'Product created successfully',
+      product: processProductData(product, req)
+    });
   } catch (error) {
+    console.error('Create product error:', error);
     res.status(400).json({ message: error.message });
   }
 };
 
+// Get all products
 const getProducts = async (req, res) => {
   try {
-    const { categoryId, userType, minPrice, maxPrice, search } = req.query;
+    const { userType, categoryId, minPrice, maxPrice, search } = req.query;
+    const userRole = getReqUserRole(req);
 
-    if (!allowedUserTypes.includes(userType)) {
-      return res.status(400).json({ error: 'Invalid or missing userType' });
+    if (!userType || !allowedUserTypes.includes(userType)) {
+      return res.status(400).json({
+        message: 'userType is required and must be one of: Residential, Commercial, Modular Kitchen, Others'
+      });
     }
 
-    const where = {
-      isActive: true
+    const whereClause = {
+      isActive: true,
+      [Op.and]: sequelize.where(
+        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        true
+      )
     };
 
-    // Fix: Use MySQL JSON_CONTAINS function instead of Op.contains
-    where.visibleTo = {
-      [Op.and]: [
-        { [Op.ne]: null },
-        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`)
-      ]
-    };
+    if (categoryId) {
+      whereClause.categoryId = categoryId;
+    }
 
-    if (categoryId) where.categoryId = categoryId;
-    if (minPrice) where.generalPrice = { [Op.gte]: minPrice };
-    if (maxPrice) where.generalPrice = { ...(where.generalPrice || {}), [Op.lte]: maxPrice };
-    if (search) where.name = { [Op.like]: `%${search}%` };
+    if (minPrice || maxPrice) {
+      whereClause.generalPrice = {};
+      if (minPrice) whereClause.generalPrice[Op.gte] = Number(minPrice);
+      if (maxPrice) whereClause.generalPrice[Op.lte] = Number(maxPrice);
+    }
 
-    const products = await Product.findAll({ 
-      where, 
-      include: [Category] 
+    if (search) {
+      whereClause.name = { [Op.like]: `%${search}%` };
+    }
+
+    const products = await Product.findAll({
+      where: whereClause,
+      include: [{ model: Category, as: 'Category', attributes: ['id', 'name'] }],
+      order: [['createdAt', 'DESC']]
     });
 
-    const role = getReqUserRole(req);
-    const formatted = products.map((product) => ({
-      ...product.toJSON(),
-      price: computePrice(product, role)
-    }));
+    const processedProducts = products.map(product => {
+      const productData = processProductData(product, req);
+      productData.price = computePrice(product, userRole);
+      return productData;
+    });
 
-    res.json(formatted);
+    res.json({
+      products: processedProducts,
+      count: processedProducts.length,
+      userType,
+      userRole
+    });
   } catch (error) {
+    console.error('Get products error:', error);
     res.status(400).json({ message: error.message });
   }
 };
 
+// Get product by ID
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
     const { userType } = req.query;
+    const userRole = getReqUserRole(req);
 
-    if (!allowedUserTypes.includes(userType)) {
-      return res.status(400).json({ error: 'Invalid or missing userType' });
+    if (!userType || !allowedUserTypes.includes(userType)) {
+      return res.status(400).json({
+        message: 'userType is required and must be one of: Residential, Commercial, Modular Kitchen, Others'
+      });
     }
 
     const product = await Product.findOne({
       where: {
         id,
         isActive: true,
-        visibleTo: {
-          [Op.and]: [
-            { [Op.ne]: null },
-            sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`)
-          ]
-        }
+        [Op.and]: sequelize.where(
+          sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+          true
+        )
       },
-      include: [Category]
+      include: [{ model: Category, as: 'Category', attributes: ['id', 'name'] }]
     });
 
     if (!product) {
-      return res.status(404).json({ message: 'Product not found for this userType' });
+      return res.status(404).json({ message: 'Product not found' });
     }
 
-    const role = getReqUserRole(req);
-    const data = {
-      ...product.toJSON(),
-      price: computePrice(product, role)
-    };
+    const processedProduct = processProductData(product, req);
+    processedProduct.price = computePrice(product, userRole);
 
-    res.json(data);
+    res.json({
+      product: processedProduct,
+      userType,
+      userRole
+    });
   } catch (error) {
+    console.error('Get product error:', error);
     res.status(400).json({ message: error.message });
   }
 };
 
+// Update product
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -211,29 +244,23 @@ const updateProduct = async (req, res) => {
       isActive
     } = req.body;
 
-    // Handle image upload
-    let imageUrl = null;
-    if (req.file) {
-      imageUrl = getImageUrl(req.file.filename);
-    }
+    let imageFilename = req.file ? req.file.filename : null;
 
-    // Parse specifications if it's a string
     let parsedSpecifications = specifications;
     if (typeof specifications === 'string') {
       try {
         parsedSpecifications = JSON.parse(specifications);
-      } catch (e) {
+      } catch {
         parsedSpecifications = {};
       }
     }
 
-    // Parse visibleTo if it's a string
     let parsedVisibleTo = visibleTo;
     if (typeof visibleTo === 'string') {
       try {
         parsedVisibleTo = JSON.parse(visibleTo);
-      } catch (e) {
-        parsedVisibleTo = ['Residential', 'Commercial', 'Modular Kitchen', 'Others'];
+      } catch {
+        parsedVisibleTo = allowedUserTypes;
       }
     }
 
@@ -247,17 +274,14 @@ const updateProduct = async (req, res) => {
       generalPrice !== undefined &&
       (dealerPrice >= architectPrice || architectPrice >= generalPrice)
     ) {
-      return res.status(400).json({
-        message: 'Invalid pricing: dealer < architect < general'
-      });
+      return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
     }
 
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Delete old image if new image is uploaded
     if (req.file && product.image) {
-      const oldImagePath = path.join(__dirname, '..', product.image);
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
       if (fs.existsSync(oldImagePath)) {
         fs.unlinkSync(oldImagePath);
       }
@@ -275,19 +299,23 @@ const updateProduct = async (req, res) => {
       isActive
     };
 
-    // Only update image if new file is uploaded
-    if (imageUrl) {
-      updateData.image = imageUrl;
+    if (imageFilename) {
+      updateData.image = imageFilename;
     }
 
     await product.update(updateData);
 
-    res.json(product);
+    res.json({
+      message: 'Product updated successfully',
+      product: processProductData(product, req)
+    });
   } catch (error) {
+    console.error('Update product error:', error);
     res.status(400).json({ message: error.message });
   }
 };
 
+// Delete product
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -295,9 +323,8 @@ const deleteProduct = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Delete associated image
     if (product.image) {
-      const imagePath = path.join(__dirname, '..', product.image);
+      const imagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
       if (fs.existsSync(imagePath)) {
         fs.unlinkSync(imagePath);
       }
@@ -306,6 +333,7 @@ const deleteProduct = async (req, res) => {
     await product.destroy();
     res.json({ message: 'Product deleted' });
   } catch (error) {
+    console.error('Delete product error:', error);
     res.status(400).json({ message: error.message });
   }
 };
