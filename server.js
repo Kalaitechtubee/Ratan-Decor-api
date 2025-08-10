@@ -55,6 +55,23 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-type', userTypeRoutes);
+// Add this before app.use('/api/cart', cartRoutes);
+// Add this debug middleware right after app.use(express.json());
+app.use((req, res, next) => {
+  if (req.url.includes('/api/cart') && req.method === 'POST') {
+    console.log('🔍 DEBUG - Full request details:');
+    console.log('   URL:', req.url);
+    console.log('   Method:', req.method);
+    console.log('   Headers:', req.headers);
+    console.log('   Content-Type:', req.get('Content-Type'));
+    console.log('   Content-Length:', req.get('Content-Length'));
+    console.log('   Raw Body:', req.body);
+    console.log('   Body Type:', typeof req.body);
+    console.log('   Body Keys:', Object.keys(req.body));
+    console.log('-------------------');
+  }
+  next();
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {

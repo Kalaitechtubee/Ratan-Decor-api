@@ -178,7 +178,29 @@ const Address = sequelize.define('Address', {
   timestamps: false,
 });
 
+// FIXED CART MODEL - Added missing foreign keys
 const Cart = sequelize.define('Cart', {
+  id: {
+    type: Sequelize.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  userId: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'users',
+      key: 'id'
+    }
+  },
+  productId: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'products',
+      key: 'id'
+    }
+  },
   quantity: {
     type: Sequelize.INTEGER,
     allowNull: false,
@@ -255,7 +277,7 @@ const ProductUsageType = sequelize.define('ProductUsageType', {
   },
 }, {
   tableName: 'product_usage_types',
-  timestamps: true, // Change this to true
+  timestamps: true,
 });
 
 const ShippingAddress = sequelize.define('ShippingAddress', {
@@ -309,50 +331,67 @@ const ShippingAddress = sequelize.define('ShippingAddress', {
   timestamps: true,
 });
 
-// Associations
+// CORRECTED ASSOCIATIONS
+console.log('🔗 Setting up model associations...');
+
+// Category associations
 Category.hasMany(Category, { as: 'SubCategories', foreignKey: 'parentId' });
 Category.belongsTo(Category, { as: 'Parent', foreignKey: 'parentId' });
-Product.belongsTo(Category, { foreignKey: 'categoryId' }); // Use categoryId, not CategoryId
-User.hasMany(Address);
-Address.belongsTo(User);
-User.hasMany(Cart);
-Cart.belongsTo(User);
-User.hasMany(Order);
-Order.belongsTo(User);
-User.hasMany(Enquiry);
-Enquiry.belongsTo(User);
-Order.hasMany(OrderItem, { foreignKey: 'orderId' });
-OrderItem.belongsTo(Order, { foreignKey: 'orderId' });
-Product.hasMany(OrderItem, { foreignKey: 'productId' });
-OrderItem.belongsTo(Product, { foreignKey: 'productId' });
-Product.hasMany(Cart);
-Cart.belongsTo(Product);
-Enquiry.belongsTo(Product);
 
-// Add ProductUsageType associations
-Product.belongsTo(ProductUsageType, { foreignKey: 'productUsageTypeId' });
-ProductUsageType.hasMany(Product, { foreignKey: 'productUsageTypeId' });
+// Product associations
+Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'Category' });
+Category.hasMany(Product, { foreignKey: 'categoryId', as: 'Products' });
 
-// Add ShippingAddress associations
-User.hasMany(ShippingAddress, { foreignKey: 'userId' });
-ShippingAddress.belongsTo(User, { foreignKey: 'userId' });
+Product.belongsTo(ProductUsageType, { foreignKey: 'productUsageTypeId', as: 'UsageType' });
+ProductUsageType.hasMany(Product, { foreignKey: 'productUsageTypeId', as: 'Products' });
 
-// Database sync is handled in server.js
+// User associations
+User.hasMany(Address, { foreignKey: 'userId', as: 'Addresses' });
+Address.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+User.hasMany(ShippingAddress, { foreignKey: 'userId', as: 'ShippingAddresses' });
+ShippingAddress.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+User.hasMany(Enquiry, { foreignKey: 'userId', as: 'Enquiries' });
+Enquiry.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+User.hasMany(Order, { foreignKey: 'userId', as: 'Orders' });
+Order.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+// CRITICAL CART ASSOCIATIONS - FIXED
+User.hasMany(Cart, { foreignKey: 'userId', as: 'CartItems' });
+Cart.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+Product.hasMany(Cart, { foreignKey: 'productId', as: 'CartItems' });
+Cart.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+
+// Order associations
+Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'OrderItems' });
+OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'Order' });
+
+Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'OrderItems' });
+OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+
+// Enquiry associations
+Enquiry.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+Product.hasMany(Enquiry, { foreignKey: 'productId', as: 'Enquiries' });
+
+console.log('✅ Model associations completed');
 
 // Export models and Sequelize instance
 const db = {
   User,
   Category,
   Product,
-  ProductUsageType, // Add this
+  ProductUsageType,
   Enquiry,
   Address,
-  ShippingAddress, // Add this
+  ShippingAddress,
   Cart,
   Order,
   OrderItem,
-  sequelize, // Connection instance
-  Sequelize, // Sequelize constructor
+  sequelize,
+  Sequelize,
 };
 
 module.exports = db;

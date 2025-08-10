@@ -194,40 +194,44 @@ const resendApproval = async (req, res) => {
   }
 };
 
-// Update user profile
+// Update user profile (all fields)
 const updateUser = async (req, res) => {
   try {
-    const { id } = req.params;
+    const userId = req.user.id; // from JWT token
 
-    const allowedUpdates = [
-      'name', 'email', 'password', 'mobile',
-      'address', 'country', 'state', 'city', 'pincode',
-      'company'
-    ];
-    const updates = {};
+    const updates = { ...req.body }; // take all fields directly
 
-    for (const key of allowedUpdates) {
-      if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
-      }
-    }
-
+    // Hash password if provided
     if (updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
 
-    const [updated] = await User.update(updates, { where: { id } });
+    // Remove undefined values so they don't overwrite with null
+    Object.keys(updates).forEach(
+      (key) => updates[key] === undefined && delete updates[key]
+    );
+
+    const [updated] = await User.update(updates, { where: { id: userId } });
 
     if (!updated) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ message: 'User updated successfully' });
+    const updatedUser = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
   } catch (error) {
     console.error('Update error:', error);
     res.status(400).json({ message: error.message });
   }
 };
+
+
 
 // Get user profile
 const getProfile = async (req, res) => {
