@@ -3,7 +3,9 @@ const jwt = require('jsonwebtoken');
 const db = require('../models');
 const { User } = db;
 
-// Registration with role-based approval
+// In-memory store for reset tokens (replace with database/Redis in production)
+const resetTokens = new Map();
+
 const register = async (req, res) => {
   try {
     const {
@@ -12,7 +14,6 @@ const register = async (req, res) => {
       mobile, country, state, city, pincode
     } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: 'User with this email already exists' });
@@ -20,7 +21,6 @@ const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Determine initial status based on role
     let initialStatus = 'Approved';
     let requiresApproval = false;
 
@@ -32,9 +32,6 @@ const register = async (req, res) => {
         break;
       case 'Architect':
       case 'Dealer':
-        initialStatus = 'Pending';
-        requiresApproval = true;
-        break;
       case 'Admin':
       case 'Manager':
       case 'Sales':
@@ -80,7 +77,6 @@ const register = async (req, res) => {
   }
 };
 
-// Enhanced login with role-based access
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -90,7 +86,6 @@ const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check account status
     if (user.status === 'Rejected') {
       return res.status(403).json({ 
         message: 'Your account has been rejected. Please contact support.',
@@ -106,7 +101,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate token with role and status
     const token = jwt.sign(
       { 
         id: user.id, 
@@ -136,7 +130,6 @@ const login = async (req, res) => {
   }
 };
 
-// Check account status
 const checkStatus = async (req, res) => {
   try {
     const { email } = req.params;
@@ -165,7 +158,6 @@ const checkStatus = async (req, res) => {
   }
 };
 
-// Resend approval request
 const resendApproval = async (req, res) => {
   try {
     const { email } = req.body;
@@ -183,8 +175,6 @@ const resendApproval = async (req, res) => {
       return res.status(400).json({ message: 'Cannot resend approval for rejected account' });
     }
 
-    // Here you could send email notification to admin
-    // For now, just return success message
     res.json({ 
       message: 'Approval request sent to admin. You will be notified once approved.',
       status: user.status
@@ -194,19 +184,16 @@ const resendApproval = async (req, res) => {
   }
 };
 
-// Update user profile (all fields)
 const updateUser = async (req, res) => {
   try {
-    const userId = req.user.id; // from JWT token
+    const userId = req.user.id;
 
-    const updates = { ...req.body }; // take all fields directly
+    const updates = { ...req.body };
 
-    // Hash password if provided
     if (updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
     }
 
-    // Remove undefined values so they don't overwrite with null
     Object.keys(updates).forEach(
       (key) => updates[key] === undefined && delete updates[key]
     );
@@ -231,12 +218,9 @@ const updateUser = async (req, res) => {
   }
 };
 
-
-
-// Get user profile
 const getProfile = async (req, res) => {
   try {
-    const userId = req.user.id; // From JWT token
+    const userId = req.user.id;
 
     const user = await User.findByPk(userId, {
       attributes: { exclude: ['password'] }
@@ -252,11 +236,60 @@ const getProfile = async (req, res) => {
   }
 };
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Generate reset token
+    const resetToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
+    resetTokens.set(resetToken, user.id);
+
+    // In a real app, send this token via email
+    // For now, return it in response for testing
+    res.json({
+      message: 'Password reset link generated. Please check your email.',
+      resetToken
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+
+    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET || 'secret');
+    const userId = resetTokens.get(resetToken);
+
+    if (!userId || decoded.id !== userId) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await User.update({ password: hashedPassword }, { where: { id: userId } });
+
+    // Clean up token
+    resetTokens.delete(resetToken);
+
+    res.json({ message: 'Password reset successfully. You can now login with your new password.' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 module.exports = { 
   register, 
   login, 
   checkStatus, 
   resendApproval, 
   updateUser, 
-  getProfile 
+  getProfile,
+  forgotPassword,
+  resetPassword
 };

@@ -6,7 +6,9 @@ const {
   checkStatus, 
   resendApproval, 
   updateUser, 
-  getProfile 
+  getProfile,
+  forgotPassword,
+  resetPassword
 } = require('./controller');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -15,6 +17,8 @@ router.post('/register', register);
 router.post('/login', login);
 router.get('/status/:email', checkStatus);
 router.post('/resend-approval', resendApproval);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // Protected routes
 router.get('/profile', authMiddleware, getProfile);

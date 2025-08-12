@@ -88,6 +88,12 @@ const Product = sequelize.define('Product', {
   image: {
     type: Sequelize.STRING,
   },
+  // Add multiple images support
+  images: {
+    type: Sequelize.JSON, // Store multiple image filenames as JSON array
+    allowNull: true,
+    defaultValue: [],
+  },
   specifications: {
     type: Sequelize.JSON,
   },
@@ -119,10 +125,88 @@ const Product = sequelize.define('Product', {
     type: Sequelize.INTEGER,
     allowNull: true,
   },
+  // Add GST and colors fields
+  colors: {
+    type: Sequelize.JSON, // Store colors as a JSON array, e.g., ["Red", "Blue", "Green"]
+    allowNull: true,
+    defaultValue: [],
+  },
+  gst: {
+    type: Sequelize.DECIMAL(5, 2), // Store GST percentage, e.g., 18.00 for 18%
+    allowNull: true,
+    defaultValue: 0.00,
+  },
+  // Add rating fields
+  averageRating: {
+    type: Sequelize.DECIMAL(3, 2), // Store average rating (0.00 to 5.00)
+    allowNull: true,
+    defaultValue: 0.00,
+  },
+  totalRatings: {
+    type: Sequelize.INTEGER, // Store total number of ratings
+    allowNull: true,
+    defaultValue: 0,
+  },
 }, {
   tableName: 'products',
   timestamps: true,
 });
+// const Product = sequelize.define('Product', {
+//   name: {
+//     type: Sequelize.STRING,
+//     allowNull: false,
+//   },
+//   description: {
+//     type: Sequelize.TEXT,
+//   },
+//   image: {
+//     type: Sequelize.STRING,
+//   },
+//   specifications: {
+//     type: Sequelize.JSON,
+//   },
+//   visibleTo: {
+//     type: Sequelize.JSON,
+//     defaultValue: ['Residential', 'Commercial', 'Modular Kitchen', 'Others'],
+//   },
+//   isActive: {
+//     type: Sequelize.BOOLEAN,
+//     defaultValue: true,
+//   },
+//   generalPrice: {
+//     type: Sequelize.DECIMAL(10, 2),
+//     allowNull: false,
+//   },
+//   architectPrice: {
+//     type: Sequelize.DECIMAL(10, 2),
+//     allowNull: false,
+//   },
+//   dealerPrice: {
+//     type: Sequelize.DECIMAL(10, 2),
+//     allowNull: false,
+//   },
+//   categoryId: {
+//     type: Sequelize.INTEGER,
+//     allowNull: true,
+//   },
+//   productUsageTypeId: {
+//     type: Sequelize.INTEGER,
+//     allowNull: true,
+//   },
+//   colors: {
+//     type: Sequelize.JSON, // Store colors as a JSON array, e.g., ["Red", "Blue", "Green"]
+//     allowNull: true,
+//     defaultValue: [],
+//   },
+//   gst: {
+//     type: Sequelize.DECIMAL(5, 2), // Store GST percentage, e.g., 18.00 for 18%
+//     allowNull: true,
+//     defaultValue: 0.00,
+//   },
+// }, {
+//   tableName: 'products',
+//   timestamps: true,
+// });
 
 const Enquiry = sequelize.define('Enquiry', {
   userType: {
@@ -331,6 +415,41 @@ const ShippingAddress = sequelize.define('ShippingAddress', {
   timestamps: true,
 });
 
+const ProductRating = sequelize.define('ProductRating', {
+  id: {
+    type: Sequelize.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
+  userId: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+  },
+  productId: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+  },
+  rating: {
+    type: Sequelize.INTEGER,
+    allowNull: false,
+    validate: {
+      min: 1,
+      max: 5
+    }
+  },
+  review: {
+    type: Sequelize.TEXT,
+    allowNull: true,
+  },
+  isActive: {
+    type: Sequelize.BOOLEAN,
+    defaultValue: true,
+  },
+}, {
+  tableName: 'product_ratings',
+  timestamps: true,
+});
+
 // CORRECTED ASSOCIATIONS
 console.log('🔗 Setting up model associations...');
 
@@ -376,6 +495,13 @@ OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
 Enquiry.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
 Product.hasMany(Enquiry, { foreignKey: 'productId', as: 'Enquiries' });
 
+// Add ProductRating to associations
+Product.hasMany(ProductRating, { foreignKey: 'productId', as: 'Ratings' });
+ProductRating.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+
+User.hasMany(ProductRating, { foreignKey: 'userId', as: 'ProductRatings' });
+ProductRating.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
 console.log('✅ Model associations completed');
 
 // Export models and Sequelize instance
@@ -390,6 +516,7 @@ const db = {
   Cart,
   Order,
   OrderItem,
+  ProductRating, // Add this
   sequelize,
   Sequelize,
 };
