@@ -285,6 +285,9 @@ const Cart = sequelize.define('Cart', {
       key: 'id'
     }
   },
+
+
+
   quantity: {
     type: Sequelize.INTEGER,
     allowNull: false,
