@@ -62,5 +62,8 @@ module.exports = {
   authMiddleware, 
   requireRole, 
   requireAdmin, 
-  requireApprovedRole 
+  requireApprovedRole,
+  // Aliases to match route imports
+  authenticateToken: authMiddleware,
+  authorizeRoles: requireRole
 };

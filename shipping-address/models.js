@@ -1,7 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-const Address = sequelize.define("Address", {
+const ShippingAddress = sequelize.define("ShippingAddress", {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -15,12 +15,16 @@ const Address = sequelize.define("Address", {
       key: 'id'
     }
   },
-  type: {
-    type: DataTypes.ENUM('Billing', 'Shipping'),
+  name: {
+    type: DataTypes.STRING,
     allowNull: false,
   },
-  street: {
+  phone: {
     type: DataTypes.STRING,
+    allowNull: false,
+  },
+  address: {
+    type: DataTypes.TEXT,
     allowNull: false,
   },
   city: {
@@ -35,14 +39,21 @@ const Address = sequelize.define("Address", {
     type: DataTypes.STRING,
     allowNull: false,
   },
-  postalCode: {
+  pincode: {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  isDefault: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  addressType: {
+    type: DataTypes.ENUM('Home', 'Office', 'Other'),
+    defaultValue: 'Home',
+  },
 }, {
-  tableName: "addresses",
-  timestamps: false,
+  tableName: "shipping_addresses",
+  timestamps: true,
 });
 
-module.exports = Address;
-
+module.exports = ShippingAddress;

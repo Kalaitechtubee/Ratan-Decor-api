@@ -1,13 +1,15 @@
-// Update your models/index.js Order and OrderItem definitions with these:
+// Enhanced Order Model with Address Support
+const { DataTypes } = require("sequelize");
+const sequelize = require("../config/database");
 
 const Order = sequelize.define('Order', {
   id: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     autoIncrement: true,
     primaryKey: true,
   },
   userId: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     allowNull: false,
     references: {
       model: 'users',
@@ -15,93 +17,127 @@ const Order = sequelize.define('Order', {
     }
   },
   status: {
-    type: Sequelize.ENUM('Pending', 'Processing', 'Shipped', 'Completed', 'Cancelled'),
+    type: DataTypes.ENUM('Pending', 'Processing', 'Shipped', 'Completed', 'Cancelled'),
     defaultValue: 'Pending',
   },
   paymentMethod: {
-    type: Sequelize.ENUM('Gateway', 'UPI', 'BankTransfer'),
+    type: DataTypes.ENUM('Gateway', 'UPI', 'BankTransfer'),
     allowNull: false,
   },
   paymentStatus: {
-    type: Sequelize.ENUM('Awaiting', 'Approved', 'Rejected'),
+    type: DataTypes.ENUM('Awaiting', 'Approved', 'Rejected'),
     defaultValue: 'Awaiting',
   },
   paymentProof: {
-    type: Sequelize.STRING,
+    type: DataTypes.STRING,
     allowNull: true,
   },
   // Enhanced pricing fields
   total: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
   },
   subtotal: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
   gstAmount: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
     defaultValue: 0.00,
   },
   platformCommission: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
     defaultValue: 0.00,
   },
-  // Additional order fields
+  
+  // === ENHANCED ADDRESS FIELDS ===
+  // Traditional shipping address reference (optional)
   shippingAddressId: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     allowNull: true,
     references: {
       model: 'shipping_addresses',
       key: 'id'
     }
   },
+  // New address type field
+  deliveryAddressType: {
+    type: DataTypes.ENUM('default', 'shipping'),
+    allowNull: true,
+    defaultValue: 'default',
+    comment: 'Type of address used: default (from user profile) or shipping (from shipping_addresses)'
+  },
+  // Store complete address data as JSON for historical purposes
+  deliveryAddressData: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Complete address data stored at time of order creation'
+  },
+  
+  // Additional order fields
   notes: {
-    type: Sequelize.TEXT,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
+  // Add this field back to the Order model if you want indexes:
   orderDate: {
-    type: Sequelize.DATE,
+    type: DataTypes.DATE,
     allowNull: false,
-    defaultValue: Sequelize.NOW,
+    defaultValue: DataTypes.NOW,
   },
   expectedDeliveryDate: {
-    type: Sequelize.DATE,
+    type: DataTypes.DATE,
     allowNull: true,
   },
   // Shipping tracking
   trackingNumber: {
-    type: Sequelize.STRING,
+    type: DataTypes.STRING,
     allowNull: true,
   },
   shippingProvider: {
-    type: Sequelize.STRING,
+    type: DataTypes.STRING,
     allowNull: true,
   },
   // Cancellation fields
   cancellationReason: {
-    type: Sequelize.TEXT,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   cancelledAt: {
-    type: Sequelize.DATE,
+    type: DataTypes.DATE,
     allowNull: true,
   },
 }, {
   tableName: 'orders',
-  timestamps: true, // This will add createdAt and updatedAt
+  timestamps: false, // This will add createdAt and updatedAt
+  // Remove problematic indexes for now
+  // indexes: [
+  //   {
+  //     fields: ['userId', 'status']
+  //   },
+  //   {
+  //     fields: ['orderDate']
+  //   },
+  //   {
+  //     fields: ['paymentStatus']
+  //   },
+  //   {
+  //     fields: ['deliveryAddressType']
+  //   }
+  // ]
 });
 
+// Enhanced OrderItem model
 const OrderItem = sequelize.define('OrderItem', {
   id: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     autoIncrement: true,
     primaryKey: true,
   },
   orderId: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     allowNull: false,
     references: {
       model: 'orders',
@@ -109,7 +145,7 @@ const OrderItem = sequelize.define('OrderItem', {
     }
   },
   productId: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     allowNull: false,
     references: {
       model: 'products',
@@ -117,35 +153,35 @@ const OrderItem = sequelize.define('OrderItem', {
     }
   },
   quantity: {
-    type: Sequelize.INTEGER,
+    type: DataTypes.INTEGER,
     allowNull: false,
   },
   // Enhanced pricing fields for order items
   price: {
-    type: Sequelize.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false, // Unit price at time of order
   },
   subtotal: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true, // price * quantity
   },
   gstRate: {
-    type: Sequelize.DECIMAL(5, 2),
+    type: DataTypes.DECIMAL(5, 2),
     allowNull: true,
     defaultValue: 0.00, // GST percentage at time of order
   },
   gstAmount: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
     defaultValue: 0.00, // Calculated GST amount
   },
   total: {
-    type: Sequelize.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(12, 2),
     allowNull: true, // subtotal + gstAmount
   },
   // Product snapshot at time of order
   productSnapshot: {
-    type: Sequelize.JSON,
+    type: DataTypes.JSON,
     allowNull: true, // Store product details as they were when ordered
   },
 }, {
@@ -153,18 +189,8 @@ const OrderItem = sequelize.define('OrderItem', {
   timestamps: true,
 });
 
-// Add these associations to your models/index.js file:
-
-// Order associations
-User.hasMany(Order, { foreignKey: 'userId', as: 'Orders' });
-Order.belongsTo(User, { foreignKey: 'userId', as: 'User' });
-
-Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'OrderItems' });
-OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'Order' });
-
-Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'OrderItems' });
-OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
-
-// Shipping address association
-Order.belongsTo(ShippingAddress, { foreignKey: 'shippingAddressId', as: 'ShippingAddress' });
-ShippingAddress.hasMany(Order, { foreignKey: 'shippingAddressId', as: 'Orders' });
+// Export both models
+module.exports = {
+  Order,
+  OrderItem
+};

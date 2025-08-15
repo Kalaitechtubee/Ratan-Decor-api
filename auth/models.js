@@ -1,7 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const UserType = require("../userType/models");
-const CustomerType = require("../customerType/models");
 
 const User = sequelize.define("User", {
   id: {
@@ -24,6 +22,14 @@ const User = sequelize.define("User", {
   password: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  role: {
+    type: DataTypes.ENUM('customer', 'General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'),
+    defaultValue: 'General',
+  },
+  status: {
+    type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
+    defaultValue: 'Pending',
   },
   mobile: {
     type: DataTypes.STRING,
@@ -49,21 +55,17 @@ const User = sequelize.define("User", {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  userTypeId: {
-    type: DataTypes.INTEGER,
-    references: { model: "UserTypes", key: "id" },
-  },
-  customerTypeId: {
-    type: DataTypes.INTEGER,
-    references: { model: "CustomerTypes", key: "id" },
+  company: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
 }, {
   tableName: "users",
-  timestamps: true,
+  timestamps: false,
 });
 
-// Associations
-User.belongsTo(UserType, { foreignKey: "userTypeId" });
-User.belongsTo(CustomerType, { foreignKey: "customerTypeId" });
+// Remove these associations since the fields don't exist
+// User.belongsTo(UserType, { foreignKey: "userTypeId" });
+// User.belongsTo(CustomerType, { foreignKey: "customerTypeId" });
 
 module.exports = User;

@@ -1,4 +1,4 @@
-// order/controller.js
+// order/controller.js - Enhanced with address support
 const { Order, OrderItem, Product, Cart, User, Category, ProductUsageType, ShippingAddress, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const axios = require('axios');
@@ -53,6 +53,126 @@ const computePrice = (product, userRole) => {
   }
 };
 
+// Normalize common payment aliases to model enum
+const normalizePaymentMethod = (method) => {
+  const m = (method || '').toString().toLowerCase();
+  if (m === 'gateway') return 'Gateway';
+  if (['upi', 'gpay', 'googlepay', 'phonepe', 'paytm', 'bhim', 'qr'].includes(m)) return 'UPI';
+  if (['bank', 'banktransfer', 'bank_transfer', 'neft', 'imps', 'rtgs'].includes(m)) return 'BankTransfer';
+  return method;
+};
+
+// Helper function to prepare order address
+const prepareOrderAddress = async (req, addressType, shippingAddressId) => {
+  let orderAddress = null;
+
+  // Treat presence of shippingAddressId as explicit selection
+  if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
+    const shippingAddress = await ShippingAddress.findOne({
+      where: { 
+        id: shippingAddressId, 
+        userId: req.user.id 
+      }
+    });
+    if (!shippingAddress) throw new Error('Invalid shipping address selected');
+
+    orderAddress = {
+      type: 'shipping',
+      shippingAddressId: shippingAddress.id,
+      addressData: {
+        name: shippingAddress.name,
+        phone: shippingAddress.phone,
+        address: shippingAddress.address,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        country: shippingAddress.country,
+        pincode: shippingAddress.pincode,
+        addressType: shippingAddress.addressType,
+        isDefault: shippingAddress.isDefault
+      }
+    };
+  } else {
+  
+    // Try user's default profile address first
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
+    });
+
+    // Consider profile address usable if at least address and/or pincode exist
+    const hasUsableProfileAddress = !!(user && (user.address || user.pincode || user.city || user.state || user.country));
+
+    if (hasUsableProfileAddress && (addressType === 'default' || !shippingAddressId)) {
+      orderAddress = {
+        type: 'default',
+        shippingAddressId: null,
+        addressData: {
+          name: user.name,
+          phone: user.mobile || 'Not provided',
+          address: user.address || 'Not provided',
+          city: user.city || 'Not provided',
+          state: user.state || 'Not provided',
+          country: user.country || 'Not provided',
+          pincode: user.pincode || 'Not provided',
+          addressType: 'Default',
+          isDefault: true,
+          source: 'user_profile'
+        }
+      };
+    } else {
+      // Fallback to shipping address (default one if exists, else first available)
+      const defaultShipping = await ShippingAddress.findOne({
+        where: { userId: req.user.id, isDefault: true }
+      });
+      const anyShipping = defaultShipping || await ShippingAddress.findOne({
+        where: { userId: req.user.id },
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!anyShipping) {
+        // No shipping address on file; if user has any profile address info, use that
+        if (hasUsableProfileAddress) {
+          orderAddress = {
+            type: 'default',
+            shippingAddressId: null,
+            addressData: {
+              name: user.name,
+              phone: user.mobile || 'Not provided',
+              address: user.address || 'Not provided',
+              city: user.city || 'Not provided',
+              state: user.state || 'Not provided',
+              country: user.country || 'Not provided',
+              pincode: user.pincode || 'Not provided',
+              addressType: 'Default',
+              isDefault: true,
+              source: 'user_profile_fallback'
+            }
+          };
+        } else {
+          throw new Error('No complete address available. Please add a shipping address.');
+        }
+      } else {
+        orderAddress = {
+          type: 'shipping',
+          shippingAddressId: anyShipping.id,
+          addressData: {
+            name: anyShipping.name,
+            phone: anyShipping.phone,
+            address: anyShipping.address,
+            city: anyShipping.city,
+            state: anyShipping.state,
+            country: anyShipping.country,
+            pincode: anyShipping.pincode,
+            addressType: anyShipping.addressType,
+            isDefault: !!anyShipping.isDefault,
+            source: 'shipping_address_fallback'
+          }
+        };
+      }
+    }
+  }
+
+  return orderAddress;
+};
 // Create order from cart or custom items
 const createOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -67,6 +187,7 @@ const createOrder = async (req, res) => {
       paymentProof, 
       items, // Optional: custom items, if not provided, will use cart
       shippingAddressId,
+      addressType = 'default', // 'default' or 'shipping'
       notes,
       expectedDeliveryDate 
     } = req.body;
@@ -85,6 +206,35 @@ const createOrder = async (req, res) => {
         message: 'Payment proof is required for UPI and Bank Transfer' 
       });
     }
+
+    // Validate address type
+    if (!['default', 'shipping'].includes(addressType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Address type must be either "default" or "shipping"'
+      });
+    }
+
+    // Prepare order address
+    let orderAddress;
+    try {
+      orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    console.log('📦 Order address prepared:', {
+      type: orderAddress.type,
+      shippingAddressId: orderAddress.shippingAddressId,
+      addressPreview: {
+        name: orderAddress.addressData.name,
+        city: orderAddress.addressData.city,
+        state: orderAddress.addressData.state
+      }
+    });
 
     // Get items from cart if not provided
     let orderItems = [];
@@ -193,40 +343,24 @@ const createOrder = async (req, res) => {
       finalTotal: finalTotal.toFixed(2)
     });
 
-    // Validate shipping address if provided
-    let shippingAddress = null;
-    if (shippingAddressId) {
-      shippingAddress = await ShippingAddress.findOne({
-        where: { 
-          id: shippingAddressId, 
-          userId: req.user.id 
-        }
-      });
-      
-      if (!shippingAddress) {
-        return res.status(400).json({ 
-          success: false,
-          message: 'Invalid shipping address' 
-        });
-      }
-    }
-
-    // Create order
-    const order = await Order.create({
-      userId: req.user.id,
-      paymentMethod,
-      paymentProof,
-      total: parseFloat(finalTotal.toFixed(2)),
-      subtotal: parseFloat(subtotal.toFixed(2)),
-      gstAmount: parseFloat(totalGstAmount.toFixed(2)),
-      platformCommission: parseFloat(platformCommission.toFixed(2)),
-      paymentStatus: paymentMethod === 'Gateway' ? 'Approved' : 'Awaiting',
-      status: 'Pending',
-      shippingAddressId: shippingAddressId || null,
-      notes: notes || null,
-      expectedDeliveryDate: expectedDeliveryDate || null,
-      orderDate: new Date()
-    }, { transaction });
+  // Create order
+const order = await Order.create({
+  userId: req.user.id,
+  paymentMethod, // normalized value
+  paymentProof,
+  total: parseFloat(finalTotal.toFixed(2)),
+  subtotal: parseFloat(subtotal.toFixed(2)),
+  gstAmount: parseFloat(totalGstAmount.toFixed(2)),
+  platformCommission: parseFloat(platformCommission.toFixed(2)),
+  paymentStatus: paymentMethod === 'Gateway' ? 'Approved' : 'Awaiting',
+  status: 'Pending',
+  shippingAddressId: orderAddress.shippingAddressId,
+  deliveryAddressType: orderAddress.type,
+  deliveryAddressData: JSON.stringify(orderAddress.addressData),
+  notes: notes || null,
+  expectedDeliveryDate: expectedDeliveryDate || null,
+  orderDate: new Date()
+}, { transaction });
 
     console.log('📦 Order created with ID:', order.id);
 
@@ -269,7 +403,8 @@ const createOrder = async (req, res) => {
         status: order.status,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
-        orderDate: order.orderDate
+        orderDate: order.orderDate,
+        deliveryAddress: orderAddress.addressData
       }, {
         timeout: 5000 // 5 second timeout
       });
@@ -297,7 +432,11 @@ const createOrder = async (req, res) => {
         platformCommission: order.platformCommission,
         itemCount: processedOrderItems.length,
         orderDate: order.orderDate,
-        expectedDeliveryDate: order.expectedDeliveryDate
+        expectedDeliveryDate: order.expectedDeliveryDate,
+        deliveryAddress: {
+          type: orderAddress.type,
+          data: orderAddress.addressData
+        }
       },
       redirectToPayment: paymentMethod === 'Gateway' // Frontend can use this flag
     });
@@ -313,7 +452,7 @@ const createOrder = async (req, res) => {
   }
 };
 
-// Get orders with full details
+// Get orders with full details (including address information)
 const getOrders = async (req, res) => {
   try {
     console.log('📋 GET ORDERS - Request details:');
@@ -394,7 +533,7 @@ const getOrders = async (req, res) => {
         {
           model: User,
           as: 'User',
-          attributes: ['id', 'name', 'email', 'role'],
+          attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'],
           required: false
         }
       ],
@@ -405,9 +544,60 @@ const getOrders = async (req, res) => {
 
     console.log('📋 Found orders:', orders.length);
 
-    // Process orders with complete details
+    // Process orders with complete details including address
     const processedOrders = orders.map(order => {
       const orderData = order.toJSON();
+      
+      // Process delivery address
+      let deliveryAddress = null;
+      
+      if (orderData.deliveryAddressData) {
+        try {
+          deliveryAddress = {
+            type: orderData.deliveryAddressType || 'unknown',
+            data: typeof orderData.deliveryAddressData === 'string' 
+              ? JSON.parse(orderData.deliveryAddressData)
+              : orderData.deliveryAddressData
+          };
+        } catch (e) {
+          console.warn('Failed to parse delivery address data:', e);
+        }
+      }
+      
+      // Fallback to shipping address or user address
+      if (!deliveryAddress) {
+        if (orderData.ShippingAddress) {
+          deliveryAddress = {
+            type: 'shipping',
+            data: {
+              name: orderData.ShippingAddress.name,
+              phone: orderData.ShippingAddress.phone,
+              address: orderData.ShippingAddress.address,
+              city: orderData.ShippingAddress.city,
+              state: orderData.ShippingAddress.state,
+              country: orderData.ShippingAddress.country,
+              pincode: orderData.ShippingAddress.pincode,
+              addressType: orderData.ShippingAddress.addressType
+            }
+          };
+        } else if (orderData.User) {
+          deliveryAddress = {
+            type: 'default',
+            data: {
+              name: orderData.User.name,
+              phone: orderData.User.mobile || 'Not provided',
+              address: orderData.User.address,
+              city: orderData.User.city,
+              state: orderData.User.state,
+              country: orderData.User.country,
+              pincode: orderData.User.pincode,
+              source: 'user_profile'
+            }
+          };
+        }
+      }
+      
+      orderData.deliveryAddress = deliveryAddress;
       
       // Process order items with product details
       if (orderData.OrderItems) {
@@ -524,7 +714,7 @@ const getOrders = async (req, res) => {
   }
 };
 
-// Get single order by ID with full details
+// Get single order by ID with full details (including address)
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -567,7 +757,7 @@ const getOrderById = async (req, res) => {
         {
           model: User,
           as: 'User',
-          attributes: ['id', 'name', 'email', 'role', 'mobile', 'company'],
+          attributes: ['id', 'name', 'email', 'role', 'mobile', 'company', 'address', 'city', 'state', 'country', 'pincode'],
           required: false
         }
       ]
@@ -582,6 +772,57 @@ const getOrderById = async (req, res) => {
 
     // Process order with complete details
     const orderData = order.toJSON();
+    
+    // Process delivery address
+    let deliveryAddress = null;
+    
+    if (orderData.deliveryAddressData) {
+      try {
+        deliveryAddress = {
+          type: orderData.deliveryAddressType || 'unknown',
+          data: typeof orderData.deliveryAddressData === 'string' 
+            ? JSON.parse(orderData.deliveryAddressData)
+            : orderData.deliveryAddressData
+        };
+      } catch (e) {
+        console.warn('Failed to parse delivery address data:', e);
+      }
+    }
+    
+    // Fallback to shipping address or user address
+    if (!deliveryAddress) {
+      if (orderData.ShippingAddress) {
+        deliveryAddress = {
+          type: 'shipping',
+          data: {
+            name: orderData.ShippingAddress.name,
+            phone: orderData.ShippingAddress.phone,
+            address: orderData.ShippingAddress.address,
+            city: orderData.ShippingAddress.city,
+            state: orderData.ShippingAddress.state,
+            country: orderData.ShippingAddress.country,
+            pincode: orderData.ShippingAddress.pincode,
+            addressType: orderData.ShippingAddress.addressType
+          }
+        };
+      } else if (orderData.User) {
+        deliveryAddress = {
+          type: 'default',
+          data: {
+            name: orderData.User.name,
+            phone: orderData.User.mobile || 'Not provided',
+            address: orderData.User.address,
+            city: orderData.User.city,
+            state: orderData.User.state,
+            country: orderData.User.country,
+            pincode: orderData.User.pincode,
+            source: 'user_profile'
+          }
+        };
+      }
+    }
+    
+    orderData.deliveryAddress = deliveryAddress;
     
     // Process order items
     if (orderData.OrderItems) {
@@ -950,6 +1191,67 @@ const getOrderStats = async (req, res) => {
   }
 };
 
+// Get available addresses for order creation
+const getAvailableAddresses = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get user's default address from profile
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
+    });
+    
+    // Get user's shipping addresses
+    const shippingAddresses = await ShippingAddress.findAll({
+      where: { userId },
+      order: [
+        ['isDefault', 'DESC'],
+        ['createdAt', 'DESC']
+      ]
+    });
+    
+    // Prepare response
+    const availableAddresses = {
+      defaultAddress: null,
+      shippingAddresses: shippingAddresses || []
+    };
+    
+    // Add default address if complete
+    if (user && user.address && user.city && user.state && user.country && user.pincode) {
+      availableAddresses.defaultAddress = {
+        type: 'default',
+        name: user.name,
+        phone: user.mobile || 'Not provided',
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        country: user.country,
+        pincode: user.pincode,
+        source: 'user_profile'
+      };
+    }
+    
+    res.json({
+      success: true,
+      message: 'Available addresses fetched successfully',
+      addresses: availableAddresses,
+      summary: {
+        hasDefaultAddress: !!availableAddresses.defaultAddress,
+        totalShippingAddresses: shippingAddresses.length,
+        defaultShippingAddress: shippingAddresses.find(addr => addr.isDefault) || null
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ GET AVAILABLE ADDRESSES ERROR:', error);
+    res.status(400).json({ 
+      success: false,
+      message: error.message || 'Failed to fetch available addresses',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
 module.exports = {
   createOrder,
   getOrders,
@@ -957,5 +1259,6 @@ module.exports = {
   updateOrder,
   cancelOrder,
   deleteOrder,
-  getOrderStats
+  getOrderStats,
+  getAvailableAddresses
 };

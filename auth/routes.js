@@ -8,7 +8,8 @@ const {
   updateUser, 
   getProfile,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  verifyOTP
 } = require('./controller');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -19,6 +20,7 @@ router.get('/status/:email', checkStatus);
 router.post('/resend-approval', resendApproval);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.post('/verify-otp', verifyOTP); // New OTP verification endpoint
 
 // Protected routes
 router.get('/profile', authMiddleware, getProfile);

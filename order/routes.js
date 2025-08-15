@@ -1,17 +1,23 @@
-// order/routes.js
+// order/routes.js - Enhanced with address support
 const express = require('express');
 const router = express.Router();
-const { 
-  createOrder, 
-  getOrders, 
-  getOrderById, 
-  updateOrder, 
-  cancelOrder, 
+const {
+  createOrder,
+  getOrders,
+  getOrderById,
+  updateOrder,
+  cancelOrder,
   deleteOrder,
-  getOrderStats 
+  getOrderStats,
+  getAvailableAddresses
 } = require('./controller');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
+// === ADDRESS RELATED ROUTES ===
+// Get available addresses for order creation
+router.get('/addresses', authMiddleware, getAvailableAddresses);
+
+// === ORDER MANAGEMENT ROUTES ===
 // Public/User routes
 router.post('/', authMiddleware, createOrder);                    // Create new order
 router.get('/', authMiddleware, getOrders);                       // Get user's orders with filters

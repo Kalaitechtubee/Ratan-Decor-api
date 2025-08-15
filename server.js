@@ -14,9 +14,10 @@ const cartRoutes = require('./cart/routes');
 const orderRoutes = require('./order/routes');
 const profileRoutes = require('./profile/routes');
 const categoryRoutes = require('./category/routes');
-const userTypeRoutes = require('./routes/userType');
+const userTypeRoutes = require('./userType/routes');
 const userRoutes = require('./user/routes');
 const shippingAddressRoutes = require('./shipping-address/routes');
+const userRoleRoutes = require('./userRole/routes');
 
 // Import initializers
 const { initializeCategories } = require('./category/initializeCategories');
@@ -54,7 +55,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/user-type', userTypeRoutes);
+app.use('/api/user-types', userTypeRoutes);
+app.use('/api/user-roles', userRoleRoutes);
 // Add this before app.use('/api/cart', cartRoutes);
 // Add this debug middleware right after app.use(express.json());
 app.use((req, res, next) => {
@@ -107,8 +109,8 @@ const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connection established');
-
-    await sequelize.sync();
+    
+    await sequelize.sync(); // ← no alter
     console.log('✅ Database synchronized');
 
     await initializeCategories();

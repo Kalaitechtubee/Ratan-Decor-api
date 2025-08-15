@@ -1,8 +1,6 @@
 
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Category = require("../category/models");
-const ProductUsageType = require("../models/productUsageType");
 
 const Product = sequelize.define("Product", {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -32,10 +30,11 @@ const Product = sequelize.define("Product", {
   },
 }, {
   tableName: "products",
-  timestamps: true, // Align with models/index.js
+  timestamps: true,
 });
 
-Product.belongsTo(Category, { foreignKey: "categoryId", as: "Category" });
-Product.belongsTo(ProductUsageType, { foreignKey: "productUsageTypeId", as: "UsageType" });
+// Remove these associations - they're now handled in models/index.js
+// Product.belongsTo(Category, { foreignKey: "categoryId", as: "Category" });
+// Product.belongsTo(ProductUsageType, { foreignKey: "productUsageTypeId", as: "UsageType" });
 
 module.exports = Product;

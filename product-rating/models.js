@@ -1,7 +1,7 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-const Cart = sequelize.define("Cart", {
+const ProductRating = sequelize.define("ProductRating", {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -23,14 +23,25 @@ const Cart = sequelize.define("Cart", {
       key: 'id'
     }
   },
-  quantity: {
+  rating: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    defaultValue: 1,
+    validate: {
+      min: 1,
+      max: 5
+    }
+  },
+  review: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
   },
 }, {
-  tableName: "carts",
-  timestamps: false,
+  tableName: "product_ratings",
+  timestamps: true,
 });
 
-module.exports = Cart;
+module.exports = ProductRating;
