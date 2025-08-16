@@ -64,8 +64,4 @@ const User = sequelize.define("User", {
   timestamps: false,
 });
 
-// Remove these associations since the fields don't exist
-// User.belongsTo(UserType, { foreignKey: "userTypeId" });
-// User.belongsTo(CustomerType, { foreignKey: "customerTypeId" });
-
 module.exports = User;

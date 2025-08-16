@@ -43,7 +43,7 @@ const Enquiry = sequelize.define("Enquiry", {
   },
 }, {
   tableName: "enquiries",
-  timestamps: false,
+  timestamps: true,
 });
 
 module.exports = Enquiry;

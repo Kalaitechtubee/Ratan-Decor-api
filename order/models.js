@@ -1,4 +1,3 @@
-// Enhanced Order Model with Address Support
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -21,7 +20,7 @@ const Order = sequelize.define('Order', {
     defaultValue: 'Pending',
   },
   paymentMethod: {
-    type: DataTypes.ENUM('Gateway', 'UPI', 'BankTransfer'),
+    type: DataTypes.ENUM('Gateway', 'UPI', 'BankTransfer', 'COD'),
     allowNull: false,
   },
   paymentStatus: {
@@ -32,7 +31,6 @@ const Order = sequelize.define('Order', {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  // Enhanced pricing fields
   total: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: false,
@@ -51,9 +49,6 @@ const Order = sequelize.define('Order', {
     allowNull: true,
     defaultValue: 0.00,
   },
-  
-  // === ENHANCED ADDRESS FIELDS ===
-  // Traditional shipping address reference (optional)
   shippingAddressId: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -62,26 +57,21 @@ const Order = sequelize.define('Order', {
       key: 'id'
     }
   },
-  // New address type field
   deliveryAddressType: {
-    type: DataTypes.ENUM('default', 'shipping'),
+    type: DataTypes.ENUM('default', 'shipping', 'new'),
     allowNull: true,
     defaultValue: 'default',
-    comment: 'Type of address used: default (from user profile) or shipping (from shipping_addresses)'
+    comment: 'Type of address used: default (from user profile), shipping (from shipping_addresses), or new (provided during order)'
   },
-  // Store complete address data as JSON for historical purposes
   deliveryAddressData: {
     type: DataTypes.JSON,
     allowNull: true,
     comment: 'Complete address data stored at time of order creation'
   },
-  
-  // Additional order fields
   notes: {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  // Add this field back to the Order model if you want indexes:
   orderDate: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -91,7 +81,6 @@ const Order = sequelize.define('Order', {
     type: DataTypes.DATE,
     allowNull: true,
   },
-  // Shipping tracking
   trackingNumber: {
     type: DataTypes.STRING,
     allowNull: true,
@@ -100,7 +89,6 @@ const Order = sequelize.define('Order', {
     type: DataTypes.STRING,
     allowNull: true,
   },
-  // Cancellation fields
   cancellationReason: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -111,25 +99,9 @@ const Order = sequelize.define('Order', {
   },
 }, {
   tableName: 'orders',
-  timestamps: false, // This will add createdAt and updatedAt
-  // Remove problematic indexes for now
-  // indexes: [
-  //   {
-  //     fields: ['userId', 'status']
-  //   },
-  //   {
-  //     fields: ['orderDate']
-  //   },
-  //   {
-  //     fields: ['paymentStatus']
-  //   },
-  //   {
-  //     fields: ['deliveryAddressType']
-  //   }
-  // ]
+  timestamps: false,
 });
 
-// Enhanced OrderItem model
 const OrderItem = sequelize.define('OrderItem', {
   id: {
     type: DataTypes.INTEGER,
@@ -156,40 +128,37 @@ const OrderItem = sequelize.define('OrderItem', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
-  // Enhanced pricing fields for order items
   price: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false, // Unit price at time of order
+    allowNull: false,
   },
   subtotal: {
     type: DataTypes.DECIMAL(12, 2),
-    allowNull: true, // price * quantity
+    allowNull: true,
   },
   gstRate: {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,
-    defaultValue: 0.00, // GST percentage at time of order
+    defaultValue: 0.00,
   },
   gstAmount: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
-    defaultValue: 0.00, // Calculated GST amount
+    defaultValue: 0.00,
   },
   total: {
     type: DataTypes.DECIMAL(12, 2),
-    allowNull: true, // subtotal + gstAmount
+    allowNull: true,
   },
-  // Product snapshot at time of order
   productSnapshot: {
     type: DataTypes.JSON,
-    allowNull: true, // Store product details as they were when ordered
+    allowNull: true,
   },
 }, {
   tableName: 'order_items',
   timestamps: true,
 });
 
-// Export both models
 module.exports = {
   Order,
   OrderItem
