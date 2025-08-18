@@ -276,7 +276,7 @@ const createOrder = async (req, res) => {
 
     for (const item of orderItems) {
       const product = await Product.findByPk(item.productId, {
-        include: [{ model: Category, as: 'Category', attributes: ['id', 'name', 'parentId'], required: false }]
+        include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
       });
       if (!product) {
         throw new Error(`Product with ID ${item.productId} not found`);
@@ -460,7 +460,7 @@ const getOrders = async (req, res) => {
           include: [{
             model: Product,
             as: 'Product',
-            include: [{ model: Category, as: 'Category', attributes: ['id', 'name', 'parentId'], required: false }]
+            include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
           }]
         },
         { model: ShippingAddress, as: 'ShippingAddress', required: false },
@@ -628,7 +628,7 @@ const getOrderById = async (req, res) => {
           include: [{
             model: Product,
             as: 'Product',
-            include: [{ model: Category, as: 'Category', attributes: ['id', 'name', 'parentId'], required: false }]
+            include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
           }]
         },
         { model: ShippingAddress, as: 'ShippingAddress', required: false },

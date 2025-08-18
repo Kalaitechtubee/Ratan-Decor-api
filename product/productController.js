@@ -103,7 +103,7 @@ const getProducts = async (req, res) => {
     const offset = (page - 1) * limit;
     const { count, rows: products } = await Product.findAndCountAll({
       where: whereClause,
-      include: [{ model: Category, as: 'Category', attributes: ['id', 'name'] }],
+      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
       order: [['createdAt', 'DESC']],
       limit: Number(limit),
       offset: Number(offset)
@@ -152,8 +152,11 @@ const createProduct = async (req, res) => {
       gst
     } = req.body;
 
-    let imageFilename = req.file ? req.file.filename : null;
-    let imageFilenames = req.files ? req.files.map(file => file.filename) : [];
+    // Handle single image from 'image' field
+    let imageFilename = req.files && req.files.image ? req.files.image[0].filename : null;
+    
+    // Handle multiple images from 'images' field
+    let imageFilenames = req.files && req.files.images ? req.files.images.map(file => file.filename) : [];
 
     let parsedSpecifications = specifications;
     if (typeof specifications === 'string') {
@@ -258,7 +261,7 @@ const getProductById = async (req, res) => {
           true
         )
       },
-      include: [{ model: Category, as: 'Category', attributes: ['id', 'name'] }]
+      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }]
     });
 
     if (!product) {
@@ -297,8 +300,11 @@ const updateProduct = async (req, res) => {
       gst
     } = req.body;
 
-    let imageFilename = req.file ? req.file.filename : null;
-    let imageFilenames = req.files ? req.files.map(file => file.filename) : [];
+    // Handle single image from 'image' field
+    let imageFilename = req.files && req.files.image ? req.files.image[0].filename : null;
+    
+    // Handle multiple images from 'images' field
+    let imageFilenames = req.files && req.files.images ? req.files.images.map(file => file.filename) : [];
 
     let parsedSpecifications = specifications;
     if (typeof specifications === 'string') {

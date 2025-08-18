@@ -9,9 +9,7 @@ const {
   addProductRating,
   getProductRatings
 } = require('./productController');
-const { uploadSingle, uploadMultiple, handleUploadError } = require('../middleware/upload');
-const { validateImage } = require('../middleware/imageValidation');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { uploadSingle, uploadMultiple, handleUploadError, validateImage, authMiddleware, requireRole } = require('../middleware');
 
 // Public routes
 router.get('/', getProducts);

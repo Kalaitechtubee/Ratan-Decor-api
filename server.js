@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -5,6 +6,7 @@ const sequelize = require('./config/database');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
+// Import routes
 const authRoutes = require('./auth/routes');
 const productRoutes = require('./product/routes');
 const adminRoutes = require('./admin/routes');
@@ -18,41 +20,66 @@ const userRoutes = require('./user/routes');
 const shippingAddressRoutes = require('./shipping-address/routes');
 const userRoleRoutes = require('./userRole/routes');
 
-const { initializeCategories } = require('./category/initializeCategories');
+// Import initializers
+const { initializeCategories } = require('./utils/initializeCategories');
+const { initializeUserTypes } = require('./utils/userTypeSeeder');
 
 const app = express();
 
-app.set('trust proxy', 1);
+// Database migration function
+const runDatabaseMigrations = async () => {
+  try {
+    console.log('🔧 Running database migrations...');
+    
+    // Add images column if it doesn't exist
+    const [results] = await sequelize.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'products' 
+        AND COLUMN_NAME = 'images'
+        AND TABLE_SCHEMA = DATABASE()
+    `);
 
-app.use(cors());
-app.use(express.json());
+    if (results.length === 0) {
+      console.log('🔧 Adding missing images column to products table...');
+      await sequelize.query(`
+        ALTER TABLE products 
+        ADD COLUMN images JSON DEFAULT (JSON_ARRAY())
+      `);
+      console.log('✅ Images column added successfully');
+    } else {
+      console.log('✅ Images column already exists');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Database migration failed:', error);
+    return false;
+  }
+};
+
+// Middleware
+app.set('trust proxy', 1);
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
+// Rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: 'Too many requests from this IP, please try again later.' }
+  message: { success: false, message: 'Too many requests, try again later.' },
+  skip: (req) => req.path === '/health'
 });
 app.use(limiter);
 
-app.use((req, res, next) => {
-  if (req.url.includes('/api/cart') && req.method === 'POST') {
-    console.log('🔍 DEBUG - Full request details:');
-    console.log('   URL:', req.url);
-    console.log('   Method:', req.method);
-    console.log('   Headers:', req.headers);
-    console.log('   Content-Type:', req.get('Content-Type'));
-    console.log('   Content-Length:', req.get('Content-Length'));
-    console.log('   Raw Body:', req.body);
-    console.log('   Body Type:', typeof req.body);
-    console.log('   Body Keys:', Object.keys(req.body));
-    console.log('-------------------');
-  }
-  next();
-});
-
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/products', productRoutes);
@@ -66,45 +93,98 @@ app.use('/api/users', userRoutes);
 app.use('/api/user-types', userTypeRoutes);
 app.use('/api/user-roles', userRoleRoutes);
 
+// Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK' });
+  res.status(200).json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
 });
 
+// API docs
+app.get('/api', (req, res) => {
+  res.json({ message: 'API Server is running', version: '1.0.0' });
+});
+
+// 404 handler
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ success: false, message: 'API endpoint not found', path: req.path });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  let statusCode = err.status || 500;
+  let message = err.message || 'Internal Server Error';
+
+  if (err.name === 'SequelizeValidationError') {
+    statusCode = 400;
+    message = 'Validation error: ' + err.errors.map(e => e.message).join(', ');
+  }
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    statusCode = 409;
+    message = 'Duplicate entry error';
+  }
+  if (err.name === 'JsonWebTokenError') {
+    statusCode = 401;
+    message = 'Invalid token';
+  }
+  if (err.name === 'TokenExpiredError') {
+    statusCode = 401;
+    message = 'Token expired';
+  }
+
+  res.status(statusCode).json({ success: false, message });
+});
+
+// Start server
 const startServer = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Database connection established');
+    console.log('✅ Database connected');
 
-    // One-time schema check to ensure paymentMethod includes COD
-    const [results] = await sequelize.query("SHOW COLUMNS FROM orders LIKE 'paymentMethod'");
-    const enumValues = results[0].Type.match(/ENUM\((.*?)\)/i)?.[1].split(',').map(val => val.replace(/'/g, '')) || [];
-    if (!enumValues.includes('COD')) {
-      console.log('🔧 Updating paymentMethod ENUM to include COD...');
-      await sequelize.query("ALTER TABLE orders MODIFY COLUMN paymentMethod ENUM('Gateway', 'UPI', 'BankTransfer', 'COD') NOT NULL");
-      console.log('✅ paymentMethod ENUM updated');
-    }
+    await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
+    console.log('✅ Database synced');
 
-    await sequelize.sync();
-    console.log('✅ Database synchronized');
+    // Run database migrations
+    await runDatabaseMigrations();
 
+    await initializeUserTypes();
     await initializeCategories();
 
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
+
+    // Graceful shutdown
+    const shutdown = async (signal) => {
+      console.log(`\n⚠️ Received ${signal}, shutting down...`);
+      server.close(async () => {
+        await sequelize.close();
+        process.exit(0);
+      });
+      setTimeout(() => process.exit(1), 30000);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+
   } catch (error) {
     console.error('❌ Server startup failed:', error);
     process.exit(1);
   }
 };
 
+// Error handling
 process.on('uncaughtException', (error) => {
   console.error('⚠️ Uncaught Exception:', error);
+  process.exit(1);
 });
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled Rejection:', reason);
+  process.exit(1);
 });
 
 startServer();
+module.exports = app;

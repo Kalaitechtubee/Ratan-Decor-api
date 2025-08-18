@@ -1,3 +1,4 @@
+// middleware/upload.js
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -36,21 +37,20 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Configure multer
+// Configure multer for multiple fields
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit per file
-    files: 10 // Maximum 10 files
   }
 });
 
-// Single file upload middleware
-const uploadSingle = upload.single('image');
-
-// Multiple files upload middleware
-const uploadMultiple = upload.array('images', 5);
+// Fields configuration: single 'image' and multiple 'images'
+const uploadFields = upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'images', maxCount: 10 }
+]);
 
 // Error handling middleware
 const handleUploadError = (error, req, res, next) => {
@@ -82,8 +82,7 @@ const handleUploadError = (error, req, res, next) => {
 };
 
 module.exports = {
-  uploadSingle,
-  uploadMultiple,
+  uploadFields,
   handleUploadError,
   productImagesDir
 };

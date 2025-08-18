@@ -5,6 +5,10 @@ module.exports = (sequelize, DataTypes) => {
     name: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: {
+        notEmpty: true,
+        len: [1, 255]
+      }
     },
 
     // Email address (must be unique)
@@ -14,25 +18,51 @@ module.exports = (sequelize, DataTypes) => {
       unique: true,
       validate: {
         isEmail: true,
-      },
+        notEmpty: true
+      }
     },
 
     // Hashed password
     password: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
 
-    // User type (optional field)
-    userType: {
-      type: DataTypes.ENUM(
-        'Residential',
-        'Commercial',
-        'Modular Kitchen',
-        'Others'
-      ),
-      allowNull: true,
+    // User role (e.g., Admin, Architect, Dealer, etc.)
+    role: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'User',
+      validate: {
+        notEmpty: true
+      }
     },
+
+    // User status (e.g., Pending, Approved, Rejected)
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'Pending',
+      validate: {
+        notEmpty: true,
+        isIn: [['Pending', 'Approved', 'Rejected']]
+      }
+    },
+
+    // Foreign key to UserType model
+    userTypeId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'UserTypes',
+        key: 'id'
+      },
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    }
   }, {
     tableName: 'users', // DB table name
     timestamps: true,   // createdAt & updatedAt

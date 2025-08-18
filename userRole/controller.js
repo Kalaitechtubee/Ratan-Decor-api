@@ -1,21 +1,28 @@
-const { User } = require('../models');
+const { User, UserType } = require('../models');
+const { fn, col, Op } = require('sequelize');
 
 const userRoleController = {
-  // Get all users with role filtering
   async getUsersByRole(req, res) {
     try {
-      const { role, status, page = 1, limit = 10 } = req.query;
-      
-      const whereClause = {};
-      if (role) whereClause.role = role;
-      if (status) whereClause.status = status;
+      const { role, status, page = 1, limit = 10, search } = req.query;
+      const where = {};
+
+      if (role) where.role = role;
+      if (status) where.status = status;
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+        ];
+      }
 
       const users = await User.findAndCountAll({
-        where: whereClause,
-        attributes: ['id', 'name', 'email', 'role', 'status', 'mobile', 'company', 'createdAt'],
+        where,
+        attributes: ['id', 'name', 'email', 'role', 'status', 'mobile', 'company', 'createdAt', 'userTypeId'],
+        include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
         limit: parseInt(limit),
         offset: (page - 1) * limit,
-        order: [['createdAt', 'DESC']]
+        order: [['createdAt', 'DESC']],
       });
 
       res.json({
@@ -24,140 +31,109 @@ const userRoleController = {
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(users.count / limit),
-          totalItems: users.count
-        }
+          totalItems: users.count,
+          limit: parseInt(limit),
+        },
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Error fetching users',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Update user role
   async updateUserRole(req, res) {
     try {
       const { id } = req.params;
-      const { role, status } = req.body;
+      const { role, status, userTypeId } = req.body;
 
       const user = await User.findByPk(id);
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-      // Validate role
       const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
       if (role && !validRoles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid role'
-        });
+        return res.status(400).json({ success: false, message: 'Invalid role' });
       }
 
-      // Validate status
       const validStatuses = ['Pending', 'Approved', 'Rejected'];
       if (status && !validStatuses.includes(status)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid status'
-        });
+        return res.status(400).json({ success: false, message: 'Invalid status' });
+      }
+
+      if (userTypeId) {
+        const userType = await UserType.findByPk(userTypeId);
+        if (!userType) {
+          return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
+        }
       }
 
       await user.update({
         role: role || user.role,
-        status: status || user.status
+        status: status || user.status,
+        userTypeId: userTypeId !== undefined ? userTypeId : user.userTypeId,
       });
 
-      res.json({
-        success: true,
-        message: 'User role updated successfully',
-        data: user
+      const updatedUser = await User.findByPk(id, {
+        attributes: { exclude: ['password'] },
+        include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
       });
+
+      res.json({ success: true, message: 'User role/status updated', data: updatedUser });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Error updating user role',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Get role statistics
   async getRoleStats(req, res) {
     try {
       const stats = await User.findAll({
         attributes: [
           'role',
           'status',
-          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+          [fn('COUNT', col('id')), 'count'],
         ],
-        group: ['role', 'status']
+        group: ['role', 'status'],
       });
 
-      // Organize stats by role
       const roleStats = {};
-      stats.forEach(stat => {
-        if (!roleStats[stat.role]) {
-          roleStats[stat.role] = {};
-        }
+      stats.forEach((stat) => {
+        if (!roleStats[stat.role]) roleStats[stat.role] = {};
         roleStats[stat.role][stat.status] = parseInt(stat.dataValues.count);
       });
 
-      res.json({
-        success: true,
-        data: roleStats
-      });
+      res.json({ success: true, data: roleStats });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Error fetching role statistics',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Approve/Reject user applications
   async updateUserStatus(req, res) {
     try {
       const { id } = req.params;
-      const { status, notes } = req.body;
+      const { status, reason } = req.body;
 
       const user = await User.findByPk(id);
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User not found'
-        });
-      }
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-      // Only allow status changes for Pending users
       if (user.status !== 'Pending') {
-        return res.status(400).json({
-          success: false,
-          message: 'Can only update status of pending users'
-        });
+        return res.status(400).json({ success: false, message: 'Can only update Pending users' });
       }
 
-      await user.update({ status });
+      const validStatuses = ['Pending', 'Approved', 'Rejected'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ success: false, message: 'Invalid status' });
+      }
 
-      res.json({
-        success: true,
-        message: `User ${status.toLowerCase()} successfully`,
-        data: user
+      await user.update({ status, rejectionReason: reason || null });
+
+      const updatedUser = await User.findByPk(id, {
+        attributes: { exclude: ['password'] },
+        include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
       });
+
+      res.json({ success: true, message: `User ${status.toLowerCase()} successfully`, data: updatedUser });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Error updating user status',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
-  }
+  },
 };
 
 module.exports = userRoleController;

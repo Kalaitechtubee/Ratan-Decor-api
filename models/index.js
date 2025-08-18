@@ -1,66 +1,84 @@
 const Sequelize = require('sequelize');
 const sequelize = require('../config/database');
 
-const User = require('../auth/models');
-const UserType = require('../userType/models');
+// Import models
+// Models that export a function
+const UserTypeModel = require('../userType/models');
+const UserType = UserTypeModel(sequelize, Sequelize.DataTypes);
+
+const UserModel = require('./User');
+const User = UserModel(sequelize, Sequelize.DataTypes);
+
+// Models that export the model directly
 const Category = require('../category/models');
 const Product = require('../product/models');
 const Enquiry = require('../enquiry/models');
 const Address = require('../address/models');
 const ShippingAddress = require('../shipping-address/models');
 const Cart = require('../cart/models');
-const OrderModels = require('../order/models');
-const ProductRating = require('../product-rating/models');
 
-const { Order, OrderItem } = OrderModels;
+// Category <-> UserType
+Category.belongsTo(UserType, { foreignKey: 'userTypeId', as: 'userType' });
+UserType.hasMany(Category, { foreignKey: 'userTypeId', as: 'categories' });
 
-console.log('🔗 Setting up model associations...');
+// Category self relation
+Category.hasMany(Category, { as: 'children', foreignKey: 'parentId' });
+Category.belongsTo(Category, { as: 'parent', foreignKey: 'parentId' });
 
-Category.hasMany(Category, { as: 'SubCategories', foreignKey: 'parentId' });
-Category.belongsTo(Category, { as: 'Parent', foreignKey: 'parentId' });
+// Category <-> Product
+Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
+Category.hasMany(Product, { foreignKey: 'categoryId', as: 'products' });
 
-Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'Category' });
-Category.hasMany(Product, { foreignKey: 'categoryId', as: 'Products' });
+// User <-> Address
+User.hasMany(Address, { foreignKey: 'userId', as: 'addresses' });
+Address.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-User.hasMany(Address, { foreignKey: 'userId', as: 'Addresses' });
-Address.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// User <-> ShippingAddress
+User.hasMany(ShippingAddress, { foreignKey: 'userId', as: 'shippingAddresses' });
+ShippingAddress.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-User.hasMany(ShippingAddress, { foreignKey: 'userId', as: 'ShippingAddresses' });
-ShippingAddress.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// User <-> Enquiry
+User.hasMany(Enquiry, { foreignKey: 'userId', as: 'enquiries' });
+Enquiry.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-User.hasMany(Enquiry, { foreignKey: 'userId', as: 'Enquiries' });
-Enquiry.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// Import Order and OrderItem models
+const { Order, OrderItem } = require('../order/models');
 
-User.hasMany(Order, { foreignKey: 'userId', as: 'Orders' });
-Order.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// User <-> Orders
+User.hasMany(Order, { foreignKey: 'userId', as: 'orders' });
+Order.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-User.hasMany(Cart, { foreignKey: 'userId', as: 'CartItems' });
-Cart.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// User <-> Cart
+User.hasMany(Cart, { foreignKey: 'userId', as: 'cartItems' });
+Cart.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
-Product.hasMany(Cart, { foreignKey: 'productId', as: 'CartItems' });
-Cart.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+Product.hasMany(Cart, { foreignKey: 'productId', as: 'cartItems' });
+Cart.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 
-Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'OrderItems' });
-OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'Order' });
+// Orders <-> OrderItems
+Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'orderItems' });
+OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
 
-Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'OrderItems' });
-OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
+Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' });
+OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 
-Order.belongsTo(ShippingAddress, { foreignKey: 'shippingAddressId', as: 'ShippingAddress', allowNull: true });
-ShippingAddress.hasMany(Order, { foreignKey: 'shippingAddressId', as: 'Orders' });
+// Orders <-> ShippingAddress
+Order.belongsTo(ShippingAddress, { foreignKey: 'shippingAddressId', as: 'shippingAddress', allowNull: true });
+ShippingAddress.hasMany(Order, { foreignKey: 'shippingAddressId', as: 'orders' });
 
-Enquiry.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
-Product.hasMany(Enquiry, { foreignKey: 'productId', as: 'Enquiries' });
+// Enquiry <-> Product
+Enquiry.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+Product.hasMany(Enquiry, { foreignKey: 'productId', as: 'enquiries' });
 
-Product.hasMany(ProductRating, { foreignKey: 'productId', as: 'Ratings' });
-ProductRating.belongsTo(Product, { foreignKey: 'productId', as: 'Product' });
-
-User.hasMany(ProductRating, { foreignKey: 'userId', as: 'ProductRatings' });
-ProductRating.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+// User <-> UserType
+User.belongsTo(UserType, { foreignKey: 'userTypeId', as: 'userType' });
+UserType.hasMany(User, { foreignKey: 'userTypeId', as: 'users' });
 
 console.log('✅ Model associations completed');
 
-const db = {
+module.exports = {
+  sequelize,
+  Sequelize,
   User,
   UserType,
   Category,
@@ -71,9 +89,4 @@ const db = {
   Cart,
   Order,
   OrderItem,
-  ProductRating,
-  sequelize,
-  Sequelize,
 };
-
-module.exports = db;

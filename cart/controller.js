@@ -104,7 +104,7 @@ const addToCart = async (req, res) => {
       include: [
         { 
           model: Category, 
-          as: 'Category', 
+          as: 'category', 
           attributes: ['id', 'name', 'parentId'] 
         },
         { 
@@ -253,7 +253,7 @@ const getCart = async (req, res) => {
         include: [
           { 
             model: Category, 
-            as: 'Category', 
+            as: 'category', 
             attributes: ['id', 'name', 'parentId'],
             required: false 
           },
