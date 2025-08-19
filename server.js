@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -20,18 +19,18 @@ const userRoutes = require('./user/routes');
 const shippingAddressRoutes = require('./shipping-address/routes');
 const userRoleRoutes = require('./userRole/routes');
 
-// Import initializers
+// Import initializers (seeders)
 const { initializeCategories } = require('./utils/initializeCategories');
 const { initializeUserTypes } = require('./utils/userTypeSeeder');
 
 const app = express();
 
-// Database migration function
+// --- Database migration utility ---
 const runDatabaseMigrations = async () => {
   try {
     console.log('🔧 Running database migrations...');
-    
-    // Add images column if it doesn't exist
+
+    // Ensure products.images column exists
     const [results] = await sequelize.query(`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
@@ -50,7 +49,7 @@ const runDatabaseMigrations = async () => {
     } else {
       console.log('✅ Images column already exists');
     }
-    
+
     return true;
   } catch (error) {
     console.error('❌ Database migration failed:', error);
@@ -58,7 +57,7 @@ const runDatabaseMigrations = async () => {
   }
 };
 
-// Middleware
+// --- Middleware ---
 app.set('trust proxy', 1);
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
@@ -72,14 +71,14 @@ app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
 // Rate limiter
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: { success: false, message: 'Too many requests, try again later.' },
   skip: (req) => req.path === '/health'
 });
 app.use(limiter);
 
-// API Routes
+// --- API Routes ---
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/products', productRoutes);
@@ -91,7 +90,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-types', userTypeRoutes);
-app.use('/api/user-roles', userRoleRoutes);
+app.use('/api/roles', userRoleRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -107,12 +106,16 @@ app.get('/api', (req, res) => {
   res.json({ message: 'API Server is running', version: '1.0.0' });
 });
 
-// 404 handler
+// 404 handler (API only)
 app.use('/api/*', (req, res) => {
-  res.status(404).json({ success: false, message: 'API endpoint not found', path: req.path });
+  res.status(404).json({
+    success: false,
+    message: 'API endpoint not found',
+    path: req.path
+  });
 });
 
-// Error handler
+// --- Error Handler ---
 app.use((err, req, res, next) => {
   let statusCode = err.status || 500;
   let message = err.message || 'Internal Server Error';
@@ -137,18 +140,18 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json({ success: false, message });
 });
 
-// Start server
+// --- Start Server ---
 const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected');
 
+    // Sync models
     await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
     console.log('✅ Database synced');
 
-    // Run database migrations
+    // Run DB migrations & seeders
     await runDatabaseMigrations();
-
     await initializeUserTypes();
     await initializeCategories();
 
@@ -164,6 +167,7 @@ const startServer = async () => {
         await sequelize.close();
         process.exit(0);
       });
+      // Force exit if shutdown takes >30s
       setTimeout(() => process.exit(1), 30000);
     };
 
@@ -176,7 +180,7 @@ const startServer = async () => {
   }
 };
 
-// Error handling
+// Global error handling for crashes
 process.on('uncaughtException', (error) => {
   console.error('⚠️ Uncaught Exception:', error);
   process.exit(1);
@@ -186,5 +190,7 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
+// Boot server
 startServer();
+
 module.exports = app;

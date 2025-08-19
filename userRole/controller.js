@@ -2,6 +2,7 @@ const { User, UserType } = require('../models');
 const { fn, col, Op } = require('sequelize');
 
 const userRoleController = {
+  // ✅ Get users with filters (role, status, search, pagination)
   async getUsersByRole(req, res) {
     try {
       const { role, status, page = 1, limit = 10, search } = req.query;
@@ -9,6 +10,7 @@ const userRoleController = {
 
       if (role) where.role = role;
       if (status) where.status = status;
+
       if (search) {
         where[Op.or] = [
           { name: { [Op.like]: `%${search}%` } },
@@ -18,10 +20,22 @@ const userRoleController = {
 
       const users = await User.findAndCountAll({
         where,
-        attributes: ['id', 'name', 'email', 'role', 'status', 'mobile', 'company', 'createdAt', 'userTypeId'],
-        include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
+        attributes: [
+          'id',
+          'name',
+          'email',
+          'role',
+          'status',
+          'mobile',
+          'company',
+          'createdAt',
+          'userTypeId'
+        ],
+        include: [
+          { model: UserType, as: 'userType', attributes: ['id', 'name'] }
+        ],
         limit: parseInt(limit),
-        offset: (page - 1) * limit,
+        offset: (parseInt(page) - 1) * parseInt(limit),
         order: [['createdAt', 'DESC']],
       });
 
@@ -40,6 +54,7 @@ const userRoleController = {
     }
   },
 
+  // ✅ Update user role/status/userType
   async updateUserRole(req, res) {
     try {
       const { id } = req.params;
@@ -76,12 +91,13 @@ const userRoleController = {
         include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
       });
 
-      res.json({ success: true, message: 'User role/status updated', data: updatedUser });
+      res.json({ success: true, message: 'User updated successfully', data: updatedUser });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
   },
 
+  // ✅ Role stats (role → status → count)
   async getRoleStats(req, res) {
     try {
       const stats = await User.findAll({
@@ -105,6 +121,7 @@ const userRoleController = {
     }
   },
 
+  // ✅ Update user status (only Pending → Approved/Rejected)
   async updateUserStatus(req, res) {
     try {
       const { id } = req.params;
@@ -122,7 +139,7 @@ const userRoleController = {
         return res.status(400).json({ success: false, message: 'Invalid status' });
       }
 
-      await user.update({ status, rejectionReason: reason || null });
+      await user.update({ status, rejectionReason: status === 'Rejected' ? reason || null : null });
 
       const updatedUser = await User.findByPk(id, {
         attributes: { exclude: ['password'] },

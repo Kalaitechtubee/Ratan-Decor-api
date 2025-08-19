@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const db = require('../models');
-const { User, ShippingAddress } = db;
+const { User, ShippingAddress, UserType } = db;
 
 // In-memory store for OTPs (replace with Redis/database in production)
 const otpStore = new Map();
@@ -48,7 +48,8 @@ const register = async (req, res) => {
     const {
       name, email, password, role,
       phone, company, address,
-      mobile, country, state, city, pincode
+      mobile, country, state, city, pincode,
+      userTypeId, userTypeName
     } = req.body;
 
     const existingUser = await User.findOne({ where: { email } });
@@ -80,6 +81,36 @@ const register = async (req, res) => {
         initialStatus = 'Approved';
         requiresApproval = false;
     }
+    
+    // Handle userType - either by ID or name
+    let finalUserTypeId = userTypeId;
+    if (!finalUserTypeId && userTypeName) {
+      // Try to find userType by name
+      const userType = await UserType.findOne({ where: { name: userTypeName } });
+      if (userType) {
+        finalUserTypeId = userType.id;
+      }
+    }
+    
+    // If no userType specified, use default based on role
+    if (!finalUserTypeId) {
+      // Find or create a default userType based on role
+      let defaultTypeName = role === 'General' || role === 'customer' ? 'General' : role;
+      let defaultType = await UserType.findOne({ where: { name: defaultTypeName } });
+      if (!defaultType) {
+        // Fallback to General if specific role type doesn't exist
+        defaultType = await UserType.findOne({ where: { name: 'General' } });
+        if (!defaultType) {
+          // Create General type if it doesn't exist
+          defaultType = await UserType.create({
+            name: 'General',
+            description: 'Default user type',
+            isActive: true
+          });
+        }
+      }
+      finalUserTypeId = defaultType.id;
+    }
 
     const userData = {
       name,
@@ -93,7 +124,8 @@ const register = async (req, res) => {
       state,
       city,
       pincode,
-      company
+      company,
+      userTypeId: finalUserTypeId
     };
 
     const user = await User.create(userData);
@@ -134,7 +166,10 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({
+      where: { email },
+      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
+    });
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -159,7 +194,8 @@ const login = async (req, res) => {
         id: user.id, 
         role: user.role, 
         status: user.status,
-        email: user.email 
+        email: user.email,
+        userTypeId: user.userTypeId
       },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: '7d' }
@@ -174,7 +210,9 @@ const login = async (req, res) => {
         role: user.role,
         status: user.status,
         company: user.company,
-        mobile: user.mobile
+        mobile: user.mobile,
+        userTypeId: user.userTypeId,
+        userTypeName: user.userType ? user.userType.name : null
       },
       message: 'Login successful'
     });

@@ -1,58 +1,61 @@
 // models/User.js
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
-    // Full name of the user
+    // Full name
     name: {
       type: DataTypes.STRING,
       allowNull: false,
-      validate: {
-        notEmpty: true,
-        len: [1, 255]
-      }
+      validate: { notEmpty: true, len: [1, 255] }
     },
 
-    // Email address (must be unique)
+    // Email (unique)
     email: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      validate: {
-        isEmail: true,
-        notEmpty: true
-      }
+      validate: { isEmail: true, notEmpty: true }
     },
 
     // Hashed password
     password: {
       type: DataTypes.STRING,
       allowNull: false,
-      validate: {
-        notEmpty: true
-      }
+      validate: { notEmpty: true }
     },
 
-    // User role (e.g., Admin, Architect, Dealer, etc.)
+    // Role
     role: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM(
+        'customer',
+        'General',
+        'Architect',
+        'Dealer',
+        'Admin',
+        'Manager',
+        'Sales',
+        'Support'
+      ),
       allowNull: false,
-      defaultValue: 'User',
-      validate: {
-        notEmpty: true
-      }
+      defaultValue: 'General'
     },
 
-    // User status (e.g., Pending, Approved, Rejected)
+    // Status
     status: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
       allowNull: false,
-      defaultValue: 'Pending',
-      validate: {
-        notEmpty: true,
-        isIn: [['Pending', 'Approved', 'Rejected']]
-      }
+      defaultValue: 'Pending'
     },
 
-    // Foreign key to UserType model
+    // Contact & company details
+    mobile: { type: DataTypes.STRING, allowNull: true },
+    address: { type: DataTypes.STRING, allowNull: true },
+    country: { type: DataTypes.STRING, allowNull: true },
+    state: { type: DataTypes.STRING, allowNull: true },
+    city: { type: DataTypes.STRING, allowNull: true },
+    pincode: { type: DataTypes.STRING, allowNull: true },
+    company: { type: DataTypes.STRING, allowNull: true },
+
+    // FK to UserType
     userTypeId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -64,8 +67,8 @@ module.exports = (sequelize, DataTypes) => {
       onUpdate: 'CASCADE'
     }
   }, {
-    tableName: 'users', // DB table name
-    timestamps: true,   // createdAt & updatedAt
+    tableName: 'users',
+    timestamps: true
   });
 
   return User;

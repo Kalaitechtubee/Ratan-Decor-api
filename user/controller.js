@@ -1,14 +1,60 @@
 const { User, UserType } = require('../models');
 const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 
 const getAllUsers = async (req, res) => {
   try {
-    const users = await User.findAll({
+    const { page = 1, limit = 10, search, role, status, userTypeName } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    const where = {};
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+      ];
+    }
+    if (role) {
+      where.role = role;
+    }
+    if (status) {
+      where.status = status;
+    }
+
+    const include = [
+      {
+        model: UserType,
+        as: 'userType',
+        attributes: ['id', 'name'],
+        ...(userTypeName && {
+          where: { name: { [Op.like]: `%${userTypeName}%` } },
+        }),
+      },
+    ];
+
+    const { rows, count } = await User.findAndCountAll({
+      where,
       attributes: { exclude: ['password'] },
-      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
+      include,
+      limit: limitNum,
+      offset,
+      order: [['createdAt', 'DESC']],
     });
-    res.json({ success: true, data: users });
+
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(count / limitNum),
+        totalItems: count,
+        limit: limitNum,
+      },
+    });
   } catch (error) {
+    console.error('Error in getAllUsers:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -22,6 +68,7 @@ const getUserById = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     res.json({ success: true, data: user });
   } catch (error) {
+    console.error('Error in getUserById:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -32,23 +79,55 @@ const createUser = async (req, res) => {
     const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
+    // Validate required fields
     if (!name || !email || !password || !role) {
       return res.status(400).json({ success: false, message: 'Name, email, password, and role are required' });
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email format' });
+    }
+
+    // Validate password strength
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long and contain at least one uppercase letter and one number',
+      });
+    }
+
+    // Validate role
     if (!validRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
+    // Validate status
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
 
+    // Validate userTypeId
+    let finalUserTypeId = userTypeId;
     if (userTypeId) {
       const userType = await UserType.findByPk(userTypeId);
       if (!userType) {
         return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
       }
+    } else {
+      // Ensure General user type exists
+      let generalType = await UserType.findOne({ where: { name: 'General' } });
+      if (!generalType) {
+        generalType = await UserType.create({ name: 'General', isActive: true });
+      }
+      finalUserTypeId = generalType.id;
+    }
+
+    // Check for duplicate email
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -60,7 +139,7 @@ const createUser = async (req, res) => {
       company,
       role,
       status: status || 'Pending',
-      userTypeId: userTypeId || (await UserType.findOne({ where: { name: 'General' } }))?.id || null,
+      userTypeId: finalUserTypeId,
       createdAt: new Date(),
     });
 
@@ -69,7 +148,12 @@ const createUser = async (req, res) => {
 
     res.status(201).json({ success: true, data: userWithoutPassword });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('Error in createUser:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      res.status(400).json({ success: false, message: 'Email already exists' });
+    } else {
+      res.status(400).json({ success: false, message: error.message });
+    }
   }
 };
 
@@ -82,14 +166,29 @@ const updateUser = async (req, res) => {
     const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
+    // Validate email if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ success: false, message: 'Invalid email format' });
+      }
+      const existingUser = await User.findOne({ where: { email, id: { [Op.ne]: req.params.id } } });
+      if (existingUser) {
+        return res.status(400).json({ success: false, message: 'Email already exists' });
+      }
+    }
+
+    // Validate role
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
+    // Validate status
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
 
+    // Validate userTypeId
     if (userTypeId) {
       const userType = await UserType.findByPk(userTypeId);
       if (!userType) {
@@ -114,7 +213,12 @@ const updateUser = async (req, res) => {
 
     res.json({ success: true, message: 'User updated successfully', data: updatedUser });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('Error in updateUser:', error);
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      res.status(400).json({ success: false, message: 'Email already exists' });
+    } else {
+      res.status(400).json({ success: false, message: error.message });
+    }
   }
 };
 
@@ -126,6 +230,7 @@ const deleteUser = async (req, res) => {
     await user.destroy();
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
+    console.error('Error in deleteUser:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
