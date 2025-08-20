@@ -1,334 +1,935 @@
-const { Category, UserType, Product } = require('../models');
-const { Op } = require('sequelize');
+const { Category, Product, sequelize } = require('../models');
+const { Op, Sequelize } = require('sequelize');
 
-// Utility: Build recursive category tree
+// Utility: Build recursive category tree with improved structure
 const buildTree = (categories, parentId = null) => {
-  // Add debug logging
-  console.log(`Building tree for parentId: ${parentId}, found ${categories.filter(c => c.parentId === parentId).length} matching categories`);
-  console.log('Categories being processed:', JSON.stringify(categories));
-  
   return categories
     .filter(c => c.parentId === parentId)
     .map(c => ({
       id: c.id,
       name: c.name,
-      userTypeId: c.userTypeId,
-      // Use a default value if userTypeName is empty
-      userTypeName: c.userTypeName || 'Default',
+      brandName: c.brandName,
+      parentId: c.parentId,
+      isSubcategory: !!c.parentId,
+      productCount: c.productCount || 0,
       subCategories: buildTree(categories, c.id),
     }));
 };
 
-// Utility: Get all descendant IDs recursively
+// Utility: Get all descendant IDs recursively with improved error handling
 const getDescendants = async (catId) => {
   try {
-    let descendants = [];
-    const children = await Category.findAll({
-      where: { parentId: catId },
-      attributes: ['id'],
-    });
-    for (const child of children) {
-      descendants.push(child.id);
-      descendants = descendants.concat(await getDescendants(child.id));
+    const descendants = [];
+    const queue = [catId];
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      const children = await Category.findAll({
+        where: { parentId: currentId },
+        attributes: ['id'],
+      });
+      
+      for (const child of children) {
+        descendants.push(child.id);
+        queue.push(child.id);
+      }
     }
+    
     return descendants;
   } catch (error) {
     console.error('Error fetching descendants:', error);
-    throw error;
+    throw new Error('Failed to fetch category descendants');
   }
 };
 
-// Get all categories as nested tree (filtered by user's type or admin-specified userTypeId)
+// Get all categories as nested tree with product counts
 const getCategoryTree = async (req, res) => {
   try {
-    let userTypeId = req.user?.userTypeId;
-
-    // Enhanced debugging
-    console.log('Request user object:', JSON.stringify(req.user));
-    console.log('Authenticated userTypeId:', userTypeId);
-
-    // Allow admins to specify userTypeId via query param
-    if (req.user?.role === 'Admin' && req.query.userTypeId) {
-      userTypeId = parseInt(req.query.userTypeId, 10);
-      const userType = await UserType.findOne({ where: { id: userTypeId, isActive: true } });
-      if (!userType) {
-        return res.status(404).json({ success: false, message: 'User type not found or inactive' });
-      }
-    }
-
-    if (!userTypeId) {
-      return res.status(400).json({ success: false, message: 'User type ID is required' });
-    }
-
-    console.log(`Fetching category tree for userTypeId: ${userTypeId}`);
+    // Fetch categories with product counts
     const categories = await Category.findAll({
-      where: { userTypeId },
       include: [
         {
-          model: UserType,
-          as: 'userType',
-          attributes: ['name'],
-        },
+          model: Product,
+          as: 'products',
+          attributes: [],
+          required: false,
+        }
       ],
+      attributes: [
+        'id', 
+        'name', 
+        'parentId',
+        'brandName',
+        [sequelize.fn('COUNT', sequelize.col('products.id')), 'productCount']
+      ],
+      group: ['Category.id'],
       raw: true,
       nest: true,
     });
 
-    // Log the raw categories for debugging
-    console.log('Raw categories fetched:', JSON.stringify(categories));
-
     if (!categories.length) {
-      console.log(`No categories found for userTypeId: ${userTypeId}`);
-      return res.status(200).json([]);
+      return res.status(200).json({ 
+        success: true, 
+        categories: [],
+        message: 'No categories found'
+      });
     }
 
-    // Build tree with userTypeName
+    // Build tree structure
     const mappedCategories = categories.map(c => ({
       id: c.id,
       name: c.name,
-      parentId: c.parentId, // Make sure parentId is included
-      userTypeId: c.userTypeId,
-      userTypeName: c.userType?.name || 'Default',
+      brandName: c.brandName,
+      parentId: c.parentId,
+      productCount: parseInt(c.productCount) || 0,
     }));
-    
-    console.log('Mapped categories:', JSON.stringify(mappedCategories));
     
     const tree = buildTree(mappedCategories);
 
-    // Log the constructed tree for debugging
-    console.log('Constructed category tree:', JSON.stringify(tree));
-
-    res.json(tree);
+    res.json({ 
+      success: true, 
+      categories: tree,
+      totalCategories: categories.length
+    });
   } catch (err) {
     console.error('Error fetching category tree:', err);
-    res.status(500).json({ success: false, message: `Failed to fetch categories: ${err.message}` });
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch categories',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
-// Get subcategories by parentId (filtered by user's type or admin-specified userTypeId)
-const getSubCategories = async (req, res) => {
+// Get a single category/subcategory by ID with enhanced details
+const getCategoryById = async (req, res) => {
   try {
-    const { parentId } = req.params;
-    let userTypeId = req.user?.userTypeId;
+    const { id } = req.params;
 
-    // Allow admins to specify userTypeId via query param
-    if (req.user?.role === 'Admin' && req.query.userTypeId) {
-      userTypeId = parseInt(req.query.userTypeId, 10);
-      const userType = await UserType.findOne({ where: { id: userTypeId, isActive: true } });
-      if (!userType) {
-        return res.status(404).json({ success: false, message: 'User type not found or inactive' });
-      }
+    // Validate ID parameter
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid category ID' 
+      });
     }
 
-    if (!userTypeId) {
-      return res.status(400).json({ success: false, message: 'User type ID is required' });
-    }
-
-    console.log(`Fetching subcategories for parentId: ${parentId || 'null'}, userTypeId: ${userTypeId}`);
-    const subCategories = await Category.findAll({
-      where: { parentId: parentId || null, userTypeId },
-      attributes: ['id', 'name', 'userTypeId'],
+    const category = await Category.findOne({
+      where: { id: categoryId },
       include: [
-        {
-          model: UserType,
-          as: 'userType',
-          attributes: ['name'],
-        },
         {
           model: Product,
           as: 'products',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'price', 'isActive'],
+          where: { isActive: true },
           required: false,
         },
+        {
+          model: Category,
+          as: 'subCategories',
+          attributes: ['id', 'name', 'brandName'],
+          required: false,
+        },
+        {
+          model: Category,
+          as: 'parent',
+          attributes: ['id', 'name', 'brandName'],
+          required: false,
+        }
       ],
     });
 
-    if (!subCategories.length) {
-      console.log(`No subcategories found for parentId: ${parentId || 'null'}, userTypeId: ${userTypeId}`);
-      return res.status(200).json([]);
+    if (!category) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Category not found' 
+      });
     }
 
-    // Map to include userTypeName and related products
-    const response = subCategories.map(c => {
-      const products = c.products ? c.products.map(p => ({
+    const response = {
+      id: category.id,
+      name: category.name,
+      brandName: category.brandName,
+      parentId: category.parentId,
+      parentName: category.parent?.name || null,
+      isSubcategory: !!category.parentId,
+      productCount: category.products?.length || 0,
+      subcategoryCount: category.subCategories?.length || 0,
+      products: category.products?.map(p => ({
         productId: p.id,
         productName: p.name,
-      })) : [];
-      return {
-        id: c.id,
-        name: c.name,
-        userTypeId: c.userTypeId,
-        userTypeName: c.userType.name,
-        products: products,
-      };
-    });
+        productPrice: p.price,
+        isActive: p.isActive,
+      })) || [],
+      subCategories: category.subCategories?.map(s => ({
+        id: s.id,
+        name: s.name,
+        brandName: s.brandName
+      })) || [],
+    };
 
-    res.json(response);
+    res.json({ success: true, category: response });
   } catch (err) {
-    console.error('Error fetching subcategories:', err);
-    res.status(500).json({ success: false, message: `Failed to fetch subcategories: ${err.message}` });
+    console.error('Error fetching category:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
-// Create a new category or subcategory (Admin/Manager, specify userTypeId)
+// Get subcategories by parentId with pagination support
+const getSubCategories = async (req, res) => {
+  try {
+    const { parentId } = req.params;
+    
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    // Validate parentId
+    const categoryId = parentId === 'null' ? null : parseInt(parentId, 10);
+    if (parentId !== 'null' && isNaN(categoryId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid parent category ID' 
+      });
+    }
+
+    // Find subcategories with pagination
+    const { count: totalCount, rows: subcategories } = await Category.findAndCountAll({
+      where: { parentId: categoryId },
+      attributes: ['id', 'name', 'brandName', 'parentId'],
+      include: [
+        {
+          model: Product,
+          as: 'products',
+          attributes: [],
+          required: false,
+        },
+        {
+          model: Category,
+          as: 'subCategories',
+          attributes: ['id'],
+          required: false,
+        }
+      ],
+      limit,
+      offset,
+      order: [['name', 'ASC']],
+    });
+
+    // Get product and subcategory counts
+    const response = await Promise.all(subcategories.map(async (subcat) => {
+      const productCount = await Product.count({
+        where: { categoryId: subcat.id, isActive: true }
+      });
+      
+      const subcategoryCount = await Category.count({
+        where: { parentId: subcat.id }
+      });
+      
+      return {
+        id: subcat.id,
+        name: subcat.name,
+        brandName: subcat.brandName,
+        parentId: subcat.parentId,
+        productCount,
+        subcategoryCount,
+        isSubcategory: true,
+      };
+    }));
+
+    res.json({ 
+      success: true,
+      subcategories: response,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasNextPage: page < Math.ceil(totalCount / limit),
+        hasPrevPage: page > 1,
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching subcategories:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch subcategories',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Create a new main category with enhanced validation
 const createCategory = async (req, res) => {
   try {
-    const { name, parentId, userTypeId } = req.body;
-    if (!name || name.trim() === '') {
-      return res.status(400).json({ success: false, message: 'Category name is required' });
+    const { name, brandName } = req.body;
+    
+    // Enhanced validation
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Category name must be at least 2 characters long' 
+      });
     }
-    if (!userTypeId) {
-      return res.status(400).json({ success: false, message: 'User type ID is required' });
-    }
+    
+    const trimmedName = name.trim();
 
-    const userType = await UserType.findOne({ where: { id: userTypeId, isActive: true } });
-    if (!userType) {
-      return res.status(404).json({ success: false, message: 'User type not found or inactive' });
-    }
-
-    if (parentId) {
-      const parent = await Category.findByPk(parentId);
-      if (!parent) {
-        return res.status(404).json({ success: false, message: 'Parent category not found' });
-      }
-      if (parent.userTypeId !== userTypeId) {
-        return res.status(400).json({ success: false, message: 'Parent category belongs to a different user type' });
-      }
-    }
-
-    // Check for duplicate name within userTypeId and parentId
+    // Check for duplicate name (case-insensitive) at root level
     const existingCategory = await Category.findOne({
-      where: { name: name.trim(), userTypeId, parentId: parentId || null },
+      where: { 
+        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
+        parentId: null
+      },
     });
+    
     if (existingCategory) {
-      return res.status(409).json({ success: false, message: 'Category name already exists for this user type and parent' });
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Category name already exists at the root level' 
+      });
     }
 
+    // Create category
     const category = await Category.create({
-      name: name.trim(),
-      parentId: parentId || null,
-      userTypeId,
+      name: trimmedName,
+      parentId: null,
+      brandName: brandName || null,
     });
 
-    console.log(`Created category: ${name} with userTypeId: ${userTypeId}`);
+    console.log(`Created main category: ${trimmedName}`);
+    
     res.status(201).json({
       success: true,
-      data: {
+      message: 'Category created successfully',
+      category: {
         id: category.id,
         name: category.name,
-        parentId: category.parentId,
-        userTypeId: category.userTypeId,
-        userTypeName: userType.name,
+        brandName: category.brandName,
+        parentId: null,
+        isSubcategory: false,
+        productCount: 0,
+        subcategoryCount: 0,
       },
     });
   } catch (err) {
     console.error('Error creating category:', err);
-    res.status(500).json({ success: false, message: `Failed to create category: ${err.message}` });
+    console.error('Error stack:', err.stack);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Category name already exists',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input data.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err instanceof TypeError || err instanceof ReferenceError) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Internal server error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
-// Update category (Admin/Manager, can update userTypeId with cascade to descendants)
-const updateCategory = async (req, res) => {
+// Create a new subcategory with enhanced validation
+const createSubCategory = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, userTypeId: newUserTypeId } = req.body;
-
-    const category = await Category.findByPk(id, {
-      include: [{ model: UserType, as: 'userType', attributes: ['name'] }],
-    });
-    if (!category) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
-    }
-
-    let updatedUserType = category.userType;
-    if (newUserTypeId && newUserTypeId !== category.userTypeId) {
-      const userType = await UserType.findOne({ where: { id: newUserTypeId, isActive: true } });
-      if (!userType) {
-        return res.status(404).json({ success: false, message: 'User type not found or inactive' });
-      }
-
-      const descIds = await getDescendants(category.id);
-      await category.update({ userTypeId: newUserTypeId });
-      if (descIds.length > 0) {
-        await Category.update(
-          { userTypeId: newUserTypeId },
-          { where: { id: { [Op.in]: descIds } } }
-        );
-      }
-      console.log(`Updated userTypeId to ${newUserTypeId} for category ${id} and ${descIds.length} descendants`);
-      updatedUserType = userType;
-    }
-
-    if (name && name.trim() !== category.name) {
-      // Check for duplicate name within userTypeId and parentId
-      const existingCategory = await Category.findOne({
-        where: {
-          name: name.trim(),
-          userTypeId: category.userTypeId,
-          parentId: category.parentId,
-          id: { [Op.ne]: id },
-        },
+    const { parentId } = req.params;
+    const { name, brandName } = req.body;
+    
+    // Enhanced validation
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Subcategory name must be at least 2 characters long' 
       });
-      if (existingCategory) {
-        return res.status(409).json({ success: false, message: 'Category name already exists for this user type and parent' });
-      }
-      await category.update({ name: name.trim() });
-      console.log(`Updated name to ${name} for category ${id}`);
+    }
+    
+    const parsedParentId = parseInt(parentId);
+    if (isNaN(parsedParentId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid parent category ID' 
+      });
     }
 
-    res.json({
+    const trimmedName = name.trim();
+
+    // Validate parent category exists
+    const parent = await Category.findByPk(parsedParentId);
+    if (!parent) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Parent category not found' 
+      });
+    }
+
+    // Check for duplicate name (case-insensitive) under this parent
+    const existingCategory = await Category.findOne({
+      where: { 
+        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
+        parentId: parsedParentId
+      },
+    });
+    
+    if (existingCategory) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Subcategory name already exists under this parent category' 
+      });
+    }
+
+    // Create subcategory
+    const category = await Category.create({
+      name: trimmedName,
+      parentId: parsedParentId,
+      brandName: brandName || null,
+    });
+
+    console.log(`Created subcategory: ${trimmedName} under parent ID: ${parsedParentId}`);
+    
+    res.status(201).json({
       success: true,
-      data: {
+      message: 'Subcategory created successfully',
+      category: {
         id: category.id,
         name: category.name,
-        userTypeId: category.userTypeId,
-        userTypeName: updatedUserType.name,
+        brandName: category.brandName,
         parentId: category.parentId,
+        parentName: parent.name,
+        isSubcategory: true,
+        productCount: 0,
+        subcategoryCount: 0,
       },
     });
   } catch (err) {
-    console.error('Error updating category:', err);
-    res.status(500).json({ success: false, message: `Failed to update category: ${err.message}` });
+    console.error('Error creating subcategory:', err);
+    console.error('Error stack:', err.stack);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Subcategory name already exists under this parent',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input data.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err instanceof TypeError || err instanceof ReferenceError) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Internal server error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create subcategory',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
-// Delete category (subcategories cascade) (Admin/Manager)
-const deleteCategory = async (req, res) => {
+// Update category with enhanced validation and transaction support
+const updateCategory = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
-    const category = await Category.findByPk(id);
-
-    if (!category) {
-      return res.status(404).json({ success: false, message: 'Category not found' });
-    }
-
-    // Check if category or its descendants have associated products
-    const descendantIds = await getDescendants(id);
-    const allCategoryIds = [id, ...descendantIds];
-    const productCount = await Product.count({
-      where: { categoryId: { [Op.in]: allCategoryIds } },
-    });
-
-    if (productCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete category. ${productCount} product(s) are associated with this category or its subcategories.`,
+    const { name, brandName, parentId } = req.body;
+    
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId)) {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid category ID' 
       });
     }
 
-    await category.destroy(); // CASCADE will delete subcategories
-    console.log(`Deleted category ${id}`);
-    res.json({ success: true, message: 'Category deleted successfully' });
+    const category = await Category.findByPk(categoryId, {
+      transaction
+    });
+    
+    if (!category) {
+      await transaction.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Category not found' 
+      });
+    }
+
+    let updateData = {};
+
+    // Handle name update
+    if (name) {
+      if (typeof name !== 'string' || name.trim().length < 2) {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Category name must be at least 2 characters long' 
+        });
+      }
+
+      const trimmedName = name.trim();
+      
+      // Check for duplicate name (case-insensitive) at the same level
+      const existingCategory = await Category.findOne({
+        where: { 
+          name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
+          parentId: category.parentId,
+          id: { [Op.ne]: categoryId }
+        },
+        transaction
+      });
+      
+      if (existingCategory) {
+        await transaction.rollback();
+        return res.status(409).json({ 
+          success: false, 
+          message: 'Category name already exists at this level' 
+        });
+      }
+      
+      updateData.name = trimmedName;
+    }
+
+    // Handle brandName update
+    if (brandName !== undefined) {
+      updateData.brandName = brandName || null;
+    }
+
+    // Handle parentId update
+    if (parentId !== undefined) {
+      const parsedParentId = parentId === null ? null : parseInt(parentId, 10);
+      
+      // Prevent setting parent to self
+      if (parsedParentId === categoryId) {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Category cannot be its own parent' 
+        });
+      }
+      
+      // Prevent setting parent to one of its descendants (would create a cycle)
+      if (parsedParentId !== null) {
+        const descendants = await getDescendants(categoryId);
+        if (descendants.includes(parsedParentId)) {
+          await transaction.rollback();
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Cannot set a descendant as the parent (would create a cycle)' 
+          });
+        }
+        
+        // Verify the new parent exists
+        const parentExists = await Category.findByPk(parsedParentId, { transaction });
+        if (!parentExists) {
+          await transaction.rollback();
+          return res.status(404).json({ 
+            success: false, 
+            message: 'Parent category not found' 
+          });
+        }
+      }
+      
+      updateData.parentId = parsedParentId;
+    }
+
+    // If no updates were provided
+    if (Object.keys(updateData).length === 0) {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No valid updates provided' 
+      });
+    }
+
+    // Update the category
+    await category.update(updateData, { transaction });
+    await transaction.commit();
+
+    // Fetch the updated category with associations for the response
+    const updatedCategory = await Category.findByPk(category.id, {
+      include: [
+        {
+          model: Category,
+          as: 'parent',
+          attributes: ['id', 'name'],
+          required: false,
+        }
+      ]
+    });
+
+    res.json({
+      success: true,
+      message: 'Category updated successfully',
+      category: {
+        id: updatedCategory.id,
+        name: updatedCategory.name,
+        brandName: updatedCategory.brandName,
+        parentId: updatedCategory.parentId,
+        parentName: updatedCategory.parent?.name || null,
+        isSubcategory: !!updatedCategory.parentId,
+      }
+    });
   } catch (err) {
+    await transaction.rollback();
+    console.error('Error updating category:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Category name already exists at this level',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid parent category ID',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input values.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'TypeError' || err.name === 'ReferenceError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server error while processing your request',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Delete category and all its subcategories recursively
+const deleteCategory = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  
+  try {
+    const { id } = req.params;
+    
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId)) {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid category ID' 
+      });
+    }
+
+    // Check if category exists
+    const category = await Category.findByPk(categoryId, { transaction });
+    if (!category) {
+      await transaction.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Category not found' 
+      });
+    }
+
+    // Get all descendant category IDs
+    const descendantIds = await getDescendants(categoryId);
+    const allIds = [categoryId, ...descendantIds];
+    
+    // Check if any products are associated with this category or its descendants
+    const productsCount = await Product.count({
+      where: {
+        categoryId: { [Op.in]: allIds },
+        isActive: true
+      },
+      transaction
+    });
+    
+    if (productsCount > 0) {
+      await transaction.rollback();
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot delete: ${productsCount} active products are associated with this category or its subcategories` 
+      });
+    }
+
+    // Delete all descendant categories first
+    if (descendantIds.length > 0) {
+      await Category.destroy({
+        where: { id: { [Op.in]: descendantIds } },
+        transaction
+      });
+    }
+    
+    // Delete the main category
+    await category.destroy({ transaction });
+    
+    await transaction.commit();
+    
+    res.json({
+      success: true,
+      message: `Category deleted successfully along with ${descendantIds.length} subcategories`,
+      deletedIds: allIds
+    });
+  } catch (err) {
+    await transaction.rollback();
     console.error('Error deleting category:', err);
-    res.status(500).json({ success: false, message: `Failed to delete category: ${err.message}` });
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete category because it has associated products or subcategories',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Search categories by name
+const searchCategories = async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Search query must be at least 2 characters long' 
+      });
+    }
+    
+    const trimmedQuery = q.trim();
+    
+    const categories = await Category.findAll({
+      where: {
+        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${trimmedQuery.toLowerCase()}%`)
+      },
+      include: [
+        {
+          model: Category,
+          as: 'parent',
+          attributes: ['id', 'name'],
+          required: false,
+        }
+      ],
+      limit: 20,
+      order: [['name', 'ASC']]
+    });
+    
+    const results = categories.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      brandName: cat.brandName,
+      parentId: cat.parentId,
+      parentName: cat.parent?.name || null,
+      isSubcategory: !!cat.parentId,
+    }));
+    
+    res.json({
+      success: true,
+      results,
+      count: results.length,
+      query: trimmedQuery
+    });
+  } catch (err) {
+    console.error('Error searching categories:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to search categories',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };
 
 module.exports = {
   getCategoryTree,
+  getCategoryById,
   getSubCategories,
   createCategory,
+  createSubCategory,
   updateCategory,
   deleteCategory,
+  searchCategories,
 };

@@ -5,6 +5,7 @@ const {
   getProducts,
   getProductById,
   updateProduct,
+  updateProductAll,
   deleteProduct,
   addProductRating,
   getProductRatings
@@ -18,7 +19,8 @@ router.get('/:productId/ratings', getProductRatings);
 
 // Protected routes (Admin/Manager only)
 router.post('/', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, validateImage, createProduct);
-router.put('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, updateProduct);
+router.patch('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, updateProduct);
+router.put('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, validateImage, updateProductAll);
 router.delete('/:id', authMiddleware, requireRole(['Admin', 'Manager']), deleteProduct);
 
 // User rating routes (authenticated users)

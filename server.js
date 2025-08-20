@@ -18,6 +18,7 @@ const userTypeRoutes = require('./userType/routes');
 const userRoutes = require('./user/routes');
 const shippingAddressRoutes = require('./shipping-address/routes');
 const userRoleRoutes = require('./userRole/routes');
+const enquiryRoutes = require('./enquiry/routes');
 
 // Import initializers (seeders)
 const { initializeCategories } = require('./utils/initializeCategories');
@@ -31,7 +32,8 @@ const runDatabaseMigrations = async () => {
     console.log('🔧 Running database migrations...');
 
     // Ensure products.images column exists
-    const [results] = await sequelize.query(`
+    // Check for images column
+    const [imagesResults] = await sequelize.query(`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
       WHERE TABLE_NAME = 'products' 
@@ -39,7 +41,7 @@ const runDatabaseMigrations = async () => {
         AND TABLE_SCHEMA = DATABASE()
     `);
 
-    if (results.length === 0) {
+    if (imagesResults.length === 0) {
       console.log('🔧 Adding missing images column to products table...');
       await sequelize.query(`
         ALTER TABLE products 
@@ -48,6 +50,86 @@ const runDatabaseMigrations = async () => {
       console.log('✅ Images column added successfully');
     } else {
       console.log('✅ Images column already exists');
+    }
+    
+    // Check for warranty column
+    const [warrantyResults] = await sequelize.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'products' 
+        AND COLUMN_NAME = 'warranty'
+        AND TABLE_SCHEMA = DATABASE()
+    `);
+
+    if (warrantyResults.length === 0) {
+      console.log('🔧 Adding missing warranty column to products table...');
+      await sequelize.query(`
+        ALTER TABLE products 
+        ADD COLUMN warranty VARCHAR(255) DEFAULT NULL
+      `);
+      console.log('✅ Warranty column added successfully');
+    } else {
+      console.log('✅ Warranty column already exists');
+    }
+    
+    // Check if enquiries table exists
+    const [enquiriesTable] = await sequelize.query(`
+      SELECT TABLE_NAME 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_NAME = 'enquiries'
+        AND TABLE_SCHEMA = DATABASE()
+    `);
+    
+    if (enquiriesTable.length === 0) {
+      console.log('🔧 Creating enquiries table...');
+      // Run the migration manually
+      const enquiriesMigration = require('./migrations/20250820000000-create-enquiries-table');
+      await enquiriesMigration.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+      console.log('✅ Enquiries table created successfully');
+    } else {
+      console.log('✅ Enquiries table already exists');
+    }
+
+    // Check for brandName column in categories table
+    const [brandNameResults] = await sequelize.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'categories' 
+        AND COLUMN_NAME = 'brandName'
+        AND TABLE_SCHEMA = DATABASE()
+    `);
+
+    if (brandNameResults.length === 0) {
+      console.log('🔧 Adding brandName column to categories table...');
+      // Run the migration manually
+      const brandNameMigration = require('./migrations/20250825000000-add-brandName-to-categories');
+      await brandNameMigration.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+      console.log('✅ brandName column added to categories table successfully');
+    } else {
+      console.log('✅ brandName column already exists in categories table');
+    }
+    
+    // Check for userTypeId column in categories table
+    const [userTypeIdResults] = await sequelize.query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'categories' 
+        AND COLUMN_NAME = 'userTypeId'
+        AND TABLE_SCHEMA = DATABASE()
+    `);
+
+    if (userTypeIdResults.length > 0) {
+      console.log('🔧 Removing userTypeId column from categories table...');
+      // Run the migration manually
+      const removeUserTypeIdMigration = require('./migrations/20250826000000-remove-userTypeId-from-categories');
+      await removeUserTypeIdMigration.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+      console.log('✅ userTypeId column removed from categories table successfully');
+      
+      // Run the controller update reminder migration
+      const updateControllerMigration = require('./migrations/20250826000001-update-category-controller');
+      await updateControllerMigration.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+    } else {
+      console.log('✅ userTypeId column already removed from categories table');
     }
 
     return true;
@@ -91,6 +173,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-types', userTypeRoutes);
 app.use('/api/roles', userRoleRoutes);
+app.use('/api/enquiries', enquiryRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -106,11 +189,30 @@ app.get('/api', (req, res) => {
   res.json({ message: 'API Server is running', version: '1.0.0' });
 });
 
+// Root route handler
+app.get('/', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Ratan Decor API Server is running', 
+    version: '1.0.0',
+    documentation: '/api'
+  });
+});
+
 // 404 handler (API only)
 app.use('/api/*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'API endpoint not found',
+    path: req.path
+  });
+});
+
+// General 404 handler for non-API routes
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found',
     path: req.path
   });
 });
@@ -155,10 +257,29 @@ const startServer = async () => {
     await initializeUserTypes();
     await initializeCategories();
 
-    const PORT = process.env.PORT || 3000;
-    const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
+    let PORT = process.env.PORT || 3000;
+    
+    // Function to start server with port fallback
+    const startServer = (port) => {
+      return new Promise((resolve, reject) => {
+        const server = app.listen(port)
+          .on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+              console.log(`⚠️ Port ${port} is in use, trying ${port}...`);
+              resolve(startServer(port + 1));
+            } else {
+              reject(err);
+            }
+          })
+          .on('listening', () => {
+            console.log(`🚀 Server running on port ${port}`);
+            resolve(server);
+          });
+      });
+    };
+    
+    // Start server with initial port
+    const server = await startServer(PORT);
 
     // Graceful shutdown
     const shutdown = async (signal) => {

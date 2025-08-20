@@ -1,4 +1,4 @@
-const { Enquiry } = require('../models');
+const Enquiry = require('./models');
 
 const enquiryController = {
   // Create new enquiry
@@ -40,11 +40,14 @@ const enquiryController = {
       if (userType) whereClause.userType = userType;
       if (status) whereClause.status = status;
 
+      const { User } = require('../models');
+      const { Product } = require('../models');
+      
       const enquiries = await Enquiry.findAndCountAll({
         where: whereClause,
         include: [
-          { model: require('../models').User, as: 'User' },
-          { model: require('../models').Product, as: 'Product' }
+          { model: User, as: 'user' },
+          { model: Product, as: 'product' }
         ],
         limit: parseInt(limit),
         offset: (page - 1) * limit,

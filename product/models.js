@@ -58,6 +58,24 @@ const Product = sequelize.define("Product", {
     allowNull: true,
     defaultValue: 0.00,
   },
+  brandName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  warranty: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  averageRating: {
+    type: DataTypes.DECIMAL(3, 2),
+    allowNull: true,
+    defaultValue: 0.00,
+  },
+  totalRatings: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+  },
 }, {
   tableName: "products",
   timestamps: true,
