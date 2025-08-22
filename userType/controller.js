@@ -205,6 +205,7 @@ const userTypeController = {
       });
     }
   },
+  
 
   // Soft delete user type (Admin only)
   async deleteUserType(req, res) {

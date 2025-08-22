@@ -40,19 +40,17 @@ const getImageUrl = (filename, req) => {
 const processProductData = (product, req) => {
   const productData = product.toJSON ? product.toJSON() : product;
   
-  // Handle single image
+  // Collect all images into imageUrls
+  let allImageUrls = [];
   if (productData.image) {
-    productData.imageUrl = getImageUrl(productData.image, req);
-  } else {
-    productData.imageUrl = null;
+    allImageUrls.push(getImageUrl(productData.image, req));
+  }
+  if (productData.images && Array.isArray(productData.images)) {
+    allImageUrls = [...allImageUrls, ...productData.images.map(img => getImageUrl(img, req))];
   }
   
-  // Handle multiple images
-  if (productData.images && Array.isArray(productData.images)) {
-    productData.imageUrls = productData.images.map(img => getImageUrl(img, req));
-  } else {
-    productData.imageUrls = [];
-  }
+  productData.imageUrl = allImageUrls[0] || null;
+  productData.imageUrls = allImageUrls;
   
   // Ensure brandName and warranty are included even if null
   if (!('brandName' in productData)) {
@@ -156,16 +154,13 @@ const createProduct = async (req, res) => {
       warranty
     } = req.body;
 
-    // Handle single image from 'image' field
-    let imageFilename = null;
-    if (req.files && req.files.image && req.files.image[0]) {
-      imageFilename = req.files.image[0].filename;
-    }
-    
-    // Handle multiple images from 'images' field
+    // Collect all uploaded images into one array
     let imageFilenames = [];
+    if (req.files && req.files.image && req.files.image[0]) {
+      imageFilenames.push(req.files.image[0].filename);
+    }
     if (req.files && req.files.images) {
-      imageFilenames = req.files.images.map(file => file.filename);
+      imageFilenames = [...imageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
     let parsedSpecifications = specifications;
@@ -221,8 +216,8 @@ const createProduct = async (req, res) => {
     const productData = {
       name,
       description,
-      image: imageFilename,
-      images: imageFilenames.length > 0 ? imageFilenames : [],
+      image: null, // Set to null, use images array
+      images: imageFilenames,
       specifications: parsedSpecifications,
       visibleTo: parsedVisibleTo || [],
       generalPrice,
@@ -307,16 +302,23 @@ const updateProduct = async (req, res) => {
       gst
     } = req.body;
 
-    // Handle single image from 'image' field
-    let imageFilename = null;
-    if (req.files && req.files.image && req.files.image[0]) {
-      imageFilename = req.files.image[0].filename;
+    // Parse keptImages
+    let keptImages = [];
+    if (req.body.keptImages) {
+      try {
+        keptImages = JSON.parse(req.body.keptImages);
+      } catch {
+        keptImages = [];
+      }
     }
-    
-    // Handle multiple images from 'images' field
-    let imageFilenames = [];
+
+    // Handle new images
+    let newImageFilenames = [];
+    if (req.files && req.files.image && req.files.image[0]) {
+      newImageFilenames.push(req.files.image[0].filename);
+    }
     if (req.files && req.files.images) {
-      imageFilenames = req.files.images.map(file => file.filename);
+      newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
     let parsedSpecifications = specifications;
@@ -370,22 +372,21 @@ const updateProduct = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Handle old image cleanup for single image
-    if (imageFilename && product.image) {
+    // Handle removed images from images array
+    const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
+    removedImages.forEach(oldImage => {
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    });
+
+    // Handle removed single image if not kept
+    if (product.image && !keptImages.includes(product.image)) {
       const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
       if (fs.existsSync(oldImagePath)) {
         fs.unlinkSync(oldImagePath);
       }
-    }
-
-    // Handle old images cleanup for multiple images
-    if (imageFilenames.length > 0 && product.images && Array.isArray(product.images)) {
-      product.images.forEach(oldImage => {
-        const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
-      });
     }
 
     const updateData = {
@@ -401,16 +402,10 @@ const updateProduct = async (req, res) => {
       colors: parsedColors,
       gst: gst !== undefined ? parseFloat(gst) : product.gst,
       brandName: req.body.brandName !== undefined ? req.body.brandName : product.brandName,
-      warranty: req.body.warranty !== undefined ? req.body.warranty : product.warranty
+      warranty: req.body.warranty !== undefined ? req.body.warranty : product.warranty,
+      image: null, // Migrate to images array
+      images: [...keptImages, ...newImageFilenames]
     };
-
-    if (imageFilename) {
-      updateData.image = imageFilename;
-    }
-
-    if (imageFilenames.length > 0) {
-      updateData.images = imageFilenames;
-    }
 
     await product.update(updateData);
 
@@ -558,16 +553,23 @@ const updateProductAll = async (req, res) => {
       isActive
     } = req.body;
 
-    // Handle single image from 'image' field
-    let imageFilename = null;
-    if (req.files && req.files.image && req.files.image[0]) {
-      imageFilename = req.files.image[0].filename;
+    // Parse keptImages
+    let keptImages = [];
+    if (req.body.keptImages) {
+      try {
+        keptImages = JSON.parse(req.body.keptImages);
+      } catch {
+        keptImages = [];
+      }
     }
-    
-    // Handle multiple images from 'images' field
-    let imageFilenames = [];
+
+    // Handle new images
+    let newImageFilenames = [];
+    if (req.files && req.files.image && req.files.image[0]) {
+      newImageFilenames.push(req.files.image[0].filename);
+    }
     if (req.files && req.files.images) {
-      imageFilenames = req.files.images.map(file => file.filename);
+      newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
     let parsedSpecifications = specifications;
@@ -623,22 +625,21 @@ const updateProductAll = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Handle old image cleanup for single image
-    if (imageFilename && product.image) {
+    // Handle removed images from images array
+    const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
+    removedImages.forEach(oldImage => {
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    });
+
+    // Handle removed single image if not kept
+    if (product.image && !keptImages.includes(product.image)) {
       const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
       if (fs.existsSync(oldImagePath)) {
         fs.unlinkSync(oldImagePath);
       }
-    }
-
-    // Handle old images cleanup for multiple images
-    if (imageFilenames.length > 0 && product.images && Array.isArray(product.images)) {
-      product.images.forEach(oldImage => {
-        const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
-      });
     }
 
     const updateData = {
@@ -655,17 +656,11 @@ const updateProductAll = async (req, res) => {
       gst: gst !== undefined ? parseFloat(gst) : 0.00,
       brandName: brandName || null,
       warranty: warranty || null,
-      isActive: isActive !== undefined ? isActive : true
+      isActive: isActive !== undefined ? isActive : true,
+      image: null, // Migrate to images array
+      images: [...keptImages, ...newImageFilenames]
     };
     
-    if (imageFilename) {
-      updateData.image = imageFilename;
-    }
-
-    if (imageFilenames.length > 0) {
-      updateData.images = imageFilenames;
-    }
-
     await product.update(updateData);
 
     res.json({
