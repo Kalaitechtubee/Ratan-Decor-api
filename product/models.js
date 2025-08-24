@@ -2,46 +2,67 @@ const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
 const Product = sequelize.define("Product", {
-  id: { 
-    type: DataTypes.INTEGER, 
-    autoIncrement: true, 
-    primaryKey: true 
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true
   },
-  name: { 
-    type: DataTypes.STRING, 
-    allowNull: false 
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
   },
-  description: { 
-    type: DataTypes.TEXT 
+  description: {
+    type: DataTypes.TEXT
   },
-  image: { 
-    type: DataTypes.STRING 
+  image: {
+    type: DataTypes.STRING
   },
-  specifications: { 
-    type: DataTypes.JSON 
+  images: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  specifications: {
+    type: DataTypes.JSON
   },
   visibleTo: {
     type: DataTypes.JSON,
     defaultValue: ['Residential', 'Commercial', 'Modular Kitchen', 'Others'],
   },
-  isActive: { 
-    type: DataTypes.BOOLEAN, 
-    defaultValue: true 
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
-  generalPrice: { 
-    type: DataTypes.DECIMAL(10, 2), 
-    allowNull: false 
+mrpPrice: {
+  type: DataTypes.DECIMAL(10, 2),
+  allowNull: true  // Changed from false to true
+},
+  generalPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
   },
-  architectPrice: { 
-    type: DataTypes.DECIMAL(10, 2), 
-    allowNull: false 
+  architectPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
   },
-  dealerPrice: { 
-    type: DataTypes.DECIMAL(10, 2), 
-    allowNull: false 
+  dealerPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
   },
-  categoryId: { 
-    type: DataTypes.INTEGER, 
+  designNumber: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  size: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  thickness: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  categoryId: {
+    type: DataTypes.INTEGER,
     allowNull: true,
     references: {
       model: 'categories',
@@ -56,13 +77,9 @@ const Product = sequelize.define("Product", {
   gst: {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,
-    defaultValue: 0.00,
+    defaultValue: null,
   },
   brandName: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  warranty: {
     type: DataTypes.STRING,
     allowNull: true,
   },

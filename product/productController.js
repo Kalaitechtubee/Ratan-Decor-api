@@ -52,13 +52,25 @@ const processProductData = (product, req) => {
   productData.imageUrl = allImageUrls[0] || null;
   productData.imageUrls = allImageUrls;
   
-  // Ensure brandName and warranty are included even if null
+  // Ensure new optional fields are included even if null
   if (!('brandName' in productData)) {
     productData.brandName = null;
   }
   
-  if (!('warranty' in productData)) {
-    productData.warranty = null;
+  if (!('designNumber' in productData)) {
+    productData.designNumber = null;
+  }
+  
+  if (!('size' in productData)) {
+    productData.size = null;
+  }
+  
+  if (!('thickness' in productData)) {
+    productData.thickness = null;
+  }
+  
+  if (!('gst' in productData)) {
+    productData.gst = null;
   }
   
   return productData;
@@ -143,15 +155,18 @@ const createProduct = async (req, res) => {
       description,
       specifications,
       visibleTo,
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber,
+      size,
+      thickness,
       categoryId,
       productUsageTypeId,
       colors,
       gst,
-      brandName,
-      warranty
+      brandName
     } = req.body;
 
     // Collect all uploaded images into one array
@@ -220,15 +235,18 @@ const createProduct = async (req, res) => {
       images: imageFilenames,
       specifications: parsedSpecifications,
       visibleTo: parsedVisibleTo || [],
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber: designNumber || null,
+      size: size || null,
+      thickness: thickness || null,
       categoryId,
       productUsageTypeId,
       colors: parsedColors,
-      gst: gst !== undefined ? parseFloat(gst) : 0.00,
+      gst: gst !== undefined ? parseFloat(gst) : null,
       brandName: brandName || null,
-      warranty: warranty || null,
       averageRating: 0.00,
       totalRatings: 0,
       isActive: true
@@ -294,12 +312,17 @@ const updateProduct = async (req, res) => {
       specifications,
       categoryId,
       visibleTo,
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber,
+      size,
+      thickness,
       isActive,
       colors,
-      gst
+      gst,
+      brandName
     } = req.body;
 
     // Parse keptImages
@@ -395,14 +418,17 @@ const updateProduct = async (req, res) => {
       specifications: parsedSpecifications,
       categoryId,
       visibleTo: parsedVisibleTo || [],
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber,
+      size,
+      thickness,
       isActive,
       colors: parsedColors,
       gst: gst !== undefined ? parseFloat(gst) : product.gst,
       brandName: req.body.brandName !== undefined ? req.body.brandName : product.brandName,
-      warranty: req.body.warranty !== undefined ? req.body.warranty : product.warranty,
       image: null, // Migrate to images array
       images: [...keptImages, ...newImageFilenames]
     };
@@ -541,15 +567,18 @@ const updateProductAll = async (req, res) => {
       description,
       specifications,
       visibleTo,
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber,
+      size,
+      thickness,
       categoryId,
       productUsageTypeId,
       colors,
       gst,
       brandName,
-      warranty,
       isActive
     } = req.body;
 
@@ -647,15 +676,18 @@ const updateProductAll = async (req, res) => {
       description,
       specifications: parsedSpecifications,
       visibleTo: parsedVisibleTo || [],
+      mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
+      designNumber: designNumber || null,
+      size: size || null,
+      thickness: thickness || null,
       categoryId,
       productUsageTypeId,
       colors: parsedColors,
-      gst: gst !== undefined ? parseFloat(gst) : 0.00,
+      gst: gst !== undefined ? parseFloat(gst) : null,
       brandName: brandName || null,
-      warranty: warranty || null,
       isActive: isActive !== undefined ? isActive : true,
       image: null, // Migrate to images array
       images: [...keptImages, ...newImageFilenames]
