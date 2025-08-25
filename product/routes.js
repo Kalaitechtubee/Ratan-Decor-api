@@ -1,8 +1,11 @@
+// productRoutes.js
 const express = require('express');
 const router = express.Router();
 const {
   createProduct,
   getProducts,
+  getProductByName,
+  searchProductsByName,
   getProductById,
   updateProduct,
   updateProductAll,
@@ -14,6 +17,8 @@ const { uploadSingle, uploadMultiple, handleUploadError, validateImage, authMidd
 
 // Public routes
 router.get('/', getProducts);
+router.get('/name/:name', getProductByName);
+router.get('/search', searchProductsByName);
 router.get('/:id', getProductById);
 router.get('/:productId/ratings', getProductRatings);
 

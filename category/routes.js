@@ -17,28 +17,29 @@ const validate = (req, res, next) => {
 };
 
 // Public routes
-
-// Get all categories as a tree structure
 router.get('/', categoryController.getCategoryTree);
-
-// Get subcategories for a specific parent category
 router.get('/subcategories/:parentId', [
-  param('parentId').isInt().withMessage('Parent ID must be an integer')
+  param('parentId').custom(value => value === 'null' || !isNaN(parseInt(value))).withMessage('Parent ID must be an integer or "null"')
 ], validate, categoryController.getSubCategories);
-
-// Search categories by name
 router.get('/search', [
   query('q').trim().notEmpty().withMessage('Search query is required')
 ], validate, categoryController.searchCategories);
-
-// Get a specific category by ID
 router.get('/:id', [
   param('id').isInt().withMessage('Category ID must be an integer')
 ], validate, categoryController.getCategoryById);
 
-// Protected routes (Admin/Manager only)
+// NEW: Name-based routes
+router.get('/name/:name', [
+  param('name').trim().notEmpty().withMessage('Category name is required')
+], validate, categoryController.getCategoryByName);
+router.get('/subcategory/name/:name', [
+  param('name').trim().notEmpty().withMessage('Subcategory name is required')
+], validate, categoryController.getSubCategoryByName);
+router.get('/search/name', [
+  query('q').trim().notEmpty().withMessage('Search query is required')
+], validate, categoryController.searchCategoriesByName);
 
-// Create a new subcategory under a specific parent
+// Protected routes (Admin/Manager only)
 router.post('/subcategory/:parentId', [
   authMiddleware,
   requireRole(['Admin', 'Manager']),
@@ -46,26 +47,20 @@ router.post('/subcategory/:parentId', [
   body('name').trim().notEmpty().withMessage('Subcategory name is required'),
   body('brandName').optional().trim()
 ], validate, categoryController.createSubCategory);
-
-// Create a new main category
 router.post('/', [
   authMiddleware,
   requireRole(['Admin', 'Manager']),
   body('name').trim().notEmpty().withMessage('Category name is required'),
   body('brandName').optional().trim()
 ], validate, categoryController.createCategory);
-
-// Update a category
 router.put('/:id', [
   authMiddleware,
   requireRole(['Admin', 'Manager']),
   param('id').isInt().withMessage('Category ID must be an integer'),
   body('name').optional().trim().notEmpty().withMessage('Category name cannot be empty'),
   body('brandName').optional().trim(),
-  body('parentId').optional().isInt().withMessage('Parent ID must be an integer')
+  body('parentId').optional().custom(value => value === null || !isNaN(parseInt(value))).withMessage('Parent ID must be an integer or null')
 ], validate, categoryController.updateCategory);
-
-// Delete a category and all its subcategories
 router.delete('/:id', [
   authMiddleware,
   requireRole(['Admin', 'Manager']),

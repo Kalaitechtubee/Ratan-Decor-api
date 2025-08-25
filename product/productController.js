@@ -1,3 +1,4 @@
+// productController.js
 const { Product, Category, ProductRating, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
@@ -26,7 +27,7 @@ const computePrice = (product, role) =>
 
 const validateVisibleTo = (visibleTo) => {
   if (!Array.isArray(visibleTo) || visibleTo.length === 0) return false;
-  return true; // Allow any string values in visibleTo
+  return true;
 };
 
 const getImageUrl = (filename, req) => {
@@ -40,7 +41,6 @@ const getImageUrl = (filename, req) => {
 const processProductData = (product, req) => {
   const productData = product.toJSON ? product.toJSON() : product;
   
-  // Collect all images into imageUrls
   let allImageUrls = [];
   if (productData.image) {
     allImageUrls.push(getImageUrl(productData.image, req));
@@ -52,26 +52,11 @@ const processProductData = (product, req) => {
   productData.imageUrl = allImageUrls[0] || null;
   productData.imageUrls = allImageUrls;
   
-  // Ensure new optional fields are included even if null
-  if (!('brandName' in productData)) {
-    productData.brandName = null;
-  }
-  
-  if (!('designNumber' in productData)) {
-    productData.designNumber = null;
-  }
-  
-  if (!('size' in productData)) {
-    productData.size = null;
-  }
-  
-  if (!('thickness' in productData)) {
-    productData.thickness = null;
-  }
-  
-  if (!('gst' in productData)) {
-    productData.gst = null;
-  }
+  if (!('brandName' in productData)) productData.brandName = null;
+  if (!('designNumber' in productData)) productData.designNumber = null;
+  if (!('size' in productData)) productData.size = null;
+  if (!('thickness' in productData)) productData.thickness = null;
+  if (!('gst' in productData)) productData.gst = null;
   
   return productData;
 };
@@ -93,7 +78,6 @@ const getProducts = async (req, res) => {
 
     const whereClause = { isActive: true };
 
-    // Include userType in whereClause only if provided
     if (userType) {
       whereClause[Op.and] = sequelize.where(
         sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
@@ -101,13 +85,8 @@ const getProducts = async (req, res) => {
       );
     }
 
-    if (categoryId) {
-      whereClause.categoryId = categoryId;
-    }
-
-    if (subcategoryId) {
-      whereClause.categoryId = subcategoryId; // Subcategories are stored as categories with a parentId
-    }
+    if (categoryId) whereClause.categoryId = categoryId;
+    if (subcategoryId) whereClause.categoryId = subcategoryId;
 
     if (minPrice || maxPrice) {
       whereClause.generalPrice = {};
@@ -116,7 +95,17 @@ const getProducts = async (req, res) => {
     }
 
     if (search) {
-      whereClause.name = { [Op.like]: `%${search}%` };
+      const searchTerms = search.trim().split(/\s+/);
+      whereClause[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } },
+        { brandName: { [Op.iLike]: `%${search}%` } },
+        { designNumber: { [Op.iLike]: `%${search}%` } },
+        sequelize.where(
+          sequelize.fn('JSON_CONTAINS', sequelize.col('specifications'), sequelize.literal(`"${search}"`)),
+          true
+        )
+      ];
     }
 
     const offset = (page - 1) * limit;
@@ -136,7 +125,7 @@ const getProducts = async (req, res) => {
 
     res.json({
       products: processedProducts,
-      count: processedProducts.length,
+      count,
       totalPages: Math.ceil(count / limit),
       currentPage: Number(page),
       userType: userType || null,
@@ -144,6 +133,101 @@ const getProducts = async (req, res) => {
     });
   } catch (error) {
     console.error('Get products error:', error);
+    res.status(400).json({ message: error.message });
+  }
+};
+
+const getProductByName = async (req, res) => {
+  try {
+    const { name } = req.params;
+    const { userType } = req.query;
+    const userRole = getReqUserRole(req);
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ message: 'Product name is required' });
+    }
+
+    const whereClause = {
+      isActive: true,
+      name: { [Op.iLike]: `%${name}%` }
+    };
+
+    if (userType) {
+      whereClause[Op.and] = sequelize.where(
+        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        true
+      );
+    }
+
+    const product = await Product.findOne({
+      where: whereClause,
+      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }]
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    const processedProduct = processProductData(product, req);
+    processedProduct.price = computePrice(product, userRole);
+
+    res.json({
+      product: processedProduct,
+      userType: userType || null,
+      userRole
+    });
+  } catch (error) {
+    console.error('Get product by name error:', error);
+    res.status(400).json({ message: error.message });
+  }
+};
+
+const searchProductsByName = async (req, res) => {
+  try {
+    const { name, userType, page = 1, limit = 20 } = req.query;
+    const userRole = getReqUserRole(req);
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ message: 'Search name is required' });
+    }
+
+    const whereClause = {
+      isActive: true,
+      name: { [Op.iLike]: `%${name}%` }
+    };
+
+    if (userType) {
+      whereClause[Op.and] = sequelize.where(
+        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        true
+      );
+    }
+
+    const offset = (page - 1) * limit;
+    const { count, rows: products } = await Product.findAndCountAll({
+      where: whereClause,
+      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
+      order: [['createdAt', 'DESC']],
+      limit: Number(limit),
+      offset: Number(offset)
+    });
+
+    const processedProducts = products.map(product => {
+      const productData = processProductData(product, req);
+      productData.price = computePrice(product, userRole);
+      return productData;
+    });
+
+    res.json({
+      products: processedProducts,
+      count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: Number(page),
+      userType: userType || null,
+      userRole
+    });
+  } catch (error) {
+    console.error('Search products by name error:', error);
     res.status(400).json({ message: error.message });
   }
 };
@@ -169,7 +253,6 @@ const createProduct = async (req, res) => {
       brandName
     } = req.body;
 
-    // Collect all uploaded images into one array
     let imageFilenames = [];
     if (req.files && req.files.image && req.files.image[0]) {
       imageFilenames.push(req.files.image[0].filename);
@@ -231,7 +314,7 @@ const createProduct = async (req, res) => {
     const productData = {
       name,
       description,
-      image: null, // Set to null, use images array
+      image: null,
       images: imageFilenames,
       specifications: parsedSpecifications,
       visibleTo: parsedVisibleTo || [],
@@ -251,8 +334,7 @@ const createProduct = async (req, res) => {
       totalRatings: 0,
       isActive: true
     };
-    
-    console.log('Creating product with data:', JSON.stringify(productData));
+
     const product = await Product.create(productData);
 
     res.status(201).json({
@@ -325,7 +407,6 @@ const updateProduct = async (req, res) => {
       brandName
     } = req.body;
 
-    // Parse keptImages
     let keptImages = [];
     if (req.body.keptImages) {
       try {
@@ -335,7 +416,6 @@ const updateProduct = async (req, res) => {
       }
     }
 
-    // Handle new images
     let newImageFilenames = [];
     if (req.files && req.files.image && req.files.image[0]) {
       newImageFilenames.push(req.files.image[0].filename);
@@ -395,7 +475,6 @@ const updateProduct = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
-    // Handle removed images from images array
     const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
     removedImages.forEach(oldImage => {
       const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
@@ -404,7 +483,152 @@ const updateProduct = async (req, res) => {
       }
     });
 
-    // Handle removed single image if not kept
+    if (product.image && !keptImages.includes(product.image)) {
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    }
+
+    const updateData = {
+      name: name !== undefined ? name : product.name,
+      description: description !== undefined ? description : product.description,
+      specifications: parsedSpecifications !== undefined ? parsedSpecifications : product.specifications,
+      categoryId: categoryId !== undefined ? categoryId : product.categoryId,
+      visibleTo: parsedVisibleTo !== undefined ? parsedVisibleTo : product.visibleTo,
+      mrpPrice: mrpPrice !== undefined ? mrpPrice : product.mrpPrice,
+      generalPrice: generalPrice !== undefined ? generalPrice : product.generalPrice,
+      architectPrice: architectPrice !== undefined ? architectPrice : product.architectPrice,
+      dealerPrice: dealerPrice !== undefined ? dealerPrice : product.dealerPrice,
+      designNumber: designNumber !== undefined ? designNumber : product.designNumber,
+      size: size !== undefined ? size : product.size,
+      thickness: thickness !== undefined ? thickness : product.thickness,
+      isActive: isActive !== undefined ? isActive : product.isActive,
+      colors: parsedColors !== undefined ? parsedColors : product.colors,
+      gst: gst !== undefined ? parseFloat(gst) : product.gst,
+      brandName: brandName !== undefined ? brandName : product.brandName,
+      image: null,
+      images: [...keptImages, ...newImageFilenames]
+    };
+
+    await product.update(updateData);
+
+    res.json({
+      message: 'Product updated successfully',
+      product: processProductData(product, req)
+    });
+  } catch (error) {
+    console.error('Update product error:', error);
+    res.status(400).json({ message: error.message });
+  }
+};
+
+const updateProductAll = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      description,
+      specifications,
+      visibleTo,
+      mrpPrice,
+      generalPrice,
+      architectPrice,
+      dealerPrice,
+      designNumber,
+      size,
+      thickness,
+      categoryId,
+      productUsageTypeId,
+      colors,
+      gst,
+      brandName,
+      isActive
+    } = req.body;
+
+    let keptImages = [];
+    if (req.body.keptImages) {
+      try {
+        keptImages = JSON.parse(req.body.keptImages);
+      } catch {
+        keptImages = [];
+      }
+    }
+
+    let newImageFilenames = [];
+    if (req.files && req.files.image && req.files.image[0]) {
+      newImageFilenames.push(req.files.image[0].filename);
+    }
+    if (req.files && req.files.images) {
+      newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
+    }
+
+    let parsedSpecifications = specifications;
+    if (typeof specifications === 'string') {
+      try {
+        parsedSpecifications = JSON.parse(specifications);
+      } catch {
+        parsedSpecifications = {};
+      }
+    }
+
+    let parsedVisibleTo = visibleTo;
+    if (typeof visibleTo === 'string') {
+      try {
+        parsedVisibleTo = JSON.parse(visibleTo);
+      } catch {
+        parsedVisibleTo = [];
+      }
+    }
+
+    let parsedColors = colors;
+    if (typeof colors === 'string') {
+      try {
+        parsedColors = JSON.parse(colors);
+      } catch {
+        parsedColors = [];
+      }
+    }
+
+    if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
+      return res.status(400).json({ message: 'Invalid visibleTo values: must be a non-empty array' });
+    }
+
+    if (parsedColors && !validateColors(parsedColors)) {
+      return res.status(400).json({ message: 'Invalid colors: must be an array of non-empty strings' });
+    }
+
+    if (gst !== undefined && (isNaN(gst) || gst < 0 || gst > 100)) {
+      return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
+    }
+
+    if (
+      dealerPrice !== undefined &&
+      architectPrice !== undefined &&
+      generalPrice !== undefined &&
+      (dealerPrice >= architectPrice || architectPrice >= generalPrice)
+    ) {
+      return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
+    }
+
+    if (categoryId) {
+      const exists = await Category.findByPk(categoryId);
+      if (!exists) {
+        return res.status(400).json({ message: 'Invalid categoryId (category not found)' });
+      }
+    }
+
+    const product = await Product.findByPk(id);
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+
+    const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
+    removedImages.forEach(oldImage => {
+      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    });
+
     if (product.image && !keptImages.includes(product.image)) {
       const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
       if (fs.existsSync(oldImagePath)) {
@@ -416,20 +640,21 @@ const updateProduct = async (req, res) => {
       name,
       description,
       specifications: parsedSpecifications,
-      categoryId,
       visibleTo: parsedVisibleTo || [],
       mrpPrice,
       generalPrice,
       architectPrice,
       dealerPrice,
-      designNumber,
-      size,
-      thickness,
-      isActive,
+      designNumber: designNumber || null,
+      size: size || null,
+      thickness: thickness || null,
+      categoryId,
+      productUsageTypeId,
       colors: parsedColors,
-      gst: gst !== undefined ? parseFloat(gst) : product.gst,
-      brandName: req.body.brandName !== undefined ? req.body.brandName : product.brandName,
-      image: null, // Migrate to images array
+      gst: gst !== undefined ? parseFloat(gst) : null,
+      brandName: brandName || null,
+      isActive: isActive !== undefined ? isActive : true,
+      image: null,
       images: [...keptImages, ...newImageFilenames]
     };
 
@@ -480,7 +705,7 @@ const addProductRating = async (req, res) => {
   try {
     const { productId } = req.params;
     const { rating, review } = req.body;
-    const userId = req.user.id; // From auth middleware
+    const userId = req.user.id;
 
     if (!validateRating(rating)) {
       return res.status(400).json({ message: 'Rating must be between 1 and 5' });
@@ -511,7 +736,7 @@ const addProductRating = async (req, res) => {
     });
 
     const totalRating = allRatings.reduce((sum, r) => sum + r.rating, 0);
-    const averageRating = totalRating / allRatings.length;
+    const averageRating = allRatings.length > 0 ? totalRating / allRatings.length : 0;
 
     await product.update({
       averageRating: parseFloat(averageRating.toFixed(2)),
@@ -559,154 +784,10 @@ const getProductRatings = async (req, res) => {
   }
 };
 
-const updateProductAll = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      name,
-      description,
-      specifications,
-      visibleTo,
-      mrpPrice,
-      generalPrice,
-      architectPrice,
-      dealerPrice,
-      designNumber,
-      size,
-      thickness,
-      categoryId,
-      productUsageTypeId,
-      colors,
-      gst,
-      brandName,
-      isActive
-    } = req.body;
-
-    // Parse keptImages
-    let keptImages = [];
-    if (req.body.keptImages) {
-      try {
-        keptImages = JSON.parse(req.body.keptImages);
-      } catch {
-        keptImages = [];
-      }
-    }
-
-    // Handle new images
-    let newImageFilenames = [];
-    if (req.files && req.files.image && req.files.image[0]) {
-      newImageFilenames.push(req.files.image[0].filename);
-    }
-    if (req.files && req.files.images) {
-      newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
-    }
-
-    let parsedSpecifications = specifications;
-    if (typeof specifications === 'string') {
-      try {
-        parsedSpecifications = JSON.parse(specifications);
-      } catch {
-        parsedSpecifications = {};
-      }
-    }
-
-    let parsedVisibleTo = visibleTo;
-    if (typeof visibleTo === 'string') {
-      try {
-        parsedVisibleTo = JSON.parse(visibleTo);
-      } catch {
-        parsedVisibleTo = [];
-      }
-    }
-
-    let parsedColors = colors;
-    if (typeof colors === 'string') {
-      try {
-        parsedColors = JSON.parse(colors);
-      } catch {
-        parsedColors = [];
-      }
-    }
-
-    if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
-      return res.status(400).json({ message: 'Invalid visibleTo values: must be a non-empty array' });
-    }
-
-    if (parsedColors && !validateColors(parsedColors)) {
-      return res.status(400).json({ message: 'Invalid colors: must be an array of non-empty strings' });
-    }
-
-    if (gst !== undefined && (isNaN(gst) || gst < 0 || gst > 100)) {
-      return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
-    }
-
-    if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
-      return res.status(400).json({ message: 'Invalid pricing order: dealer < architect < general' });
-    }
-
-    if (categoryId) {
-      const exists = await Category.findByPk(categoryId);
-      if (!exists) {
-        return res.status(400).json({ message: 'Invalid categoryId (category not found)' });
-      }
-    }
-
-    const product = await Product.findByPk(id);
-    if (!product) return res.status(404).json({ message: 'Product not found' });
-
-    // Handle removed images from images array
-    const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
-    removedImages.forEach(oldImage => {
-      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
-    });
-
-    // Handle removed single image if not kept
-    if (product.image && !keptImages.includes(product.image)) {
-      const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', product.image);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
-    }
-
-    const updateData = {
-      name,
-      description,
-      specifications: parsedSpecifications,
-      visibleTo: parsedVisibleTo || [],
-      mrpPrice,
-      generalPrice,
-      architectPrice,
-      dealerPrice,
-      designNumber: designNumber || null,
-      size: size || null,
-      thickness: thickness || null,
-      categoryId,
-      productUsageTypeId,
-      colors: parsedColors,
-      gst: gst !== undefined ? parseFloat(gst) : null,
-      brandName: brandName || null,
-      isActive: isActive !== undefined ? isActive : true,
-      image: null, // Migrate to images array
-      images: [...keptImages, ...newImageFilenames]
-    };
-    
-    await product.update(updateData);
-
-    res.json({
-      message: 'Product updated successfully',
-      product: processProductData(product, req)
-    });
-  } catch (error) {
-    console.error('Update product error:', error);
-    res.status(400).json({ message: error.message });
-  }
-};
-
 module.exports = {
   getProducts,
+  getProductByName,
+  searchProductsByName,
   getProductById,
   createProduct,
   updateProduct,
