@@ -23,10 +23,11 @@ const Enquiry = sequelize.define("Enquiry", {
       key: 'id'
     }
   },
-  userType: {
-    type: DataTypes.ENUM('Residential', 'Commercial', 'Modular Kitchen', 'Others'),
-    allowNull: false,
-  },
+userType: {
+  type: DataTypes.STRING,   // any string allowed
+  allowNull: true,
+},
+
   source: {
     type: DataTypes.ENUM('Email', 'WhatsApp', 'Phone', 'VideoCall'),
     allowNull: false,
@@ -43,7 +44,7 @@ const Enquiry = sequelize.define("Enquiry", {
   },
 }, {
   tableName: "enquiries",
-  timestamps: true,
+  timestamps: false,
 });
 
 module.exports = Enquiry;

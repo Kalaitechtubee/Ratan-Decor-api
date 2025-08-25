@@ -1,4 +1,3 @@
-// models/userType.js
 module.exports = (sequelize, DataTypes) => {
   const UserType = sequelize.define('UserType', {
     id: {
@@ -24,7 +23,7 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: true,
     },
   }, {
-    tableName: 'user_types',
+    tableName: 'UserTypes',  // 👈 Match what Sequelize expects
     timestamps: true,
   });
 

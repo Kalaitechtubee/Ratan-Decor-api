@@ -42,72 +42,10 @@ const getDescendants = async (catId) => {
   }
 };
 
-// Utility: Process product data with userType and role-based pricing
-const processProductData = (product, req, userType, userRole) => {
-  const productData = product.toJSON ? product.toJSON() : product;
-  
-  const computePrice = (product) =>
-    userRole === 'Dealer'
-      ? product.dealerPrice
-      : userRole === 'Architect'
-      ? product.architectPrice
-      : product.generalPrice;
-
-  const getImageUrl = (filename) => {
-    if (!filename || typeof filename !== 'string') return null;
-    if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
-    if (filename.startsWith('/uploads/')) return filename;
-    return `${req.protocol}://${req.get('host')}/uploads/products/${filename}`;
-  };
-
-  let allImageUrls = [];
-  if (productData.image) {
-    allImageUrls.push(getImageUrl(productData.image));
-  }
-  if (productData.images && Array.isArray(productData.images)) {
-    allImageUrls = [...allImageUrls, ...productData.images.map(img => getImageUrl(img))];
-  }
-  
-  productData.imageUrl = allImageUrls[0] || null;
-  productData.imageUrls = allImageUrls;
-  productData.price = computePrice(productData);
-  
-  if (!('brandName' in productData)) productData.brandName = null;
-  if (!('designNumber' in productData)) productData.designNumber = null;
-  if (!('size' in productData)) productData.size = null;
-  if (!('thickness' in productData)) productData.thickness = null;
-  if (!('gst' in productData)) productData.gst = null;
-  
-  return productData;
-};
-
-// Utility: Get user role from JWT token
-const getReqUserRole = (req) => {
-  const auth = req.header('Authorization');
-  if (!auth) return 'General';
-  const token = auth.replace('Bearer ', '');
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    return decoded.role || 'General';
-  } catch {
-    return 'General';
-  }
-};
-
 // Get all categories as nested tree with product counts
 const getCategoryTree = async (req, res) => {
   try {
-    const { userType } = req.query;
-    const userRole = getReqUserRole(req);
-
-    const whereClause = {};
-    if (userType) {
-      whereClause[Op.and] = sequelize.where(
-        sequelize.literal(`JSON_CONTAINS(products.visibleTo, '"${userType}"')`),
-        true
-      );
-    }
-
+    // Fetch categories with product counts
     const categories = await Category.findAll({
       include: [
         {
@@ -115,7 +53,6 @@ const getCategoryTree = async (req, res) => {
           as: 'products',
           attributes: [],
           required: false,
-          where: userType ? { visibleTo: { [Op.contains]: [userType] } } : {},
         }
       ],
       attributes: [
@@ -138,6 +75,7 @@ const getCategoryTree = async (req, res) => {
       });
     }
 
+    // Build tree structure
     const mappedCategories = categories.map(c => ({
       id: c.id,
       name: c.name,
@@ -151,12 +89,28 @@ const getCategoryTree = async (req, res) => {
     res.json({ 
       success: true, 
       categories: tree,
-      totalCategories: categories.length,
-      userType: userType || null,
-      userRole
+      totalCategories: categories.length
     });
   } catch (err) {
     console.error('Error fetching category tree:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch categories',
@@ -165,13 +119,12 @@ const getCategoryTree = async (req, res) => {
   }
 };
 
-// Get a single category/subcategory by ID
+// Get a single category/subcategory by ID with enhanced details
 const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userType } = req.query;
-    const userRole = getReqUserRole(req);
 
+    // Validate ID parameter
     const categoryId = parseInt(id, 10);
     if (isNaN(categoryId)) {
       return res.status(400).json({ 
@@ -186,11 +139,8 @@ const getCategoryById = async (req, res) => {
         {
           model: Product,
           as: 'products',
-          attributes: ['id', 'name', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive', 'image', 'images', 'visibleTo', 'brandName', 'designNumber', 'size', 'thickness', 'gst', 'averageRating', 'totalRatings'],
-          where: { 
-            isActive: true,
-            ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-          },
+          attributes: ['id', 'name', 'price', 'isActive'],
+          where: { isActive: true },
           required: false,
         },
         {
@@ -224,19 +174,40 @@ const getCategoryById = async (req, res) => {
       isSubcategory: !!category.parentId,
       productCount: category.products?.length || 0,
       subcategoryCount: category.subCategories?.length || 0,
-      products: category.products?.map(p => processProductData(p, req, userType, userRole)) || [],
+      products: category.products?.map(p => ({
+        productId: p.id,
+        productName: p.name,
+        productPrice: p.price,
+        isActive: p.isActive,
+      })) || [],
       subCategories: category.subCategories?.map(s => ({
         id: s.id,
         name: s.name,
         brandName: s.brandName
       })) || [],
-      userType: userType || null,
-      userRole
     };
 
     res.json({ success: true, category: response });
   } catch (err) {
     console.error('Error fetching category:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch category',
@@ -245,13 +216,17 @@ const getCategoryById = async (req, res) => {
   }
 };
 
-// Get subcategories by parentId with pagination
+// Get subcategories by parentId with pagination support
 const getSubCategories = async (req, res) => {
   try {
     const { parentId } = req.params;
-    const { userType, page = 1, limit = 10 } = req.query;
-    const userRole = getReqUserRole(req);
+    
+    // Parse pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
+    // Validate parentId
     const categoryId = parentId === 'null' ? null : parseInt(parentId, 10);
     if (parentId !== 'null' && isNaN(categoryId)) {
       return res.status(400).json({ 
@@ -260,7 +235,7 @@ const getSubCategories = async (req, res) => {
       });
     }
 
-    const offset = (page - 1) * limit;
+    // Find subcategories with pagination
     const { count: totalCount, rows: subcategories } = await Category.findAndCountAll({
       where: { parentId: categoryId },
       attributes: ['id', 'name', 'brandName', 'parentId'],
@@ -270,7 +245,6 @@ const getSubCategories = async (req, res) => {
           as: 'products',
           attributes: [],
           required: false,
-          where: userType ? { visibleTo: { [Op.contains]: [userType] } } : {},
         },
         {
           model: Category,
@@ -284,13 +258,10 @@ const getSubCategories = async (req, res) => {
       order: [['name', 'ASC']],
     });
 
+    // Get product and subcategory counts
     const response = await Promise.all(subcategories.map(async (subcat) => {
       const productCount = await Product.count({
-        where: { 
-          categoryId: subcat.id, 
-          isActive: true,
-          ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-        }
+        where: { categoryId: subcat.id, isActive: true }
       });
       
       const subcategoryCount = await Category.count({
@@ -312,18 +283,34 @@ const getSubCategories = async (req, res) => {
       success: true,
       subcategories: response,
       pagination: {
-        currentPage: Number(page),
+        currentPage: page,
         totalPages: Math.ceil(totalCount / limit),
         totalItems: totalCount,
-        itemsPerPage: Number(limit),
+        itemsPerPage: limit,
         hasNextPage: page < Math.ceil(totalCount / limit),
         hasPrevPage: page > 1,
-      },
-      userType: userType || null,
-      userRole
+      }
     });
   } catch (err) {
     console.error('Error fetching subcategories:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch subcategories',
@@ -332,11 +319,12 @@ const getSubCategories = async (req, res) => {
   }
 };
 
-// Create a new main category
+// Create a new main category with enhanced validation
 const createCategory = async (req, res) => {
   try {
     const { name, brandName } = req.body;
     
+    // Enhanced validation
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return res.status(400).json({ 
         success: false, 
@@ -345,6 +333,8 @@ const createCategory = async (req, res) => {
     }
     
     const trimmedName = name.trim();
+
+    // Check for duplicate name (case-insensitive) at root level
     const existingCategory = await Category.findOne({
       where: { 
         name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
@@ -359,12 +349,15 @@ const createCategory = async (req, res) => {
       });
     }
 
+    // Create category
     const category = await Category.create({
       name: trimmedName,
       parentId: null,
       brandName: brandName || null,
     });
 
+    console.log(`Created main category: ${trimmedName}`);
+    
     res.status(201).json({
       success: true,
       message: 'Category created successfully',
@@ -380,6 +373,50 @@ const createCategory = async (req, res) => {
     });
   } catch (err) {
     console.error('Error creating category:', err);
+    console.error('Error stack:', err.stack);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Category name already exists',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input data.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err instanceof TypeError || err instanceof ReferenceError) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Internal server error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to create category',
@@ -388,12 +425,13 @@ const createCategory = async (req, res) => {
   }
 };
 
-// Create a new subcategory
+// Create a new subcategory with enhanced validation
 const createSubCategory = async (req, res) => {
   try {
     const { parentId } = req.params;
     const { name, brandName } = req.body;
     
+    // Enhanced validation
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return res.status(400).json({ 
         success: false, 
@@ -410,6 +448,8 @@ const createSubCategory = async (req, res) => {
     }
 
     const trimmedName = name.trim();
+
+    // Validate parent category exists
     const parent = await Category.findByPk(parsedParentId);
     if (!parent) {
       return res.status(404).json({ 
@@ -418,6 +458,7 @@ const createSubCategory = async (req, res) => {
       });
     }
 
+    // Check for duplicate name (case-insensitive) under this parent
     const existingCategory = await Category.findOne({
       where: { 
         name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
@@ -432,12 +473,15 @@ const createSubCategory = async (req, res) => {
       });
     }
 
+    // Create subcategory
     const category = await Category.create({
       name: trimmedName,
       parentId: parsedParentId,
       brandName: brandName || null,
     });
 
+    console.log(`Created subcategory: ${trimmedName} under parent ID: ${parsedParentId}`);
+    
     res.status(201).json({
       success: true,
       message: 'Subcategory created successfully',
@@ -454,6 +498,50 @@ const createSubCategory = async (req, res) => {
     });
   } catch (err) {
     console.error('Error creating subcategory:', err);
+    console.error('Error stack:', err.stack);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Subcategory name already exists under this parent',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input data.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err instanceof TypeError || err instanceof ReferenceError) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Internal server error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to create subcategory',
@@ -462,9 +550,10 @@ const createSubCategory = async (req, res) => {
   }
 };
 
-// Update category
+// Update category with enhanced validation and transaction support
 const updateCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
     const { name, brandName, parentId } = req.body;
@@ -478,7 +567,10 @@ const updateCategory = async (req, res) => {
       });
     }
 
-    const category = await Category.findByPk(categoryId, { transaction });
+    const category = await Category.findByPk(categoryId, {
+      transaction
+    });
+    
     if (!category) {
       await transaction.rollback();
       return res.status(404).json({ 
@@ -488,6 +580,8 @@ const updateCategory = async (req, res) => {
     }
 
     let updateData = {};
+
+    // Handle name update
     if (name) {
       if (typeof name !== 'string' || name.trim().length < 2) {
         await transaction.rollback();
@@ -498,6 +592,8 @@ const updateCategory = async (req, res) => {
       }
 
       const trimmedName = name.trim();
+      
+      // Check for duplicate name (case-insensitive) at the same level
       const existingCategory = await Category.findOne({
         where: { 
           name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
@@ -518,12 +614,16 @@ const updateCategory = async (req, res) => {
       updateData.name = trimmedName;
     }
 
+    // Handle brandName update
     if (brandName !== undefined) {
       updateData.brandName = brandName || null;
     }
 
+    // Handle parentId update
     if (parentId !== undefined) {
       const parsedParentId = parentId === null ? null : parseInt(parentId, 10);
+      
+      // Prevent setting parent to self
       if (parsedParentId === categoryId) {
         await transaction.rollback();
         return res.status(400).json({ 
@@ -532,6 +632,7 @@ const updateCategory = async (req, res) => {
         });
       }
       
+      // Prevent setting parent to one of its descendants (would create a cycle)
       if (parsedParentId !== null) {
         const descendants = await getDescendants(categoryId);
         if (descendants.includes(parsedParentId)) {
@@ -542,6 +643,7 @@ const updateCategory = async (req, res) => {
           });
         }
         
+        // Verify the new parent exists
         const parentExists = await Category.findByPk(parsedParentId, { transaction });
         if (!parentExists) {
           await transaction.rollback();
@@ -555,6 +657,7 @@ const updateCategory = async (req, res) => {
       updateData.parentId = parsedParentId;
     }
 
+    // If no updates were provided
     if (Object.keys(updateData).length === 0) {
       await transaction.rollback();
       return res.status(400).json({ 
@@ -563,9 +666,11 @@ const updateCategory = async (req, res) => {
       });
     }
 
+    // Update the category
     await category.update(updateData, { transaction });
     await transaction.commit();
 
+    // Fetch the updated category with associations for the response
     const updatedCategory = await Category.findByPk(category.id, {
       include: [
         {
@@ -592,6 +697,57 @@ const updateCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error updating category:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Category name already exists at this level',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeValidationError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Validation error',
+        errors: err.errors.map(e => e.message),
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid parent category ID',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Database error. Please check your input values.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'TypeError' || err.name === 'ReferenceError') {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Server error while processing your request',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to update category',
@@ -600,9 +756,10 @@ const updateCategory = async (req, res) => {
   }
 };
 
-// Delete category and its subcategories
+// Delete category and all its subcategories recursively
 const deleteCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
     
@@ -615,6 +772,7 @@ const deleteCategory = async (req, res) => {
       });
     }
 
+    // Check if category exists
     const category = await Category.findByPk(categoryId, { transaction });
     if (!category) {
       await transaction.rollback();
@@ -624,9 +782,11 @@ const deleteCategory = async (req, res) => {
       });
     }
 
+    // Get all descendant category IDs
     const descendantIds = await getDescendants(categoryId);
     const allIds = [categoryId, ...descendantIds];
     
+    // Check if any products are associated with this category or its descendants
     const productsCount = await Product.count({
       where: {
         categoryId: { [Op.in]: allIds },
@@ -643,6 +803,7 @@ const deleteCategory = async (req, res) => {
       });
     }
 
+    // Delete all descendant categories first
     if (descendantIds.length > 0) {
       await Category.destroy({
         where: { id: { [Op.in]: descendantIds } },
@@ -650,7 +811,9 @@ const deleteCategory = async (req, res) => {
       });
     }
     
+    // Delete the main category
     await category.destroy({ transaction });
+    
     await transaction.commit();
     
     res.json({
@@ -661,6 +824,24 @@ const deleteCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error deleting category:', err);
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete category because it has associated products or subcategories',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to delete category',
@@ -672,8 +853,7 @@ const deleteCategory = async (req, res) => {
 // Search categories by name
 const searchCategories = async (req, res) => {
   try {
-    const { q, userType } = req.query;
-    const userRole = getReqUserRole(req);
+    const { q } = req.query;
     
     if (!q || q.trim().length < 2) {
       return res.status(400).json({ 
@@ -694,16 +874,6 @@ const searchCategories = async (req, res) => {
           as: 'parent',
           attributes: ['id', 'name'],
           required: false,
-        },
-        {
-          model: Product,
-          as: 'products',
-          attributes: ['id', 'name', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive', 'image', 'images', 'visibleTo', 'brandName', 'designNumber', 'size', 'thickness', 'gst', 'averageRating', 'totalRatings'],
-          where: { 
-            isActive: true,
-            ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-          },
-          required: false,
         }
       ],
       limit: 20,
@@ -717,276 +887,34 @@ const searchCategories = async (req, res) => {
       parentId: cat.parentId,
       parentName: cat.parent?.name || null,
       isSubcategory: !!cat.parentId,
-      productCount: cat.products?.length || 0,
-      products: cat.products?.map(p => processProductData(p, req, userType, userRole)) || [],
     }));
     
     res.json({
       success: true,
       results,
       count: results.length,
-      query: trimmedQuery,
-      userType: userType || null,
-      userRole
+      query: trimmedQuery
     });
   } catch (err) {
     console.error('Error searching categories:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to search categories',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  }
-};
-
-// NEW: Get category by name with userType
-const getCategoryByName = async (req, res) => {
-  try {
-    const { name } = req.params;
-    const { userType } = req.query;
-    const userRole = getReqUserRole(req);
-
-    if (!name || name.trim().length < 2) {
-      return res.status(400).json({ 
+    
+    // Check for specific error types
+    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
+      return res.status(503).json({ 
         success: false, 
-        message: 'Category name must be at least 2 characters long' 
+        message: 'Database connection error. Please try again later.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
-
-    const category = await Category.findOne({
-      where: {
-        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', name.trim())),
-        parentId: null // Only main categories
-      },
-      include: [
-        {
-          model: Product,
-          as: 'products',
-          attributes: ['id', 'name', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive', 'image', 'images', 'visibleTo', 'brandName', 'designNumber', 'size', 'thickness', 'gst', 'averageRating', 'totalRatings'],
-          where: { 
-            isActive: true,
-            ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-          },
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'subCategories',
-          attributes: ['id', 'name', 'brandName'],
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'parent',
-          attributes: ['id', 'name', 'brandName'],
-          required: false,
-        }
-      ],
-    });
-
-    if (!category) {
-      return res.status(404).json({ 
+    
+    if (err.name === 'SequelizeDatabaseError') {
+      return res.status(500).json({ 
         success: false, 
-        message: 'Category not found' 
+        message: 'Database query error. Please check your request parameters.',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
-
-    const response = {
-      id: category.id,
-      name: category.name,
-      brandName: category.brandName,
-      parentId: category.parentId,
-      parentName: category.parent?.name || null,
-      isSubcategory: !!category.parentId,
-      productCount: category.products?.length || 0,
-      subcategoryCount: category.subCategories?.length || 0,
-      products: category.products?.map(p => processProductData(p, req, userType, userRole)) || [],
-      subCategories: category.subCategories?.map(s => ({
-        id: s.id,
-        name: s.name,
-        brandName: s.brandName
-      })) || [],
-      userType: userType || null,
-      userRole
-    };
-
-    res.json({ success: true, category: response });
-  } catch (err) {
-    console.error('Error fetching category by name:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch category',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  }
-};
-
-// NEW: Get subcategory by name with userType
-const getSubCategoryByName = async (req, res) => {
-  try {
-    const { name } = req.params;
-    const { userType } = req.query;
-    const userRole = getReqUserRole(req);
-
-    if (!name || name.trim().length < 2) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Subcategory name must be at least 2 characters long' 
-      });
-    }
-
-    const category = await Category.findOne({
-      where: {
-        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', name.trim())),
-        parentId: { [Op.ne]: null } // Only subcategories
-      },
-      include: [
-        {
-          model: Product,
-          as: 'products',
-          attributes: ['id', 'name', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive', 'image', 'images', 'visibleTo', 'brandName', 'designNumber', 'size', 'thickness', 'gst', 'averageRating', 'totalRatings'],
-          where: { 
-            isActive: true,
-            ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-          },
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'subCategories',
-          attributes: ['id', 'name', 'brandName'],
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'parent',
-          attributes: ['id', 'name', 'brandName'],
-          required: false,
-        }
-      ],
-    });
-
-    if (!category) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Subcategory not found' 
-      });
-    }
-
-    const response = {
-      id: category.id,
-      name: category.name,
-      brandName: category.brandName,
-      parentId: category.parentId,
-      parentName: category.parent?.name || null,
-      isSubcategory: !!category.parentId,
-      productCount: category.products?.length || 0,
-      subcategoryCount: category.subCategories?.length || 0,
-      products: category.products?.map(p => processProductData(p, req, userType, userRole)) || [],
-      subCategories: category.subCategories?.map(s => ({
-        id: s.id,
-        name: s.name,
-        brandName: s.brandName
-      })) || [],
-      userType: userType || null,
-      userRole
-    };
-
-    res.json({ success: true, category: response });
-  } catch (err) {
-    console.error('Error fetching subcategory by name:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch subcategory',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  }
-};
-
-// NEW: Search categories/subcategories by name with userType and pagination
-const searchCategoriesByName = async (req, res) => {
-  try {
-    const { q, userType, page = 1, limit = 10 } = req.query;
-    const userRole = getReqUserRole(req);
-
-    if (!q || q.trim().length < 2) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Search query must be at least 2 characters long' 
-      });
-    }
-
-    const trimmedQuery = q.trim();
-    const offset = (page - 1) * limit;
-
-    const { count, rows: categories } = await Category.findAndCountAll({
-      where: {
-        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${trimmedQuery.toLowerCase()}%`)
-      },
-      include: [
-        {
-          model: Product,
-          as: 'products',
-          attributes: ['id', 'name', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive', 'image', 'images', 'visibleTo', 'brandName', 'designNumber', 'size', 'thickness', 'gst', 'averageRating', 'totalRatings'],
-          where: { 
-            isActive: true,
-            ...(userType ? { visibleTo: { [Op.contains]: [userType] } } : {})
-          },
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'parent',
-          attributes: ['id', 'name'],
-          required: false,
-        },
-        {
-          model: Category,
-          as: 'subCategories',
-          attributes: ['id', 'name', 'brandName'],
-          required: false,
-        }
-      ],
-      limit: Number(limit),
-      offset: Number(offset),
-      order: [['name', 'ASC']]
-    });
-
-    const results = categories.map(cat => ({
-      id: cat.id,
-      name: cat.name,
-      brandName: cat.brandName,
-      parentId: cat.parentId,
-      parentName: cat.parent?.name || null,
-      isSubcategory: !!cat.parentId,
-      productCount: cat.products?.length || 0,
-      subcategoryCount: cat.subCategories?.length || 0,
-      products: cat.products?.map(p => processProductData(p, req, userType, userRole)) || [],
-      subCategories: cat.subCategories?.map(s => ({
-        id: s.id,
-        name: s.name,
-        brandName: s.brandName
-      })) || [],
-    }));
-
-    res.json({
-      success: true,
-      results,
-      count: count,
-      pagination: {
-        currentPage: Number(page),
-        totalPages: Math.ceil(count / limit),
-        totalItems: count,
-        itemsPerPage: Number(limit),
-        hasNextPage: page < Math.ceil(count / limit),
-        hasPrevPage: page > 1,
-      },
-      query: trimmedQuery,
-      userType: userType || null,
-      userRole
-    });
-  } catch (err) {
-    console.error('Error searching categories by name:', err);
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to search categories',
@@ -1004,7 +932,4 @@ module.exports = {
   updateCategory,
   deleteCategory,
   searchCategories,
-  getCategoryByName,
-  getSubCategoryByName,
-  searchCategoriesByName
 };
