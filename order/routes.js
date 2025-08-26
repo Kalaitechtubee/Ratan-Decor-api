@@ -10,7 +10,7 @@ const {
   getOrderStats,
   getAvailableAddresses
 } = require('./controller');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware');
 
 router.get('/addresses', authMiddleware, getAvailableAddresses);
 router.post('/', authMiddleware, createOrder);

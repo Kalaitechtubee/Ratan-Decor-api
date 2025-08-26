@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAllUsers, getUserById, createUser, updateUser, deleteUser } = require('./controller');
-const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const { authMiddleware: authenticateToken, requireRole: authorizeRoles } = require('../middleware');
 
 router.use(authenticateToken);
 

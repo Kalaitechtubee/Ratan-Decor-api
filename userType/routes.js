@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const userTypeController = require('./controller');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware');
 
 // Public routes - Get user types
 router.get('/', userTypeController.getAllUserTypes);

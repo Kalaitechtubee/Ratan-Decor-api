@@ -6,7 +6,7 @@ const {
   approveUser,
   getUserStats,
 } = require('./controller');
-const { authMiddleware, requireAdmin } = require('../middleware/auth');
+const { authMiddleware, requireAdmin } = require('../middleware');
 
 // 🔐 All admin routes require authentication & admin access
 router.use(authMiddleware);

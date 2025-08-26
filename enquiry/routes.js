@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const enquiryController = require('./controller');
-const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const enquiryController = require('../enquiry/controller');
+const { authMiddleware: authenticateToken, requireRole: authorizeRoles } = require('../middleware');
 
-// Public routes
-router.post('/create', enquiryController.createEnquiry);
+router.use(authenticateToken);
 
-// Protected routes (Admin/Manager/Sales/Support)
-router.get('/all', authenticateToken, authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.getAllEnquiries);
-router.put('/:id/status', authenticateToken, authorizeRoles(['Admin', 'Manager', 'Sales']), enquiryController.updateEnquiryStatus);
+router.post('/create', authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.createEnquiry);
+router.get('/all', authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.getAllEnquiries);
+router.get('/:id', authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.getEnquiryById);
+router.put('/:id', authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.updateEnquiry);
+router.put('/:id/status', authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']), enquiryController.updateEnquiryStatus);
 
 module.exports = router;

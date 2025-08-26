@@ -1,10 +1,18 @@
+// routes/users.js
 const express = require('express');
 const router = express.Router();
-const userRoleController = require('./controller'); // ✅ FIXED PATH
-const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const userRoleController = require('../userRole/controller'); // Adjust path if needed
+const { authMiddleware: authenticateToken, requireRole: authorizeRoles } = require('../middleware');
 
 // All routes require authentication
 router.use(authenticateToken);
+
+// ✅ Get all roles
+router.get(
+  '/roles',
+  authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']),
+  userRoleController.getAllRoles
+);
 
 // ✅ Get users by role/status/search
 router.get(

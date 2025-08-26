@@ -25,8 +25,6 @@ const { Order, OrderItem } = require('../order/models');
 User.belongsTo(UserType, { foreignKey: 'userTypeId', as: 'userType' });
 UserType.hasMany(User, { foreignKey: 'userTypeId', as: 'users' });
 
-// Category <-> UserType association removed
-
 // Category self relation
 Category.hasMany(Category, { as: 'subCategories', foreignKey: 'parentId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
 Category.belongsTo(Category, { as: 'parent', foreignKey: 'parentId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
@@ -46,6 +44,7 @@ ShippingAddress.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 // User <-> Enquiry
 User.hasMany(Enquiry, { foreignKey: 'userId', as: 'enquiries' });
 Enquiry.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+Enquiry.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignedUser' }); // Added for assignedTo
 
 // User <-> Orders
 User.hasMany(Order, { foreignKey: 'userId', as: 'orders' });

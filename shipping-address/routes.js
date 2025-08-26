@@ -8,7 +8,7 @@ const {
   deleteShippingAddress,
   setDefaultShippingAddress
 } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware');
 
 // All routes require authentication
 router.use(authMiddleware);

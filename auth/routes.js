@@ -11,7 +11,7 @@ const {
   resetPassword,
   verifyOTP
 } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware');
 
 // Public routes
 router.post('/register', register);

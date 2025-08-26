@@ -9,7 +9,7 @@ const {
   getCartCount,
   clearCart 
 } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware');
 
 // Main cart routes
 router.post('/', authMiddleware, addToCart);           // Add item to cart

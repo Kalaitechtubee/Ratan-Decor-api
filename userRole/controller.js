@@ -1,7 +1,21 @@
+// controllers/userRoleController.js
 const { User, UserType } = require('../models');
 const { fn, col, Op } = require('sequelize');
 
 const userRoleController = {
+  // ✅ Get all roles
+  async getAllRoles(req, res) {
+    try {
+      const roles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
+      res.json({
+        success: true,
+        data: roles,
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
   // ✅ Get users with filters (role, status, search, pagination)
   async getUsersByRole(req, res) {
     try {
@@ -120,6 +134,7 @@ const userRoleController = {
       res.status(500).json({ success: false, message: error.message });
     }
   },
+  
 
   // ✅ Update user status (only Pending → Approved/Rejected)
   async updateUserStatus(req, res) {

@@ -73,10 +73,25 @@ const validateColors = (colors) => {
 
 const getProducts = async (req, res) => {
   try {
-    const { userType, categoryId, subcategoryId, minPrice, maxPrice, search, page = 1, limit = 20 } = req.query;
+    const { 
+      userType, 
+      categoryId, 
+      subcategoryId, 
+      minPrice, 
+      maxPrice, 
+      search, 
+      page = 1, 
+      limit = 20,
+      isActive // New query parameter for active/inactive filter
+    } = req.query;
     const userRole = getReqUserRole(req);
 
-    const whereClause = { isActive: true };
+    const whereClause = {};
+
+    // Add isActive filter if provided
+    if (isActive !== undefined) {
+      whereClause.isActive = isActive === 'true' || isActive === true;
+    }
 
     if (userType) {
       whereClause[Op.and] = sequelize.where(
@@ -109,6 +124,16 @@ const getProducts = async (req, res) => {
     }
 
     const offset = (page - 1) * limit;
+    
+    // Get count of active and inactive products separately
+    const activeCount = await Product.count({ 
+      where: { ...whereClause, isActive: true }
+    });
+    const inactiveCount = await Product.count({ 
+      where: { ...whereClause, isActive: false }
+    });
+    const totalCount = activeCount + inactiveCount;
+
     const { count, rows: products } = await Product.findAndCountAll({
       where: whereClause,
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
@@ -125,11 +150,15 @@ const getProducts = async (req, res) => {
 
     res.json({
       products: processedProducts,
-      count,
+      count, // Count of products matching current filter
+      totalCount, // Total products (active + inactive)
+      activeCount, // Count of active products
+      inactiveCount, // Count of inactive products
       totalPages: Math.ceil(count / limit),
       currentPage: Number(page),
       userType: userType || null,
-      userRole
+      userRole,
+      isActiveFilter: isActive !== undefined ? whereClause.isActive : null
     });
   } catch (error) {
     console.error('Get products error:', error);

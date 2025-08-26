@@ -1,7 +1,7 @@
 // middleware/index.js
 
 // Import middleware functions from individual files
-const { authMiddleware, requireRole, requireAdmin, requireApprovedRole } = require('./auth');
+const { authenticateToken: authMiddleware, authorizeRoles: requireRole, requireAdmin, requireApprovedRole } = require('./auth');
 const { uploadFields, handleUploadError, productImagesDir } = require('./upload');
 const { validateImage } = require('./imageValidation');
 
