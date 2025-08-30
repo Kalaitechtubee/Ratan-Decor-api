@@ -1,3 +1,4 @@
+// enquiry/controller.js
 const { Enquiry, User, Product } = require("../models");
 const { Op } = require("sequelize");
 
@@ -20,6 +21,7 @@ const enquiryController = {
         videoCallTime,
         productDesignNumber,
         role,
+        pincode, // New field
       } = req.body;
 
       // Get userId from token if not provided
@@ -85,8 +87,17 @@ const enquiryController = {
         });
       }
 
+      // Validate pincode if provided
+      const cleanPincode = pincode ? pincode.replace(/[^\d]/g, "") : null;
+      if (pincode && (!cleanPincode || cleanPincode.length !== 6)) {
+        return res.status(400).json({
+          success: false,
+          message: "Pincode must be a 6-digit number",
+        });
+      }
+
       const enquiry = await Enquiry.create({
-        userId: finalUserId, // This can now be null safely
+        userId: finalUserId,
         productId: parsedProductId,
         name: name.trim(),
         email: email.trim().toLowerCase(),
@@ -102,9 +113,9 @@ const enquiryController = {
         productDesignNumber: productDesignNumber?.trim() || null,
         status: "New",
         role: role || "Customer",
+        pincode: cleanPincode, // New field
       });
 
-      // Include relations in response
       const enrichedEnquiry = await Enquiry.findByPk(enquiry.id, {
         include: [
           {
@@ -165,9 +176,9 @@ const enquiryController = {
         state,
         city,
         role,
+        pincode, // New field for filtering
       } = req.query;
 
-      // Validate page and limit
       const pageNum = parseInt(page);
       const limitNum = parseInt(limit);
       if (isNaN(pageNum) || pageNum < 1) {
@@ -185,6 +196,7 @@ const enquiryController = {
           { phoneNo: { [Op.like]: `%${search}%` } },
           { companyName: { [Op.like]: `%${search}%` } },
           { productDesignNumber: { [Op.like]: `%${search}%` } },
+          { pincode: { [Op.like]: `%${search}%` } }, // Add pincode to search
         ];
       }
       if (status) where.status = status;
@@ -193,6 +205,7 @@ const enquiryController = {
       if (state) where.state = state;
       if (city) where.city = city;
       if (role) where.role = role;
+      if (pincode) where.pincode = pincode; // Exact match for pincode filter
 
       const include = [
         {
@@ -305,6 +318,7 @@ const enquiryController = {
         productDesignNumber,
         role,
         status,
+        pincode, // New field
       } = req.body;
 
       if (!id || isNaN(parseInt(id))) {
@@ -322,7 +336,6 @@ const enquiryController = {
         });
       }
 
-      // Validate fields if provided
       if (name !== undefined && (!name || !name.trim())) {
         return res.status(400).json({
           success: false,
@@ -357,7 +370,6 @@ const enquiryController = {
         });
       }
 
-      // Validate role and status if provided
       const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support"];
       if (role && !validRoles.includes(role)) {
         return res.status(400).json({
@@ -373,7 +385,6 @@ const enquiryController = {
         });
       }
 
-      // Validate source if provided
       const validSources = ["Email", "WhatsApp", "Phone", "VideoCall"];
       if (source && !validSources.includes(source)) {
         return res.status(400).json({
@@ -382,7 +393,15 @@ const enquiryController = {
         });
       }
 
-      // Build update data object
+      // Validate pincode if provided
+      const cleanPincode = pincode ? pincode.replace(/[^\d]/g, "") : null;
+      if (pincode && (!cleanPincode || cleanPincode.length !== 6)) {
+        return res.status(400).json({
+          success: false,
+          message: "Pincode must be a 6-digit number",
+        });
+      }
+
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (email !== undefined) updateData.email = email.trim().toLowerCase();
@@ -399,13 +418,11 @@ const enquiryController = {
       if (productDesignNumber !== undefined) updateData.productDesignNumber = productDesignNumber?.trim() || null;
       if (role !== undefined) updateData.role = role;
       if (status !== undefined) updateData.status = status;
-      
-      // Always update the updatedAt timestamp
+      if (pincode !== undefined) updateData.pincode = cleanPincode; // New field
       updateData.updatedAt = new Date();
 
       await enquiry.update(updateData);
 
-      // Fetch updated enquiry with relations
       const updatedEnquiry = await Enquiry.findByPk(id, {
         include: [
           {
@@ -450,7 +467,7 @@ const enquiryController = {
   async updateEnquiryStatus(req, res) {
     try {
       const { id } = req.params;
-      const { status, notes, role } = req.body;
+      const { status, notes, role, pincode } = req.body; // Added pincode
 
       if (!id || isNaN(parseInt(id))) {
         return res.status(400).json({
@@ -482,6 +499,15 @@ const enquiryController = {
         });
       }
 
+      // Validate pincode if provided
+      const cleanPincode = pincode ? pincode.replace(/[^\d]/g, "") : null;
+      if (pincode && (!cleanPincode || cleanPincode.length !== 6)) {
+        return res.status(400).json({
+          success: false,
+          message: "Pincode must be a 6-digit number",
+        });
+      }
+
       const enquiry = await Enquiry.findByPk(id);
       if (!enquiry) {
         return res.status(404).json({
@@ -493,11 +519,11 @@ const enquiryController = {
       const updateData = { status };
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
       if (role !== undefined) updateData.role = role;
+      if (pincode !== undefined) updateData.pincode = cleanPincode; // New field
       updateData.updatedAt = new Date();
 
       await enquiry.update(updateData);
 
-      // Fetch updated enquiry with relations
       const updatedEnquiry = await Enquiry.findByPk(id, {
         include: [
           {

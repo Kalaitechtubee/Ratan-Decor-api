@@ -53,17 +53,16 @@ const computePrice = (product, userRole) => {
 // Add item to cart
 const addToCart = async (req, res) => {
   try {
-    console.log('📥 ADD TO CART - Request details:');
+    console.log('ADD TO CART - Request details:');
     console.log('   Body:', JSON.stringify(req.body, null, 2));
-    console.log('   User ID:', req.user?.id);
-    console.log('   User Role:', req.user?.role);
+    console.log('   User:', req.user);
     
     // Extract and validate input
     const { productId, quantity } = req.body;
     
     // Validate required fields
     if (!productId || !quantity) {
-      console.log('❌ Missing required fields:', { productId, quantity });
+      console.log('Missing required fields:', { productId, quantity });
       return res.status(400).json({ 
         message: 'Product ID and quantity are required',
         received: { productId, quantity }
@@ -74,11 +73,11 @@ const addToCart = async (req, res) => {
     const prodId = parseInt(productId, 10);
     const qty = parseInt(quantity, 10);
     
-    console.log('📥 Parsed values:', { productId: prodId, quantity: qty });
+    console.log('Parsed values:', { productId: prodId, quantity: qty });
     
     // Validate conversions
     if (isNaN(prodId) || prodId <= 0) {
-      console.log('❌ Invalid product ID:', prodId);
+      console.log('Invalid product ID:', prodId);
       return res.status(400).json({ 
         message: 'Invalid product ID - must be a positive integer',
         received: productId
@@ -86,16 +85,17 @@ const addToCart = async (req, res) => {
     }
     
     if (isNaN(qty) || qty <= 0) {
-      console.log('❌ Invalid quantity:', qty);
+      console.log('Invalid quantity:', qty);
       return res.status(400).json({ 
         message: 'Invalid quantity - must be a positive integer',
         received: quantity
       });
     }
     
-    // Check authentication
-    if (!req.user || !req.user.id) {
-      console.log('❌ User not authenticated');
+    // Check authentication - FIXED: use req.user.userId
+    const userId = req.user?.userId || req.user?.id;
+    if (!req.user || !userId) {
+      console.log('User not authenticated', { hasUser: !!req.user, userId });
       return res.status(401).json({ message: 'User not authenticated' });
     }
     
@@ -106,28 +106,23 @@ const addToCart = async (req, res) => {
           model: Category, 
           as: 'category', 
           attributes: ['id', 'name', 'parentId'] 
-        },
-        { 
-          model: ProductUsageType, 
-          as: 'UsageType', 
-          attributes: ['id', 'name', 'description'] 
         }
       ]
     });
     
     if (!product) {
-      console.log('❌ Product not found:', prodId);
+      console.log('Product not found:', prodId);
       return res.status(404).json({ 
         message: 'Product not found',
         productId: prodId
       });
     }
     
-    console.log('✅ Product found:', { id: product.id, name: product.name, active: product.isActive });
+    console.log('Product found:', { id: product.id, name: product.name, active: product.isActive });
     
     // Check if product is active
     if (!product.isActive) {
-      console.log('❌ Product is inactive:', prodId);
+      console.log('Product is inactive:', prodId);
       return res.status(400).json({ 
         message: 'Product is not available',
         productId: prodId
@@ -135,21 +130,21 @@ const addToCart = async (req, res) => {
     }
     
     // Find or create cart item
-    console.log('📦 Finding or creating cart item for user:', req.user.id, 'product:', prodId);
+    console.log('Finding or creating cart item for user:', userId, 'product:', prodId);
     
     const [cartItem, created] = await Cart.findOrCreate({
       where: { 
-        userId: req.user.id, 
+        userId: userId, 
         productId: prodId 
       },
       defaults: { 
-        userId: req.user.id,
+        userId: userId,
         productId: prodId,
         quantity: qty 
       }
     });
     
-    console.log('📦 Cart operation result:', { 
+    console.log('Cart operation result:', { 
       created, 
       cartItemId: cartItem.id,
       quantity: cartItem.quantity
@@ -159,9 +154,9 @@ const addToCart = async (req, res) => {
       // Update existing cart item
       const newQuantity = cartItem.quantity + qty;
       await cartItem.update({ quantity: newQuantity });
-      console.log('✅ Cart item updated - new quantity:', newQuantity);
+      console.log('Cart item updated - new quantity:', newQuantity);
     } else {
-      console.log('✅ New cart item created');
+      console.log('New cart item created');
     }
     
     // Process product data with all details
@@ -182,28 +177,11 @@ const addToCart = async (req, res) => {
           dealerPrice: parseFloat(product.dealerPrice),
           userPrice: price,
           userRole: req.user.role
-        },
-        // Include all product fields
-        gst: parseFloat(product.gst || 0),
-        averageRating: parseFloat(product.averageRating || 0),
-        totalRatings: parseInt(product.totalRatings || 0),
-        colors: product.colors || [],
-        specifications: product.specifications || {},
-        visibleTo: product.visibleTo || [],
-        Category: product.Category ? {
-          id: product.Category.id,
-          name: product.Category.name,
-          parentId: product.Category.parentId
-        } : null,
-        UsageType: product.UsageType ? {
-          id: product.UsageType.id,
-          name: product.UsageType.name,
-          description: product.UsageType.description
-        } : null
+        }
       }
     };
     
-    console.log('✅ Sending successful response');
+    console.log('Sending successful response');
     
     res.status(created ? 201 : 200).json({
       success: true,
@@ -212,8 +190,7 @@ const addToCart = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ ADD TO CART ERROR:', error);
-    console.error('❌ Error stack:', error.stack);
+    console.error('ADD TO CART ERROR:', error);
     res.status(500).json({ 
       success: false,
       message: 'Internal server error',
@@ -225,13 +202,13 @@ const addToCart = async (req, res) => {
 // Get cart items with full product details
 const getCart = async (req, res) => {
   try {
-    console.log('📋 GET CART - Request details:');
-    console.log('   User ID:', req.user?.id);
-    console.log('   User Role:', req.user?.role);
+    console.log('GET CART - Request details:');
+    console.log('   User:', req.user);
     
-    // Check authentication
-    if (!req.user || !req.user.id) {
-      console.log('❌ User not authenticated in getCart');
+    // Check authentication - FIXED: use req.user.userId
+    const userId = req.user?.userId || req.user?.id;
+    if (!req.user || !userId) {
+      console.log('User not authenticated in getCart');
       return res.status(401).json({ 
         success: false,
         message: 'User not authenticated' 
@@ -239,13 +216,13 @@ const getCart = async (req, res) => {
     }
     
     // Get cart items with complete product details
-    console.log('📋 Fetching cart items for user:', req.user.id);
+    console.log('Fetching cart items for user:', userId);
     
     const cartItems = await Cart.findAll({
-      where: { userId: req.user.id },
+      where: { userId: userId },
       include: [{ 
         model: Product,
-        as: 'Product',
+        as: 'product',
         required: true, // Only include cart items with valid products
         where: {
           isActive: true // Only include active products
@@ -256,22 +233,16 @@ const getCart = async (req, res) => {
             as: 'category', 
             attributes: ['id', 'name', 'parentId'],
             required: false 
-          },
-          { 
-            model: ProductUsageType, 
-            as: 'UsageType', 
-            attributes: ['id', 'name', 'description'],
-            required: false 
           }
         ]
       }],
       order: [['id', 'DESC']] // Latest items first
     });
     
-    console.log('📋 Found cart items:', cartItems.length);
+    console.log('Found cart items:', cartItems.length);
     
     if (cartItems.length === 0) {
-      console.log('📋 No cart items found for user');
+      console.log('No cart items found for user');
       return res.json({
         success: true,
         count: 0,
@@ -293,7 +264,7 @@ const getCart = async (req, res) => {
     let totalGstAmount = 0;
     
     const formattedCart = cartItems.map(item => {
-      const product = item.Product;
+      const product = item.product;
       const processedProduct = processProductData(product, req);
       const price = computePrice(product, req.user.role);
       const gstRate = parseFloat(product.gst || 0);
@@ -310,7 +281,7 @@ const getCart = async (req, res) => {
         quantity: item.quantity,
         userId: item.userId,
         productId: item.productId,
-        Product: {
+        product: {
           ...processedProduct,
           price: price,
           priceBreakdown: {
@@ -319,24 +290,7 @@ const getCart = async (req, res) => {
             dealerPrice: parseFloat(product.dealerPrice),
             userPrice: price,
             userRole: req.user.role
-          },
-          // Include all product fields
-          gst: gstRate,
-          averageRating: parseFloat(product.averageRating || 0),
-          totalRatings: parseInt(product.totalRatings || 0),
-          colors: product.colors || [],
-          specifications: product.specifications || {},
-          visibleTo: product.visibleTo || [],
-          Category: product.Category ? {
-            id: product.Category.id,
-            name: product.Category.name,
-            parentId: product.Category.parentId
-          } : null,
-          UsageType: product.UsageType ? {
-            id: product.UsageType.id,
-            name: product.UsageType.name,
-            description: product.UsageType.description
-          } : null
+          }
         },
         // Item calculations
         itemCalculations: {
@@ -358,7 +312,7 @@ const getCart = async (req, res) => {
       totalAmount: parseFloat((subtotal + totalGstAmount).toFixed(2))
     };
     
-    console.log('📋 Returning', formattedCart.length, 'formatted cart items with summary:', cartSummary);
+    console.log('Returning', formattedCart.length, 'formatted cart items with summary:', cartSummary);
     
     res.json({
       success: true,
@@ -369,8 +323,7 @@ const getCart = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ GET CART ERROR:', error);
-    console.error('❌ Error stack:', error.stack);
+    console.error('GET CART ERROR:', error);
     res.status(500).json({ 
       success: false,
       message: 'Internal server error',
@@ -385,10 +338,19 @@ const updateCart = async (req, res) => {
     const { id } = req.params;
     const { quantity } = req.body;
     
-    console.log('🔄 UPDATE CART - Request details:');
+    console.log('UPDATE CART - Request details:');
     console.log('   Cart Item ID:', id);
     console.log('   New Quantity:', quantity);
-    console.log('   User ID:', req.user?.id);
+    console.log('   User:', req.user);
+    
+    // Get user ID correctly
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'User not authenticated' 
+      });
+    }
     
     // Validate quantity
     const qty = parseInt(quantity, 10);
@@ -405,22 +367,16 @@ const updateCart = async (req, res) => {
     const cartItem = await Cart.findOne({ 
       where: { 
         id: id, 
-        userId: req.user.id 
+        userId: userId 
       },
       include: [{ 
         model: Product,
-        as: 'Product',
+        as: 'product',
         include: [
           { 
             model: Category, 
-            as: 'Category', 
+            as: 'category', 
             attributes: ['id', 'name', 'parentId'],
-            required: false 
-          },
-          { 
-            model: ProductUsageType, 
-            as: 'UsageType', 
-            attributes: ['id', 'name', 'description'],
             required: false 
           }
         ]
@@ -428,7 +384,7 @@ const updateCart = async (req, res) => {
     });
     
     if (!cartItem) {
-      console.log('❌ Cart item not found:', { id, userId: req.user.id });
+      console.log('Cart item not found:', { id, userId });
       return res.status(404).json({ 
         success: false,
         message: 'Cart item not found or does not belong to user' 
@@ -438,10 +394,10 @@ const updateCart = async (req, res) => {
     // Update quantity
     await cartItem.update({ quantity: qty });
     
-    console.log('✅ Cart item updated successfully');
+    console.log('Cart item updated successfully');
     
     // Process product data and calculate pricing
-    const product = cartItem.Product;
+    const product = cartItem.product;
     const processedProduct = processProductData(product, req);
     const price = computePrice(product, req.user.role);
     const gstRate = parseFloat(product.gst || 0);
@@ -453,7 +409,7 @@ const updateCart = async (req, res) => {
       quantity: cartItem.quantity,
       userId: cartItem.userId,
       productId: cartItem.productId,
-      Product: {
+      product: {
         ...processedProduct,
         price: price,
         priceBreakdown: {
@@ -462,23 +418,7 @@ const updateCart = async (req, res) => {
           dealerPrice: parseFloat(product.dealerPrice),
           userPrice: price,
           userRole: req.user.role
-        },
-        gst: gstRate,
-        averageRating: parseFloat(product.averageRating || 0),
-        totalRatings: parseInt(product.totalRatings || 0),
-        colors: product.colors || [],
-        specifications: product.specifications || {},
-        visibleTo: product.visibleTo || [],
-        Category: product.Category ? {
-          id: product.Category.id,
-          name: product.Category.name,
-          parentId: product.Category.parentId
-        } : null,
-        UsageType: product.UsageType ? {
-          id: product.UsageType.id,
-          name: product.UsageType.name,
-          description: product.UsageType.description
-        } : null
+        }
       },
       itemCalculations: {
         unitPrice: price,
@@ -497,7 +437,7 @@ const updateCart = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ UPDATE CART ERROR:', error);
+    console.error('UPDATE CART ERROR:', error);
     res.status(500).json({ 
       success: false,
       message: 'Internal server error',
@@ -511,19 +451,28 @@ const deleteCartItem = async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('🗑️ DELETE CART ITEM - Request details:');
+    console.log('DELETE CART ITEM - Request details:');
     console.log('   Cart Item ID:', id);
-    console.log('   User ID:', req.user?.id);
+    console.log('   User:', req.user);
+    
+    // Get user ID correctly
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'User not authenticated' 
+      });
+    }
     
     const cartItem = await Cart.findOne({ 
       where: { 
         id: id, 
-        userId: req.user.id 
+        userId: userId 
       } 
     });
     
     if (!cartItem) {
-      console.log('❌ Cart item not found for deletion:', { id, userId: req.user.id });
+      console.log('Cart item not found for deletion:', { id, userId });
       return res.status(404).json({ 
         success: false,
         message: 'Cart item not found or does not belong to user' 
@@ -532,7 +481,7 @@ const deleteCartItem = async (req, res) => {
     
     await cartItem.destroy();
     
-    console.log('✅ Cart item deleted successfully');
+    console.log('Cart item deleted successfully');
     
     res.json({ 
       success: true,
@@ -541,7 +490,7 @@ const deleteCartItem = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ DELETE CART ITEM ERROR:', error);
+    console.error('DELETE CART ITEM ERROR:', error);
     res.status(500).json({ 
       success: false,
       message: 'Internal server error',
@@ -553,7 +502,9 @@ const deleteCartItem = async (req, res) => {
 // Get cart count (useful for header badges)
 const getCartCount = async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
+    // Get user ID correctly
+    const userId = req.user?.userId || req.user?.id;
+    if (!req.user || !userId) {
       return res.status(401).json({ 
         success: false,
         message: 'User not authenticated' 
@@ -561,20 +512,20 @@ const getCartCount = async (req, res) => {
     }
     
     const count = await Cart.count({
-      where: { userId: req.user.id },
+      where: { userId: userId },
       include: [{
         model: Product,
-        as: 'Product',
+        as: 'product',
         where: { isActive: true },
         required: true
       }]
     });
     
     const totalQuantity = await Cart.sum('quantity', {
-      where: { userId: req.user.id },
+      where: { userId: userId },
       include: [{
         model: Product,
-        as: 'Product',
+        as: 'product',
         where: { isActive: true },
         required: true
       }]
@@ -589,8 +540,40 @@ const getCartCount = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ GET CART COUNT ERROR:', error);
+    console.error('GET CART COUNT ERROR:', error);
     res.status(500).json({ 
+      success: false,
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    });
+  }
+};
+
+// Clear entire cart
+const clearCart = async (req, res) => {
+  try {
+    // Get user ID correctly
+    const userId = req.user?.userId || req.user?.id;
+    if (!req.user || !userId) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'User not authenticated' 
+      });
+    }
+    
+    const deletedCount = await Cart.destroy({
+      where: { userId: userId }
+    });
+    
+    res.json({
+      success: true,
+      message: `Cleared ${deletedCount} items from cart`,
+      deletedCount: deletedCount
+    });
+    
+  } catch (error) {
+    console.error('CLEAR CART ERROR:', error);
+    res.status(500).json({
       success: false,
       message: 'Internal server error',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
@@ -603,40 +586,6 @@ module.exports = {
   getCart, 
   updateCart, 
   deleteCartItem,
-  getCartCount
+  getCartCount,
+  clearCart
 };
-
-// Additional utility functions that you might need
-
-// Clear entire cart
-const clearCart = async (req, res) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'User not authenticated' 
-      });
-    }
-    
-    const deletedCount = await Cart.destroy({
-      where: { userId: req.user.id }
-    });
-    
-    res.json({
-      success: true,
-      message: `Cleared ${deletedCount} items from cart`,
-      deletedCount: deletedCount
-    });
-    
-  } catch (error) {
-    console.error('❌ CLEAR CART ERROR:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
-    });
-  }
-};
-
-// Export the clearCart function as well
-module.exports.clearCart = clearCart;

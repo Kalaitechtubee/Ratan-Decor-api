@@ -1,86 +1,98 @@
-const Sequelize = require('sequelize');
-const sequelize = require('../config/database');
+// models/index.js
+const Sequelize = require("sequelize");
+const sequelize = require("../config/database");
 
 // Import models
-const UserTypeModel = require('../userType/models');
+const UserTypeModel = require("../userType/models");
+const UserModel = require("./User");
+const ProductRatingModel = require("./ProductRating");
+const Category = require("../category/models");
+const Product = require("../product/models");
+const Enquiry = require("../enquiry/models");
+const Address = require("../address/models");
+const ShippingAddress = require("../shipping-address/models");
+const Cart = require("../cart/models");
+const { Order, OrderItem } = require("../order/models");
+
+// Import VideoCallEnquiry model
+const VideoCallEnquiryModel = require("../VideoCallEnquiry/models");
+
+// Initialize models
 const UserType = UserTypeModel(sequelize, Sequelize.DataTypes);
-
-const UserModel = require('./User');
 const User = UserModel(sequelize, Sequelize.DataTypes);
-
-const ProductRatingModel = require('./ProductRating');
 const ProductRating = ProductRatingModel(sequelize, Sequelize.DataTypes);
+const VideoCallEnquiry = VideoCallEnquiryModel(sequelize);
 
-const Category = require('../category/models');
-const Product = require('../product/models');
-const Enquiry = require('../enquiry/models');
-const Address = require('../address/models');
-const ShippingAddress = require('../shipping-address/models');
-const Cart = require('../cart/models');
-const { Order, OrderItem } = require('../order/models');
+// --- Associations with CONSISTENT LOWERCASE ALIASES ---
 
-// --- Associations ---
+// VideoCallEnquiry relations
+User.hasMany(VideoCallEnquiry, { foreignKey: "userId", as: "videoCallEnquiries" });
+VideoCallEnquiry.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// User <-> UserType
-User.belongsTo(UserType, { foreignKey: 'userTypeId', as: 'userType' });
-UserType.hasMany(User, { foreignKey: 'userTypeId', as: 'users' });
+Product.hasMany(VideoCallEnquiry, { foreignKey: "productId", as: "videoCallEnquiries" });
+VideoCallEnquiry.belongsTo(Product, { foreignKey: "productId", as: "product" });
 
-// Category self relation
-Category.hasMany(Category, { as: 'subCategories', foreignKey: 'parentId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
-Category.belongsTo(Category, { as: 'parent', foreignKey: 'parentId', onDelete: 'CASCADE', onUpdate: 'CASCADE' });
+// User & UserType associations
+User.belongsTo(UserType, { foreignKey: "userTypeId", as: "userType" });
+UserType.hasMany(User, { foreignKey: "userTypeId", as: "users" });
 
-// Category <-> Product
-Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
-Category.hasMany(Product, { foreignKey: 'categoryId', as: 'products' });
+// Category self-associations
+Category.hasMany(Category, { as: "subCategories", foreignKey: "parentId" });
+Category.belongsTo(Category, { as: "parent", foreignKey: "parentId" });
 
-// User <-> Address
-User.hasMany(Address, { foreignKey: 'userId', as: 'addresses' });
-Address.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// Product & Category associations
+Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
+Category.hasMany(Product, { foreignKey: "categoryId", as: "products" });
 
-// User <-> ShippingAddress
-User.hasMany(ShippingAddress, { foreignKey: 'userId', as: 'shippingAddresses' });
-ShippingAddress.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// User & Address associations
+User.hasMany(Address, { foreignKey: "userId", as: "addresses" });
+Address.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// User <-> Enquiry
-User.hasMany(Enquiry, { foreignKey: 'userId', as: 'enquiries' });
-Enquiry.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-Enquiry.belongsTo(User, { foreignKey: 'assignedTo', as: 'assignedUser' }); // Added for assignedTo
+// User & ShippingAddress associations
+User.hasMany(ShippingAddress, { foreignKey: "userId", as: "shippingAddresses" });
+ShippingAddress.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// User <-> Orders
-User.hasMany(Order, { foreignKey: 'userId', as: 'orders' });
-Order.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// User & Enquiry associations
+User.hasMany(Enquiry, { foreignKey: "userId", as: "enquiries" });
+Enquiry.belongsTo(User, { foreignKey: "userId", as: "user" });
+Enquiry.belongsTo(User, { foreignKey: "assignedTo", as: "assignedUser" });
 
-// User <-> Cart
-User.hasMany(Cart, { foreignKey: 'userId', as: 'cartItems' });
-Cart.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+// User & Order associations
+User.hasMany(Order, { foreignKey: "userId", as: "orders" });
+Order.belongsTo(User, { foreignKey: "userId", as: "user" }); // ✅ lowercase
 
-Product.hasMany(Cart, { foreignKey: 'productId', as: 'cartItems' });
-Cart.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+// User & Cart associations  
+User.hasMany(Cart, { foreignKey: "userId", as: "cartItems" });
+Cart.belongsTo(User, { foreignKey: "userId", as: "user" });
 
-// Orders <-> OrderItems
-Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'orderItems' });
-OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
+// Product & Cart associations - CRITICAL FIX
+Product.hasMany(Cart, { foreignKey: "productId", as: "cartItems" });
+Cart.belongsTo(Product, { foreignKey: "productId", as: "product" }); // ✅ lowercase 'product'
 
-Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' });
-OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+// Order & OrderItem associations
+Order.hasMany(OrderItem, { foreignKey: "orderId", as: "orderItems" }); // ✅ lowercase
+OrderItem.belongsTo(Order, { foreignKey: "orderId", as: "order" });
 
-// Orders <-> ShippingAddress
-Order.belongsTo(ShippingAddress, { foreignKey: 'shippingAddressId', as: 'shippingAddress', allowNull: true });
-ShippingAddress.hasMany(Order, { foreignKey: 'shippingAddressId', as: 'orders' });
+// Product & OrderItem associations
+Product.hasMany(OrderItem, { foreignKey: "productId", as: "orderItems" });
+OrderItem.belongsTo(Product, { foreignKey: "productId", as: "product" }); // ✅ lowercase
 
-// Enquiry <-> Product
-Enquiry.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
-Product.hasMany(Enquiry, { foreignKey: 'productId', as: 'enquiries' });
+// Order & ShippingAddress associations
+Order.belongsTo(ShippingAddress, { foreignKey: "shippingAddressId", as: "shippingAddress", allowNull: true }); // ✅ lowercase
+ShippingAddress.hasMany(Order, { foreignKey: "shippingAddressId", as: "orders" });
 
-// ProductRating <-> User
-ProductRating.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-User.hasMany(ProductRating, { foreignKey: 'userId', as: 'ratings' });
+// Enquiry & Product associations
+Enquiry.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(Enquiry, { foreignKey: "productId", as: "enquiries" });
 
-// ProductRating <-> Product
-ProductRating.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
-Product.hasMany(ProductRating, { foreignKey: 'productId', as: 'ratings' });
+// ProductRating associations
+ProductRating.belongsTo(User, { foreignKey: "userId", as: "user" });
+User.hasMany(ProductRating, { foreignKey: "userId", as: "ratings" });
 
-console.log('✅ Model associations completed');
+ProductRating.belongsTo(Product, { foreignKey: "productId", as: "product" });
+Product.hasMany(ProductRating, { foreignKey: "productId", as: "ratings" });
+
+console.log("✅ Model associations completed with consistent lowercase aliases");
 
 module.exports = {
   sequelize,
@@ -96,4 +108,5 @@ module.exports = {
   Order,
   OrderItem,
   ProductRating,
+  VideoCallEnquiry,
 };

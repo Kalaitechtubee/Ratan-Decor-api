@@ -1,3 +1,4 @@
+// models/order.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -27,12 +28,8 @@ const Order = sequelize.define('Order', {
     type: DataTypes.ENUM('Awaiting', 'Approved', 'Rejected'),
     defaultValue: 'Awaiting',
   },
-  paymentProof: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
   total: {
-    type: DataTypes.DECIMAL(12, 2),
+    type: DataTypes.DECIMAL(10, 2), // Match DB schema
     allowNull: false,
   },
   subtotal: {
@@ -40,11 +37,6 @@ const Order = sequelize.define('Order', {
     allowNull: true,
   },
   gstAmount: {
-    type: DataTypes.DECIMAL(12, 2),
-    allowNull: true,
-    defaultValue: 0.00,
-  },
-  platformCommission: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
     defaultValue: 0.00,
@@ -58,10 +50,10 @@ const Order = sequelize.define('Order', {
     }
   },
   deliveryAddressType: {
-    type: DataTypes.ENUM('default', 'shipping', 'new'),
+    type: DataTypes.ENUM('default', 'shipping'), // Match DB schema (no 'new')
     allowNull: true,
     defaultValue: 'default',
-    comment: 'Type of address used: default (from user profile), shipping (from shipping_addresses), or new (provided during order)'
+    comment: 'Type of address used: default (from user profile), shipping (from shipping_addresses)'
   },
   deliveryAddressData: {
     type: DataTypes.JSON,
@@ -81,25 +73,12 @@ const Order = sequelize.define('Order', {
     type: DataTypes.DATE,
     allowNull: true,
   },
-  trackingNumber: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  shippingProvider: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  cancellationReason: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  cancelledAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
+  // Removed shippingProvider - not in DB schema
+  // Removed cancellationReason - not in DB schema
+  // Removed cancelledAt - not in DB schema
 }, {
   tableName: 'orders',
-  timestamps: false,
+  timestamps: false, // No createdAt/updatedAt in DB
 });
 
 const OrderItem = sequelize.define('OrderItem', {
@@ -136,11 +115,6 @@ const OrderItem = sequelize.define('OrderItem', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
-  gstRate: {
-    type: DataTypes.DECIMAL(5, 2),
-    allowNull: true,
-    defaultValue: 0.00,
-  },
   gstAmount: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
@@ -150,13 +124,9 @@ const OrderItem = sequelize.define('OrderItem', {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
-  productSnapshot: {
-    type: DataTypes.JSON,
-    allowNull: true,
-  },
 }, {
   tableName: 'order_items',
-  timestamps: true,
+  timestamps: true, // Has createdAt/updatedAt in DB
 });
 
 module.exports = {

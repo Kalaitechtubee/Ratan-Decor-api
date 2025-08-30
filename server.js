@@ -22,7 +22,7 @@ const shippingAddressRoutes = require('./shipping-address/routes');
 const userRoleRoutes = require('./userRole/routes');
 const enquiryRoutes = require('./enquiry/routes');
 const seoRoutes = require('./seo/routes');
-
+const videoCallEnquiryRoutes = require('./VideoCallEnquiry/routes');
 // SEO configuration
 const seoConfig = [
   { pageName: 'home', title: 'Home - Ratan Decor', description: 'Welcome to Ratan Decor, your one-stop shop for premium home decor.', keywords: 'home, ratan decor, home decor' },
@@ -187,7 +187,7 @@ app.use('/api/user-types', userTypeRoutes);
 app.use('/api/roles', userRoleRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/seo', cors(corsOptions), seoRoutes);
-
+app.use('/api/video-call-enquiries', videoCallEnquiryRoutes); // ✅ add this
 // Health check
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'OK', timestamp: new Date().toISOString(), uptime: process.uptime() }));

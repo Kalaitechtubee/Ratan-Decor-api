@@ -1,3 +1,4 @@
+// controllers/order.js
 const { Order, OrderItem, Product, Cart, User, Category, ShippingAddress, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const axios = require('axios');
@@ -56,7 +57,6 @@ const validateAddressData = (addressData) => {
 
 const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddressData) => {
   let orderAddress = null;
-
   if (addressType === 'new' && newAddressData) {
     if (!validateAddressData(newAddressData)) {
       throw new Error('Invalid new address data provided');
@@ -74,7 +74,7 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       isDefault: newAddressData.isDefault || false
     });
     orderAddress = {
-      type: 'new',
+      type: 'shipping', // Changed to 'shipping' since it's stored in shipping_addresses
       shippingAddressId: newShippingAddress.id,
       addressData: {
         name: newShippingAddress.name,
@@ -182,57 +182,34 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
   return orderAddress;
 };
 
+// controllers/order.js
 const createOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     console.log('📦 CREATE ORDER - Request details:');
-    console.log('   User ID:', req.user?.id);
-    console.log('   User Role:', req.user?.role);
-    console.log('   Body:', JSON.stringify(req.body, null, 2));
+    console.log(' User ID:', req.user?.id);
+    console.log(' User Role:', req.user?.role);
+    console.log(' Body:', JSON.stringify(req.body, null, 2));
 
-    const { 
-      paymentMethod, 
-      paymentProof, 
+    const {
+      paymentMethod,
       items,
       shippingAddressId,
       addressType = 'default',
       newAddressData,
       notes,
-      expectedDeliveryDate 
+      expectedDeliveryDate
     } = req.body;
 
     const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
     if (!['Gateway', 'UPI', 'BankTransfer', 'COD'].includes(normalizedPaymentMethod)) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Valid payment method is required (Gateway, UPI, BankTransfer, COD)' 
-      });
+      throw new Error('Valid payment method is required (Gateway, UPI, BankTransfer, COD)');
     }
-
-    if (['UPI', 'BankTransfer'].includes(normalizedPaymentMethod) && !paymentProof) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Payment proof is required for UPI and Bank Transfer' 
-      });
-    }
-
     if (!['default', 'shipping', 'new'].includes(addressType)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Address type must be "default", "shipping", or "new"'
-      });
+      throw new Error('Address type must be "default", "shipping", or "new"');
     }
 
-    let orderAddress;
-    try {
-      orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId, newAddressData);
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
-    }
-
+    let orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId, newAddressData);
     console.log('📦 Order address prepared:', {
       type: orderAddress.type,
       shippingAddressId: orderAddress.shippingAddressId,
@@ -251,32 +228,29 @@ const createOrder = async (req, res) => {
         where: { userId: req.user.id },
         include: [{
           model: Product,
-          as: 'Product',
+          as: 'product',
           where: { isActive: true },
-          required: true
+          required: true,
+          attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive']
         }]
       });
       if (cartItems.length === 0) {
-        return res.status(400).json({ 
-          success: false,
-          message: 'No items found in cart or provided' 
-        });
+        throw new Error('No items found in cart or provided');
       }
       orderItems = cartItems.map(item => ({
         productId: item.productId,
-        quantity: item.quantity
+        quantity: item.quantity,
+        product: item.product // Include product data for response
       }));
     }
 
     console.log('📦 Processing order items:', orderItems.length);
-
     let subtotal = 0;
-    let totalGstAmount = 0;
     const processedOrderItems = [];
-
     for (const item of orderItems) {
-      const product = await Product.findByPk(item.productId, {
-        include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
+      const product = item.product || await Product.findByPk(item.productId, {
+        include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }],
+        attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive']
       });
       if (!product) {
         throw new Error(`Product with ID ${item.productId} not found`);
@@ -287,54 +261,47 @@ const createOrder = async (req, res) => {
       const unitPrice = computePrice(product, req.user.role);
       const quantity = parseInt(item.quantity);
       const itemSubtotal = unitPrice * quantity;
-      const gstRate = parseFloat(product.gst || 0);
-      const itemGstAmount = (itemSubtotal * gstRate) / 100;
-      const itemTotal = itemSubtotal + itemGstAmount;
       subtotal += itemSubtotal;
-      totalGstAmount += itemGstAmount;
+
+      const processedProduct = processProductData(product, req);
       processedOrderItems.push({
         productId: product.id,
         quantity: quantity,
         price: unitPrice,
         subtotal: itemSubtotal,
-        gstRate: gstRate,
-        gstAmount: itemGstAmount,
-        total: itemTotal,
-        productSnapshot: {
+        total: itemSubtotal,
+        product: {
+          id: product.id,
           name: product.name,
-          description: product.description,
-          image: product.image,
-          images: product.images || [],
-          specifications: product.specifications || {},
-          colors: product.colors || [],
-          category: product.Category ? product.Category.name : null
+          imageUrl: processedProduct.imageUrl,
+          imageUrls: processedProduct.imageUrls || [],
+          currentPrice: unitPrice,
+          isActive: product.isActive,
+          category: product.category ? {
+            id: product.category.id,
+            name: product.category.name,
+            parentId: product.category.parentId
+          } : null
         }
       });
     }
 
-    const platformCommission = subtotal * 0.02;
-    const finalTotal = subtotal + totalGstAmount + platformCommission;
-
+    const finalTotal = subtotal;
     console.log('📦 Order calculations:', {
       subtotal: subtotal.toFixed(2),
-      totalGstAmount: totalGstAmount.toFixed(2),
-      platformCommission: platformCommission.toFixed(2),
       finalTotal: finalTotal.toFixed(2)
     });
 
     const order = await Order.create({
       userId: req.user.id,
       paymentMethod: normalizedPaymentMethod,
-      paymentProof: normalizedPaymentMethod === 'COD' ? null : paymentProof,
       total: parseFloat(finalTotal.toFixed(2)),
       subtotal: parseFloat(subtotal.toFixed(2)),
-      gstAmount: parseFloat(totalGstAmount.toFixed(2)),
-      platformCommission: parseFloat(platformCommission.toFixed(2)),
-      paymentStatus: normalizedPaymentMethod === 'COD' ? 'Awaiting' : (normalizedPaymentMethod === 'Gateway' ? 'Approved' : 'Awaiting'),
+      paymentStatus: normalizedPaymentMethod === 'COD' ? 'Awaiting' : 'Awaiting',
       status: 'Pending',
       shippingAddressId: orderAddress.shippingAddressId,
       deliveryAddressType: orderAddress.type,
-      deliveryAddressData: JSON.stringify(orderAddress.addressData),
+      deliveryAddressData: orderAddress.addressData,
       notes: notes || null,
       expectedDeliveryDate: expectedDeliveryDate || null,
       orderDate: new Date()
@@ -348,14 +315,10 @@ const createOrder = async (req, res) => {
       quantity: item.quantity,
       price: item.price,
       subtotal: parseFloat(item.subtotal.toFixed(2)),
-      gstRate: item.gstRate,
-      gstAmount: parseFloat(item.gstAmount.toFixed(2)),
-      total: parseFloat(item.total.toFixed(2)),
-      productSnapshot: JSON.stringify(item.productSnapshot)
+      total: parseFloat(item.total.toFixed(2))
     }));
 
     await OrderItem.bulkCreate(orderItemsData, { transaction });
-
     console.log('📦 Order items created:', orderItemsData.length);
 
     if (!items || items.length === 0) {
@@ -370,7 +333,6 @@ const createOrder = async (req, res) => {
         userRole: req.user.role,
         total: finalTotal,
         subtotal: subtotal,
-        gstAmount: totalGstAmount,
         itemCount: processedOrderItems.length,
         status: order.status,
         paymentMethod: order.paymentMethod,
@@ -394,24 +356,30 @@ const createOrder = async (req, res) => {
         status: order.status,
         paymentStatus: order.paymentStatus,
         paymentMethod: order.paymentMethod,
-        total: order.total,
-        subtotal: order.subtotal,
-        gstAmount: order.gstAmount,
-        platformCommission: order.platformCommission,
+        total: parseFloat(order.total),
+        subtotal: parseFloat(order.subtotal),
         itemCount: processedOrderItems.length,
         orderDate: order.orderDate,
         expectedDeliveryDate: order.expectedDeliveryDate,
         deliveryAddress: {
           type: orderAddress.type,
           data: orderAddress.addressData
-        }
-      },
-      redirectToPayment: normalizedPaymentMethod === 'Gateway'
+        },
+        orderItems: processedOrderItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: parseFloat(item.price),
+          subtotal: parseFloat(item.subtotal),
+          total: parseFloat(item.total),
+          product: item.product
+        })),
+        redirectToPayment: normalizedPaymentMethod === 'Gateway'
+      }
     });
   } catch (error) {
     await transaction.rollback();
     console.error('❌ CREATE ORDER ERROR:', error);
-    res.status(400).json({ 
+    res.status(400).json({
       success: false,
       message: error.message || 'Failed to create order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -422,21 +390,19 @@ const createOrder = async (req, res) => {
 const getOrders = async (req, res) => {
   try {
     console.log('📋 GET ORDERS - Request details:');
-    console.log('   User ID:', req.user?.id);
-    console.log('   User Role:', req.user?.role);
-    console.log('   Query:', req.query);
-
-    const { 
-      status, 
-      paymentStatus, 
-      startDate, 
-      endDate, 
-      page = 1, 
+    console.log(' User ID:', req.user?.id);
+    console.log(' User Role:', req.user?.role);
+    console.log(' Query:', req.query);
+    const {
+      status,
+      paymentStatus,
+      startDate,
+      endDate,
+      page = 1,
       limit = 10,
       sortBy = 'orderDate',
       sortOrder = 'DESC'
     } = req.query;
-
     const where = { userId: req.user.id };
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -449,30 +415,27 @@ const getOrders = async (req, res) => {
       if (startDate) where.orderDate[Op.gte] = new Date(startDate);
       if (endDate) where.orderDate[Op.lte] = new Date(endDate);
     }
-
     const offset = (page - 1) * limit;
     const { count, rows: orders } = await Order.findAndCountAll({
       where,
       include: [
         {
           model: OrderItem,
-          as: 'OrderItems',
+          as: 'orderItems',
           include: [{
             model: Product,
-            as: 'Product',
+            as: 'product',
             include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
           }]
         },
-        { model: ShippingAddress, as: 'ShippingAddress', required: false },
-        { model: User, as: 'User', attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], required: false }
+        { model: ShippingAddress, as: 'shippingAddress', required: false },
+        { model: User, as: 'user', attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], required: false }
       ],
       order: [[sortBy, sortOrder.toUpperCase()]],
       limit: Number(limit),
       offset: Number(offset)
     });
-
     console.log('📋 Found orders:', orders.length);
-
     const processedOrders = orders.map(order => {
       const orderData = order.toJSON();
       let deliveryAddress = null;
@@ -480,7 +443,7 @@ const getOrders = async (req, res) => {
         try {
           deliveryAddress = {
             type: orderData.deliveryAddressType || 'unknown',
-            data: typeof orderData.deliveryAddressData === 'string' 
+            data: typeof orderData.deliveryAddressData === 'string'
               ? JSON.parse(orderData.deliveryAddressData)
               : orderData.deliveryAddressData
           };
@@ -489,63 +452,53 @@ const getOrders = async (req, res) => {
         }
       }
       if (!deliveryAddress) {
-        if (orderData.ShippingAddress) {
+        if (orderData.shippingAddress) {
           deliveryAddress = {
             type: 'shipping',
             data: {
-              name: orderData.ShippingAddress.name,
-              phone: orderData.ShippingAddress.phone,
-              address: orderData.ShippingAddress.address,
-              city: orderData.ShippingAddress.city,
-              state: orderData.ShippingAddress.state,
-              country: orderData.ShippingAddress.country,
-              pincode: orderData.ShippingAddress.pincode,
-              addressType: orderData.ShippingAddress.addressType
+              name: orderData.shippingAddress.name,
+              phone: orderData.shippingAddress.phone,
+              address: orderData.shippingAddress.address,
+              city: orderData.shippingAddress.city,
+              state: orderData.shippingAddress.state,
+              country: orderData.shippingAddress.country,
+              pincode: orderData.shippingAddress.pincode,
+              addressType: orderData.shippingAddress.addressType
             }
           };
-        } else if (orderData.User) {
+        } else if (orderData.user) {
           deliveryAddress = {
             type: 'default',
             data: {
-              name: orderData.User.name,
-              phone: orderData.User.mobile || 'Not provided',
-              address: orderData.User.address,
-              city: orderData.User.city,
-              state: orderData.User.state,
-              country: orderData.User.country,
-              pincode: orderData.User.pincode,
+              name: orderData.user.name,
+              phone: orderData.user.mobile || 'Not provided',
+              address: orderData.user.address,
+              city: orderData.user.city,
+              state: orderData.user.state,
+              country: orderData.user.country,
+              pincode: orderData.user.pincode,
               source: 'user_profile'
             }
           };
         }
       }
       orderData.deliveryAddress = deliveryAddress;
-      if (orderData.OrderItems) {
-        orderData.OrderItems = orderData.OrderItems.map(item => {
+      if (orderData.orderItems) {
+        orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
-          if (item.Product) {
-            const processedProduct = processProductData(item.Product, req);
-            itemData.Product = {
+          if (item.product) {
+            const processedProduct = processProductData(item.product, req);
+            itemData.product = {
               ...processedProduct,
-              currentPrice: computePrice(item.Product, req.user.role),
+              currentPrice: computePrice(item.product, req.user.role),
               orderPrice: parseFloat(item.price)
             };
-          }
-          if (item.productSnapshot) {
-            try {
-              itemData.productSnapshot = typeof item.productSnapshot === 'string' 
-                ? JSON.parse(item.productSnapshot) 
-                : item.productSnapshot;
-            } catch (e) {
-              itemData.productSnapshot = {};
-            }
           }
           return itemData;
         });
       }
       return orderData;
     });
-
     const orderSummary = {
       totalOrders: count,
       totalPages: Math.ceil(count / limit),
@@ -554,7 +507,6 @@ const getOrders = async (req, res) => {
       statusBreakdown: {},
       paymentStatusBreakdown: {}
     };
-
     const statusStats = await Order.findAll({
       where: { userId: req.user.id },
       attributes: [
@@ -565,14 +517,12 @@ const getOrders = async (req, res) => {
       group: ['status'],
       raw: true
     });
-
     statusStats.forEach(stat => {
       orderSummary.statusBreakdown[stat.status] = {
         count: parseInt(stat.count),
         totalAmount: parseFloat(stat.totalAmount || 0)
       };
     });
-
     const paymentStats = await Order.findAll({
       where: { userId: req.user.id },
       attributes: [
@@ -583,16 +533,13 @@ const getOrders = async (req, res) => {
       group: ['paymentStatus'],
       raw: true
     });
-
     paymentStats.forEach(stat => {
       orderSummary.paymentStatusBreakdown[stat.paymentStatus] = {
         count: parseInt(stat.count),
         totalAmount: parseFloat(stat.totalAmount || 0)
       };
     });
-
     console.log('📋 Returning', processedOrders.length, 'processed orders');
-
     res.json({
       success: true,
       orders: processedOrders,
@@ -603,7 +550,7 @@ const getOrders = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ GET ORDERS ERROR:', error);
-    res.status(400).json({ 
+    res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch orders',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -611,28 +558,41 @@ const getOrders = async (req, res) => {
   }
 };
 
+// controllers/order.js
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
     console.log('📋 GET ORDER BY ID - Order ID:', id, 'User ID:', req.user?.id);
 
     const order = await Order.findOne({
-      where: { 
+      where: {
         id: id,
         ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
       },
       include: [
         {
           model: OrderItem,
-          as: 'OrderItems',
+          as: 'orderItems',
           include: [{
             model: Product,
-            as: 'Product',
+            as: 'product',
+            attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive'],
             include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
-          }]
+          }],
+          required: false
         },
-        { model: ShippingAddress, as: 'ShippingAddress', required: false },
-        { model: User, as: 'User', attributes: ['id', 'name', 'email', 'role', 'mobile', 'company', 'address', 'city', 'state', 'country', 'pincode'], required: false }
+        {
+          model: ShippingAddress,
+          as: 'shippingAddress',
+          attributes: ['id', 'name', 'phone', 'address', 'city', 'state', 'country', 'pincode', 'addressType', 'isDefault'],
+          required: false
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'name', 'email', 'role', 'mobile', 'company', 'address', 'city', 'state', 'country', 'pincode'],
+          required: false
+        }
       ]
     });
 
@@ -641,126 +601,149 @@ const getOrderById = async (req, res) => {
     }
 
     const orderData = order.toJSON();
+
+    // Handle delivery address
     let deliveryAddress = null;
     if (orderData.deliveryAddressData) {
       try {
         deliveryAddress = {
           type: orderData.deliveryAddressType || 'unknown',
-          data: typeof orderData.deliveryAddressData === 'string' 
+          data: typeof orderData.deliveryAddressData === 'string'
             ? JSON.parse(orderData.deliveryAddressData)
             : orderData.deliveryAddressData
         };
       } catch (e) {
-        console.warn('Failed to parse delivery address data:', e);
+        console.warn(`Failed to parse delivery address data for order ${orderData.id}:`, e);
       }
     }
+
     if (!deliveryAddress) {
-      if (orderData.ShippingAddress) {
+      if (orderData.shippingAddress) {
         deliveryAddress = {
           type: 'shipping',
           data: {
-            name: orderData.ShippingAddress.name,
-            phone: orderData.ShippingAddress.phone,
-            address: orderData.ShippingAddress.address,
-            city: orderData.ShippingAddress.city,
-            state: orderData.ShippingAddress.state,
-            country: orderData.ShippingAddress.country,
-            pincode: orderData.ShippingAddress.pincode,
-            addressType: orderData.ShippingAddress.addressType
+            id: orderData.shippingAddress.id,
+            name: orderData.shippingAddress.name,
+            phone: orderData.shippingAddress.phone,
+            address: orderData.shippingAddress.address,
+            city: orderData.shippingAddress.city,
+            state: orderData.shippingAddress.state,
+            country: orderData.shippingAddress.country,
+            pincode: orderData.shippingAddress.pincode,
+            addressType: orderData.shippingAddress.addressType,
+            isDefault: orderData.shippingAddress.isDefault
           }
         };
-      } else if (orderData.User) {
+      } else if (orderData.user && orderData.user.address && orderData.user.city && orderData.user.state && orderData.user.country && orderData.user.pincode) {
         deliveryAddress = {
           type: 'default',
           data: {
-            name: orderData.User.name,
-            phone: orderData.User.mobile || 'Not provided',
-            address: orderData.User.address,
-            city: orderData.User.city,
-            state: orderData.User.state,
-            country: orderData.User.country,
-            pincode: orderData.User.pincode,
+            name: orderData.user.name,
+            phone: orderData.user.mobile || 'Not provided',
+            address: orderData.user.address,
+            city: orderData.user.city,
+            state: orderData.user.state,
+            country: orderData.user.country,
+            pincode: orderData.user.pincode,
             source: 'user_profile'
           }
         };
+      } else {
+        deliveryAddress = { type: 'none', data: null };
       }
     }
-    orderData.deliveryAddress = deliveryAddress;
-    if (orderData.OrderItems) {
-      orderData.OrderItems = orderData.OrderItems.map(item => {
-        const itemData = { ...item };
-        if (item.Product) {
-          const processedProduct = processProductData(item.Product, req);
-          itemData.Product = {
-            ...processedProduct,
-            currentPrice: computePrice(item.Product, req.user.role),
-            orderPrice: parseFloat(item.price),
-            priceChange: computePrice(item.Product, req.user.role) - parseFloat(item.price)
-          };
-        }
-        if (item.productSnapshot) {
-          try {
-            itemData.productSnapshot = typeof item.productSnapshot === 'string' 
-              ? JSON.parse(item.productSnapshot) 
-              : item.productSnapshot;
-          } catch (e) {
-            itemData.productSnapshot = {};
-          }
-        }
-        return itemData;
-      });
-    }
+
+    // Process order items with product details
+    orderData.orderItems = (orderData.orderItems || []).map(item => {
+      const itemData = { ...item };
+      if (item.product) {
+        const processedProduct = processProductData(item.product, req);
+        itemData.product = {
+          id: item.product.id,
+          name: item.product.name,
+          imageUrl: processedProduct.imageUrl,
+          imageUrls: processedProduct.imageUrls || [],
+          currentPrice: computePrice(item.product, req.user.role),
+          orderPrice: parseFloat(item.price),
+          priceChange: parseFloat((computePrice(item.product, req.user.role) - item.price).toFixed(2)),
+          isActive: item.product.isActive,
+          category: item.product.category ? {
+            id: item.product.category.id,
+            name: item.product.category.name,
+            parentId: item.product.category.parentId
+          } : null
+        };
+      } else {
+        itemData.product = {
+          id: item.productId,
+          name: 'Unknown Product',
+          imageUrl: null,
+          imageUrls: [],
+          currentPrice: parseFloat(item.price),
+          orderPrice: parseFloat(item.price),
+          priceChange: 0,
+          isActive: false,
+          category: null
+        };
+      }
+      return itemData;
+    });
 
     console.log('📋 Returning order details for order:', id);
-    res.json({ success: true, order: orderData });
+    res.json({
+      success: true,
+      order: {
+        id: orderData.id,
+        userId: orderData.userId,
+        status: orderData.status,
+        paymentStatus: orderData.paymentStatus,
+        paymentMethod: orderData.paymentMethod,
+        total: parseFloat(orderData.total),
+        subtotal: parseFloat(orderData.subtotal),
+        orderDate: orderData.orderDate,
+        expectedDeliveryDate: orderData.expectedDeliveryDate,
+        notes: orderData.notes,
+        deliveryAddress,
+        orderItems: orderData.orderItems
+      }
+    });
   } catch (error) {
     console.error('❌ GET ORDER BY ID ERROR:', error);
-    res.status(400).json({ 
+    res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };
-
 const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, paymentStatus, paymentProof, notes, expectedDeliveryDate, trackingNumber, shippingProvider } = req.body;
+    const { status, paymentStatus, notes, expectedDeliveryDate } = req.body; // Removed shippingProvider
     
     console.log('🔄 UPDATE ORDER - Order ID:', id, 'User Role:', req.user?.role);
-    console.log('   Update data:', { status, paymentStatus, notes });
-
+    console.log(' Update data:', { status, paymentStatus, notes });
     const order = await Order.findOne({
-      where: { 
+      where: {
         id: id,
         ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
       }
     });
-
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-
     const updateData = {};
     if (req.user.role === 'Admin' || req.user.role === 'Manager') {
       if (status !== undefined) updateData.status = status;
       if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
       if (notes !== undefined) updateData.notes = notes;
       if (expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = expectedDeliveryDate;
-      if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
-      if (shippingProvider !== undefined) updateData.shippingProvider = shippingProvider;
     } else {
-      if (order.status === 'Pending' && paymentProof !== undefined && order.paymentMethod !== 'COD') {
-        updateData.paymentProof = paymentProof;
-      }
       if (notes !== undefined) updateData.notes = notes;
     }
-
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ success: false, message: 'No valid fields to update' });
     }
-
     if (status && order.status !== status) {
       const validTransitions = {
         'Pending': ['Processing', 'Cancelled'],
@@ -773,10 +756,8 @@ const updateOrder = async (req, res) => {
         return res.status(400).json({ success: false, message: `Cannot change order status from ${order.status} to ${status}` });
       }
     }
-
     await order.update(updateData);
     console.log('✅ Order updated successfully');
-
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}`, {
         orderId: id,
@@ -788,8 +769,8 @@ const updateOrder = async (req, res) => {
       console.log('📦 Order update sent to CRM successfully');
     } catch (crmError) {
       console.error('❌ CRM update failed:', crmError.message);
+      // Do not throw
     }
-
     res.json({
       success: true,
       message: 'Order updated successfully',
@@ -799,14 +780,12 @@ const updateOrder = async (req, res) => {
         paymentStatus: order.paymentStatus,
         notes: order.notes,
         expectedDeliveryDate: order.expectedDeliveryDate,
-        trackingNumber: order.trackingNumber,
-        shippingProvider: order.shippingProvider,
         updatedAt: order.updatedAt
       }
     });
   } catch (error) {
     console.error('❌ UPDATE ORDER ERROR:', error);
-    res.status(400).json({ 
+    res.status(400).json({
       success: false,
       message: error.message || 'Failed to update order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -817,30 +796,23 @@ const updateOrder = async (req, res) => {
 const cancelOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { reason } = req.body; // Reason not stored, but logged or sent to CRM
     
     console.log('❌ CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id);
-
     const order = await Order.findOne({
       where: { id: id, userId: req.user.id }
     });
-
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-
     if (!['Pending', 'Processing'].includes(order.status)) {
       return res.status(400).json({ success: false, message: `Cannot cancel order with status: ${order.status}` });
     }
-
-    await order.update({ 
-      status: 'Cancelled',
-      cancellationReason: reason || 'Cancelled by user',
-      cancelledAt: new Date()
+    await order.update({
+      status: 'Cancelled'
+      // Removed cancellationReason and cancelledAt
     });
-
     console.log('✅ Order cancelled successfully');
-
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}/cancel`, {
         orderId: id,
@@ -851,20 +823,17 @@ const cancelOrder = async (req, res) => {
     } catch (crmError) {
       console.error('❌ CRM cancellation notification failed:', crmError.message);
     }
-
     res.json({
       success: true,
       message: 'Order cancelled successfully',
       order: {
         id: order.id,
-        status: order.status,
-        cancellationReason: order.cancellationReason,
-        cancelledAt: order.cancelledAt
+        status: order.status
       }
     });
   } catch (error) {
     console.error('❌ CANCEL ORDER ERROR:', error);
-    res.status(400).json({ 
+    res.status(400).json({
       success: false,
       message: error.message || 'Failed to cancel order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -878,18 +847,14 @@ const deleteOrder = async (req, res) => {
     const { id } = req.params;
     
     console.log('🗑️ DELETE ORDER - Order ID:', id, 'Admin:', req.user?.role);
-
     const order = await Order.findByPk(id);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-
     await OrderItem.destroy({ where: { orderId: id }, transaction });
     await order.destroy({ transaction });
-
     await transaction.commit();
     console.log('✅ Order deleted successfully');
-
     try {
       await axios.delete(`https://crm-api.example.com/orders/${id}`, {
         data: { deletedBy: req.user.id, deletedAt: new Date() },
@@ -898,7 +863,6 @@ const deleteOrder = async (req, res) => {
     } catch (crmError) {
       console.error('❌ CRM deletion notification failed:', crmError.message);
     }
-
     res.json({
       success: true,
       message: 'Order deleted successfully',
@@ -907,7 +871,7 @@ const deleteOrder = async (req, res) => {
   } catch (error) {
     await transaction.rollback();
     console.error('❌ DELETE ORDER ERROR:', error);
-    res.status(400).json({ 
+    res.status(400).json({
       success: false,
       message: error.message || 'Failed to delete order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -919,27 +883,24 @@ const getOrderStats = async (req, res) => {
   try {
     const userId = req.user.role === 'Admin' || req.user.role === 'Manager' ? null : req.user.id;
     const whereClause = userId ? { userId } : {};
-
     const totalOrders = await Order.count({ where: whereClause });
     const pendingOrders = await Order.count({ where: { ...whereClause, status: 'Pending' } });
     const completedOrders = await Order.count({ where: { ...whereClause, status: 'Completed' } });
     const cancelledOrders = await Order.count({ where: { ...whereClause, status: 'Cancelled' } });
     const totalValue = await Order.sum('total', { where: whereClause }) || 0;
-    const thisMonthValue = await Order.sum('total', { 
-      where: { 
+    const thisMonthValue = await Order.sum('total', {
+      where: {
         ...whereClause,
         orderDate: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
-      } 
+      }
     }) || 0;
-
     const recentOrders = await Order.findAll({
       where: whereClause,
       order: [['orderDate', 'DESC']],
       limit: 5,
       attributes: ['id', 'status', 'total', 'orderDate', 'paymentStatus'],
-      include: [{ model: User, as: 'User', attributes: ['name', 'email'] }]
+      include: [{ model: User, as: 'user', attributes: ['name', 'email'] }]
     });
-
     res.json({
       success: true,
       stats: {
@@ -957,12 +918,12 @@ const getOrderStats = async (req, res) => {
         total: parseFloat(order.total),
         orderDate: order.orderDate,
         paymentStatus: order.paymentStatus,
-        customerName: order.User ? order.User.name : 'Unknown'
+        customerName: order.user ? order.user.name : 'Unknown'
       }))
     });
   } catch (error) {
     console.error('❌ GET ORDER STATS ERROR:', error);
-    res.status(400).json({ 
+    res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch order statistics',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -1012,7 +973,7 @@ const getAvailableAddresses = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ GET AVAILABLE ADDRESSES ERROR:', error);
-    res.status(400).json({ 
+    res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch available addresses',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined

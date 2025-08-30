@@ -1,3 +1,4 @@
+// models/Enquiry.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -11,12 +12,12 @@ const Enquiry = sequelize.define(
     },
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: true, // Made nullable to fix the error
+      allowNull: true,
       references: {
         model: "users",
         key: "id",
       },
-      onDelete: 'SET NULL', // Set to null if user is deleted
+      onDelete: 'SET NULL',
       onUpdate: 'CASCADE',
     },
     productId: {
@@ -26,7 +27,7 @@ const Enquiry = sequelize.define(
         model: "products",
         key: "id",
       },
-      onDelete: 'SET NULL', // Set to null if product is deleted
+      onDelete: 'SET NULL',
       onUpdate: 'CASCADE',
     },
     name: {
@@ -132,6 +133,17 @@ const Enquiry = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    pincode: { // New field
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        isPincode(value) {
+          if (value && !/^\d{6}$/.test(value)) {
+            throw new Error('Pincode must be a 6-digit number');
+          }
+        }
+      }
+    },
   },
   {
     tableName: "enquiries",
@@ -151,6 +163,9 @@ const Enquiry = sequelize.define(
       },
       {
         fields: ['createdAt']
+      },
+      {
+        fields: ['pincode'] // Add index for pincode if needed for searching
       }
     ]
   }
