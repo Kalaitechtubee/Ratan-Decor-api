@@ -43,65 +43,123 @@ const sendOTP = async (email, otp) => {
   }
 };
 
+const REGISTRATION_RULES = {
+  // Public self-registration roles (no approval needed)
+  PUBLIC_ROLES: ['General', 'Customer'],
+  
+  // Self-registration roles that need approval
+  BUSINESS_ROLES: ['Architect', 'Dealer'],
+  
+  // Staff roles that only admins/managers can create
+  STAFF_ROLES: ['Manager', 'Sales', 'Support'],
+  
+  // Admin role - only other admins can create
+  ADMIN_ROLES: ['Admin']
+};
+
+// Enhanced registration with role-based logic
 const register = async (req, res) => {
   try {
     const {
       name, email, password, role,
       phone, company, address,
       mobile, country, state, city, pincode,
-      userTypeId, userTypeName
+      userTypeId, userTypeName,
+      createdBy // Admin/Manager creating user
     } = req.body;
 
+    // Validate required fields
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, email, and password are required' 
+      });
+    }
+
+    // Check if user exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
-      return res.status(400).json({ message: 'User with this email already exists' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User with this email already exists' 
+      });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
+    const requestedRole = role || 'General';
     let initialStatus = 'Approved';
     let requiresApproval = false;
+    let canCreate = false;
 
-    switch (role) {
-      case 'General':
-      case 'customer':
-        initialStatus = 'Approved';
-        requiresApproval = false;
-        break;
-      case 'Architect':
-      case 'Dealer':
-      case 'Admin':
-      case 'Manager':
-      case 'Sales':
-      case 'Support':
-        initialStatus = 'Pending';
-        requiresApproval = true;
-        break;
-      default:
-        initialStatus = 'Approved';
-        requiresApproval = false;
+    // Determine if registration is allowed based on role and creator
+    if (REGISTRATION_RULES.PUBLIC_ROLES.includes(requestedRole)) {
+      // Anyone can self-register as General/Customer
+      canCreate = true;
+      initialStatus = 'Approved';
+      requiresApproval = false;
+    } 
+    else if (REGISTRATION_RULES.BUSINESS_ROLES.includes(requestedRole)) {
+      // Self-registration for business roles (needs approval)
+      canCreate = true;
+      initialStatus = 'Pending';
+      requiresApproval = true;
     }
-    
-    // Handle userType - either by ID or name
+    else if (REGISTRATION_RULES.STAFF_ROLES.includes(requestedRole)) {
+      // Only Admin/Manager can create staff roles
+      if (!createdBy) {
+        return res.status(403).json({
+          success: false,
+          message: 'Staff roles can only be created by Admin or Manager'
+        });
+      }
+      canCreate = true;
+      initialStatus = 'Approved'; // Staff created by admin are pre-approved
+      requiresApproval = false;
+    }
+    else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRole)) {
+      // Only Admin can create Admin
+      if (!createdBy) {
+        return res.status(403).json({
+          success: false,
+          message: 'Admin role can only be created by existing Admin'
+        });
+      }
+      canCreate = true;
+      initialStatus = 'Approved';
+      requiresApproval = false;
+    }
+    else {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role: ${requestedRole}`
+      });
+    }
+
+    if (!canCreate) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to create this role'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Handle userType
     let finalUserTypeId = userTypeId;
     if (!finalUserTypeId && userTypeName) {
-      // Try to find userType by name
       const userType = await UserType.findOne({ where: { name: userTypeName } });
       if (userType) {
         finalUserTypeId = userType.id;
       }
     }
-    
-    // If no userType specified, use default based on role
+
+    // Default userType based on role
     if (!finalUserTypeId) {
-      // Find or create a default userType based on role
-      let defaultTypeName = role === 'General' || role === 'customer' ? 'General' : role;
+      let defaultTypeName = ['General', 'Customer'].includes(requestedRole) ? 'General' : requestedRole;
       let defaultType = await UserType.findOne({ where: { name: defaultTypeName } });
       if (!defaultType) {
-        // Fallback to General if specific role type doesn't exist
         defaultType = await UserType.findOne({ where: { name: 'General' } });
         if (!defaultType) {
-          // Create General type if it doesn't exist
           defaultType = await UserType.create({
             name: 'General',
             description: 'Default user type',
@@ -112,11 +170,12 @@ const register = async (req, res) => {
       finalUserTypeId = defaultType.id;
     }
 
+    // Create user
     const userData = {
       name,
       email,
       password: hashedPassword,
-      role: role || 'General',
+      role: requestedRole,
       status: initialStatus,
       mobile: mobile || phone,
       address,
@@ -125,18 +184,19 @@ const register = async (req, res) => {
       city,
       pincode,
       company,
-      userTypeId: finalUserTypeId
+      userTypeId: finalUserTypeId,
+      createdBy: createdBy || null
     };
 
     const user = await User.create(userData);
 
-    // If profile address is provided, create a default shipping address for convenience
+    // Create default shipping address if provided
     if (address && city && state && country && pincode) {
       try {
         await ShippingAddress.create({
           userId: user.id,
           name: name,
-          phone: mobile || null,
+          phone: mobile || phone || null,
           address, city, state, country, pincode,
           isDefault: true,
           addressType: 'Home'
@@ -146,19 +206,76 @@ const register = async (req, res) => {
       }
     }
 
+    // Response
     const response = {
+      success: true,
       message: requiresApproval 
         ? 'Registration successful. Your account is pending approval.' 
         : 'Registration successful. You can now login.',
-      userId: user.id,
-      requiresApproval,
-      status: initialStatus
+      data: {
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: initialStatus,
+        requiresApproval
+      }
     };
 
     res.status(201).json(response);
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+};
+// Admin/Manager endpoint to create staff users
+const createStaffUser = async (req, res) => {
+  try {
+    const creator = req.user;
+    
+    // Verify creator permissions
+    if (!['Admin', 'Manager'].includes(creator.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Admin or Manager can create staff users'
+      });
+    }
+
+    const { role } = req.body;
+
+    // Managers cannot create Admins
+    if (creator.role === 'Manager' && role === 'Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Managers cannot create Admin users'
+      });
+    }
+
+    // Validate staff role
+    const allowedRoles = creator.role === 'Admin' 
+      ? ['Manager', 'Sales', 'Support', 'Admin']
+      : ['Manager', 'Sales', 'Support'];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Allowed roles: ${allowedRoles.join(', ')}`
+      });
+    }
+
+    // Call the main register function with createdBy flag
+    req.body.createdBy = creator.id;
+    return register(req, res);
+    
+  } catch (error) {
+    console.error('Create staff user error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 };
 
@@ -418,5 +535,7 @@ module.exports = {
   getProfile,
   forgotPassword,
   resetPassword,
-  verifyOTP
+  verifyOTP,
+  createStaffUser,
+
 };

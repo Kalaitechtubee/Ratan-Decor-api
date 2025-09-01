@@ -1,4 +1,4 @@
-// productRoutes.js
+// routes/products.js - Product Management (Support focused)
 const express = require('express');
 const router = express.Router();
 const {
@@ -13,22 +13,44 @@ const {
   addProductRating,
   getProductRatings
 } = require('./productController');
-const { uploadSingle, uploadMultiple, handleUploadError, validateImage, authMiddleware, requireRole } = require('../middleware');
+const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 
-// Public routes
+// Public routes (no auth needed)
 router.get('/', getProducts);
 router.get('/name/:name', getProductByName);
 router.get('/search', searchProductsByName);
 router.get('/:id', getProductById);
 router.get('/:productId/ratings', getProductRatings);
 
-// Protected routes (Admin/Manager only)
-router.post('/', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, validateImage, createProduct);
-router.patch('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, updateProduct);
-router.put('/:id', authMiddleware, requireRole(['Admin', 'Manager']), uploadMultiple, handleUploadError, validateImage, updateProductAll);
-router.delete('/:id', authMiddleware, requireRole(['Admin', 'Manager']), deleteProduct);
+// Product management (Admin, Manager, Support only)
+router.post('/', 
+  authenticateToken, 
+  moduleAccess.requireSupportAccess, 
+  createProduct
+);
 
-// User rating routes (authenticated users)
-router.post('/:productId/rate', authMiddleware, addProductRating);
+router.patch('/:id', 
+  authenticateToken, 
+  moduleAccess.requireSupportAccess, 
+  updateProduct
+);
+
+router.put('/:id', 
+  authenticateToken, 
+  moduleAccess.requireSupportAccess, 
+  updateProductAll
+);
+
+router.delete('/:id', 
+  authenticateToken, 
+  moduleAccess.requireManagerOrAdmin, // Only Admin/Manager can delete
+  deleteProduct
+);
+
+// User rating (any authenticated user)
+router.post('/:productId/rate', 
+  authenticateToken, 
+  addProductRating
+);
 
 module.exports = router;

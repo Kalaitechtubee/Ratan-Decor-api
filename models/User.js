@@ -65,7 +65,46 @@ module.exports = (sequelize, DataTypes) => {
       },
       onDelete: 'SET NULL',
       onUpdate: 'CASCADE'
+    },
+
+    // NEW FIELDS --------------------------------------
+
+    // User created by (self-referencing FK)
+    createdBy: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'Users', // self-reference
+        key: 'id'
+      },
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    },
+
+    // Rejection reason (when status = Rejected)
+    rejectionReason: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+
+    // Track last login
+    lastLoginAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+
+    // Login attempt count
+    loginAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
+
+    // Account lock timestamp
+    lockedUntil: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
+
   }, {
     tableName: 'users',
     timestamps: true

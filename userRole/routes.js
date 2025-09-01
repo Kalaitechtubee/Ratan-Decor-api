@@ -1,44 +1,39 @@
-// routes/users.js
+// routes/userRoles.js - User Role Management
 const express = require('express');
 const router = express.Router();
-const userRoleController = require('../userRole/controller'); // Adjust path if needed
-const { authMiddleware: authenticateToken, requireRole: authorizeRoles } = require('../middleware');
+const userRoleController = require('../userRole/controller');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
 
 // All routes require authentication
 router.use(authenticateToken);
 
-// ✅ Get all roles
-router.get(
-  '/roles',
-  authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']),
+// Get all roles (Admin, Manager, Sales, Support can view)
+router.get('/', 
+  moduleAccess.requireStaffAccess, 
   userRoleController.getAllRoles
 );
 
-// ✅ Get users by role/status/search
-router.get(
-  '/users',
-  authorizeRoles(['Admin', 'Manager', 'Sales', 'Support']),
+// Get users by role/status/search (Admin, Manager, Sales, Support can view)
+router.get('/users', 
+  moduleAccess.requireStaffAccess, 
   userRoleController.getUsersByRole
 );
 
-// ✅ Update user role / status / userType
-router.put(
-  '/users/:id/role',
-  authorizeRoles(['Admin', 'Manager']),
+// Update user role/userType (Admin, Manager only)
+router.put('/users/:id/role', 
+  moduleAccess.requireManagerOrAdmin, 
   userRoleController.updateUserRole
 );
 
-// ✅ Update user status (Pending → Approved/Rejected)
-router.put(
-  '/users/:id/status',
-  authorizeRoles(['Admin', 'Manager']),
+// Update user status (Admin, Manager only)
+router.put('/users/:id/status', 
+  moduleAccess.requireManagerOrAdmin, 
   userRoleController.updateUserStatus
 );
 
-// ✅ Get role stats
-router.get(
-  '/stats',
-  authorizeRoles(['Admin', 'Manager']),
+// Get role statistics (Admin, Manager only)
+router.get('/stats', 
+  moduleAccess.requireManagerOrAdmin, 
   userRoleController.getRoleStats
 );
 

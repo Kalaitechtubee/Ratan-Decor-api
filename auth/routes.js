@@ -1,7 +1,9 @@
+// routes/auth.js - Enhanced Authentication Routes
 const express = require('express');
 const router = express.Router();
 const { 
   register, 
+  createStaffUser,
   login, 
   checkStatus, 
   resendApproval, 
@@ -11,22 +13,29 @@ const {
   resetPassword,
   verifyOTP
 } = require('./controller');
-const { authMiddleware } = require('../middleware');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
 
-// Public routes
-router.post('/register', register);
+// Public routes (no authentication required)
+router.post('/register', register); // Self-registration for General, Customer, Architect, Dealer
 router.post('/login', login);
 router.get('/status/:email', checkStatus);
 router.post('/resend-approval', resendApproval);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
-router.post('/verify-otp', verifyOTP); // New OTP verification endpoint
+router.post('/verify-otp', verifyOTP);
 
-// Protected routes
-router.get('/profile', authMiddleware, getProfile);
-router.put('/profile', authMiddleware, updateUser);
-router.post('/logout', authMiddleware, (req, res) => {
-  res.json({ message: 'Logout successful' });
+// Admin/Manager routes for creating staff
+router.post('/create-staff', 
+  authenticateToken, 
+  moduleAccess.requireManagerOrAdmin, 
+  createStaffUser
+);
+
+// Protected user routes
+router.get('/profile', authenticateToken, getProfile);
+router.put('/profile', authenticateToken, updateUser);
+router.post('/logout', authenticateToken, (req, res) => {
+  res.json({ success: true, message: 'Logout successful' });
 });
 
 module.exports = router;

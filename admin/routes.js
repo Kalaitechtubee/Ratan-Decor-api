@@ -1,3 +1,4 @@
+// routes/admin.js - Admin Management Routes
 const express = require('express');
 const router = express.Router();
 const {
@@ -5,23 +6,16 @@ const {
   getAllUsers,
   approveUser,
   getUserStats,
-} = require('./controller');
-const { authMiddleware, requireAdmin } = require('../middleware');
+} = require('../admin/controller');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
 
-// 🔐 All admin routes require authentication & admin access
-router.use(authMiddleware);
-router.use(requireAdmin);
+// All admin routes require authentication
+router.use(authenticateToken);
 
-// Get pending users (with pagination + search)
-router.get('/users/pending', getPendingUsers);
-
-// Get all users (with pagination + search)
-router.get('/users', getAllUsers);
-
-// Approve or reject a user
-router.put('/users/:userId/approve', approveUser);
-
-// Get role/status statistics
-router.get('/stats', getUserStats);
+// User management (Admin only)
+router.get('/users/pending', moduleAccess.requireAdmin, getPendingUsers);
+router.get('/users', moduleAccess.requireAdmin, getAllUsers);
+router.put('/users/:userId/approve', moduleAccess.requireAdmin, approveUser);
+router.get('/stats', moduleAccess.requireAdmin, getUserStats);
 
 module.exports = router;
