@@ -581,6 +581,52 @@ async getEnquiryById(req, res) {
       });
     }
   },
+
+  // Add this to enquiryController object in enquiry/controller.js
+async deleteEnquiry(req, res) {
+  try {
+    const { id } = req.params;
+
+    // Validate enquiry ID
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid enquiry ID",
+      });
+    }
+
+    // Find the enquiry
+    const enquiry = await Enquiry.findByPk(id);
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: "Enquiry not found",
+      });
+    }
+
+    // Check authorization (only Admin or Manager can delete)
+    if (!['Admin', 'Manager'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Admin or Manager can delete enquiries",
+      });
+    }
+
+    // Delete the enquiry (cascading delete will handle related internal notes due to onDelete: 'CASCADE' in EnquiryInternalNote model)
+    await enquiry.destroy();
+
+    res.json({
+      success: true,
+      message: "Enquiry deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete enquiry error:", error);
+    res.status(500).json({
+      success: false,
+      message: `Error deleting enquiry: ${error.message}`,
+    });
+  }
+},
   // ADD INTERNAL NOTE (separate method)
 async addInternalNote(req, res) {
   try {
@@ -879,6 +925,7 @@ async getFollowUpDashboard(req, res) {
     res.status(500).json({ success: false, message: error.message });
   }
 }
+
 };
 
 module.exports = enquiryController;

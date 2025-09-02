@@ -1,40 +1,8 @@
-// // middleware/index.js - FIXED VERSION
-// const jwt = require('jsonwebtoken');
-// require('dotenv').config();
-
-// const authMiddleware = (req, res, next) => {
-//   const token = req.header("Authorization")?.replace("Bearer ", "");
-  
-//   if (!token) {
-//     return res.status(401).json({ error: "No token provided" });
-//   }
-
-//   try {
-//     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-//     console.log('Decoded token:', decoded); // Debug log
-    
-//     // Ensure req.user has the correct structure
-//     req.user = {
-//       id: decoded.id,
-//       role: decoded.role,
-//       email: decoded.email,
-//       status: decoded.status,
-//       userTypeId: decoded.userTypeId
-//     };
-    
-//     console.log('req.user set to:', req.user); // Debug log
-//     next();
-//   } catch (err) {
-//     console.error('Token verification error:', err);
-//     return res.status(401).json({ error: "Invalid token" });
-//   }
-// };
-
-// module.exports = { authMiddleware };
-// middleware/auth.js
+// middleware/auth.js - Enhanced Authentication & Authorization with SuperAdmin
 const jwt = require('jsonwebtoken');
 const { User, UserType } = require('../models');
 
+// Main authentication middleware
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.header("Authorization");
@@ -49,59 +17,153 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret");
+    
+    // Fetch user from database to ensure current data
     const user = await User.findByPk(decoded.id, {
       include: [{ model: UserType, as: "userType", attributes: ["id", "name"] }],
     });
 
     if (!user) {
-      return res.status(401).json({ success: false, message: "User not found" });
+      return res.status(401).json({
+        success: false,
+        message: "User not found"
+      });
     }
 
+    // FIXED: Check if user is approved (SuperAdmin and Admin bypass pending check)
+    if (!['SuperAdmin', 'Admin'].includes(user.role) && user.status !== 'Approved') {
+      return res.status(403).json({
+        success: false,
+        message: user.status === 'Pending'
+          ? "Account pending approval. Please wait for admin approval."
+          : "Account has been rejected. Contact support for assistance.",
+        status: user.status,
+      });
+    }
+
+    // Set user info on request object
     req.user = {
       id: user.id,
       role: user.role,
       email: user.email,
+      name: user.name,
+      mobile: user.mobile,
       status: user.status,
       userTypeId: user.userTypeId,
       userTypeName: user.userType?.name,
+      company: user.company
     };
-
+    req.token = token;
     next();
   } catch (err) {
-    return res.status(401).json({ success: false, message: "Invalid token" });
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Token expired. Please login again.",
+      });
+    }
+    return res.status(401).json({
+      success: false,
+      message: "Invalid token"
+    });
   }
 };
 
-// Role checker
+// Role authorization middleware factory
 const authorizeRoles = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: "Authentication required" });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
+      });
     }
+
     const userRole = req.user.role;
+    
+    // SuperAdmin always has access (unless explicitly excluded)
+    if (userRole === 'SuperAdmin' && !allowedRoles.includes('!SuperAdmin')) {
+      return next();
+    }
+
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: `Access denied for role ${userRole}`,
         requiredRoles: allowedRoles,
+        userRole: userRole
       });
     }
     next();
   };
 };
 
-// --- Specific Role Middlewares ---
-const requireAdmin = authorizeRoles(["Admin"]);
-const requireManager = authorizeRoles(["Admin", "Manager"]);
-const requireSales = authorizeRoles(["Sales"]);
-const requireSupport = authorizeRoles(["Support"]);
+// UPDATED: Module-specific access control with SuperAdmin support
+const moduleAccess = {
+  // SuperAdmin: Full control over everything
+  requireSuperAdmin: authorizeRoles(["SuperAdmin"]),
+  
+  // Admin: Full control over everything except SuperAdmin functions
+  requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
+  
+  // Manager: Can approve/reject, manage roles, view stats
+  requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin", "Manager"]),
+  
+  // Sales: Access to Enquiries + Orders modules only
+  requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales"]),
+  
+  // Support: Access to Products module only
+  requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Support"]),
+  
+  // Business users: Limited access to own data
+  requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Dealer", "Architect"]),
+  
+  // Any authenticated user
+  requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
+  
+  // Staff roles (internal users)
+  requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
+};
+
+// UPDATED: Data access control middleware
+const requireOwnDataOrStaff = (req, res, next) => {
+  const userRole = req.user.role;
+  const requestedUserId = req.params.userId || req.params.id;
+  
+  // SuperAdmin and staff can access any data
+  if (['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
+    return next();
+  }
+  
+  // Non-staff can only access their own data
+  if (requestedUserId && parseInt(requestedUserId) !== req.user.id) {
+    return res.status(403).json({
+      success: false,
+      message: "You can only access your own data"
+    });
+  }
+  
+  next();
+};
+
+// Legacy aliases for backward compatibility
+const authMiddleware = authenticateToken;
+const requireRole = authorizeRoles;
 
 module.exports = {
   authenticateToken,
+  authMiddleware, // Legacy alias
   authorizeRoles,
-  requireAdmin,
-  requireManager,
-  requireSales,
-  requireSupport,
+  requireRole, // Legacy alias
+  moduleAccess,
+  requireOwnDataOrStaff,
+  
+  // Individual role requirements
+  requireSuperAdmin: moduleAccess.requireSuperAdmin,
+  requireAdmin: moduleAccess.requireAdmin,
+  requireManager: moduleAccess.requireManagerOrAdmin,
+  requireSales: moduleAccess.requireSalesAccess,
+  requireSupport: moduleAccess.requireSupportAccess,
 };
