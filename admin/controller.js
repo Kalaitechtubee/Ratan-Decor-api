@@ -1,10 +1,8 @@
 const { User } = require('../models');
 const { Op, fn, col } = require('sequelize');
-
-// Import canCreateRole from the auth controller where it is defined
 const { canCreateRole } = require('../auth/controller');
 
-// Get all pending users (with pagination + search)
+// Get all pending users
 const getPendingUsers = async (req, res) => {
   try {
     const { page = 1, limit = 10, search } = req.query;
@@ -41,13 +39,12 @@ const getPendingUsers = async (req, res) => {
   }
 };
 
-// Get all users (with pagination + search)
+// Get all users with filters
 const getAllUsers = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, role, status } = req.query;
     const where = {};
 
-    // Add search filter
     if (search) {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
@@ -55,12 +52,10 @@ const getAllUsers = async (req, res) => {
       ];
     }
 
-    // Add role filter
     if (role && role !== 'all') {
       where.role = role;
     }
 
-    // Add status filter
     if (status && status !== 'all') {
       where.status = status;
     }
@@ -97,14 +92,13 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// Approve/Reject user (with reason support)
+// Approve/Reject user
 const approveUser = async (req, res) => {
   try {
     const { userId } = req.params;
     const { status, reason } = req.body;
     const currentUser = req.user;
 
-    // Validate required fields
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -127,7 +121,7 @@ const approveUser = async (req, res) => {
       });
     }
 
-    // SECURITY: Prevent modifying SuperAdmin or higher-level users
+    // Security: Prevent modifying SuperAdmin
     if (user.role === 'SuperAdmin') {
       return res.status(403).json({
         success: false,
@@ -135,7 +129,7 @@ const approveUser = async (req, res) => {
       });
     }
 
-    // SECURITY: Admin cannot modify other Admins (only SuperAdmin can)
+    // Security: Admin cannot modify other Admins
     if (user.role === 'Admin' && currentUser.role !== 'SuperAdmin') {
       return res.status(403).json({
         success: false,
@@ -182,7 +176,7 @@ const approveUser = async (req, res) => {
   }
 };
 
-// Get user statistics (role → status → count) with SuperAdmin
+// Get user statistics
 const getUserStats = async (req, res) => {
   try {
     const stats = await User.findAll({
@@ -200,23 +194,20 @@ const getUserStats = async (req, res) => {
       formattedStats[stat.role][stat.status] = parseInt(stat.dataValues.count);
     });
 
-    // Add role hierarchy information
-    const roleHierarchy = {
-      SuperAdmin: 100,
-      Admin: 90,
-      Manager: 80,
-      Sales: 60,
-      Support: 50,
-      Dealer: 40,
-      Architect: 40,
-      Customer: 20,
-      General: 10,
-    };
-
     res.json({
       success: true,
       data: formattedStats,
-      roleHierarchy,
+      roleHierarchy: {
+        SuperAdmin: 100,
+        Admin: 90,
+        Manager: 80,
+        Sales: 60,
+        Support: 50,
+        Dealer: 40,
+        Architect: 40,
+        Customer: 20,
+        General: 10,
+      },
     });
   } catch (error) {
     console.error('Get user stats error:', error);
@@ -224,7 +215,7 @@ const getUserStats = async (req, res) => {
   }
 };
 
-// Update user role (SuperAdmin/Admin only)
+// Update user role
 const updateUserRole = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -246,7 +237,7 @@ const updateUserRole = async (req, res) => {
       });
     }
 
-    // SECURITY: Role-based permissions for updates
+    // Security: Role-based permissions
     if (role && !canCreateRole(currentUser.role, role)) {
       return res.status(403).json({
         success: false,
@@ -254,7 +245,7 @@ const updateUserRole = async (req, res) => {
       });
     }
 
-    // SECURITY: Cannot modify SuperAdmin (except by SuperAdmin)
+    // Security: Cannot modify SuperAdmin
     if (user.role === 'SuperAdmin' && currentUser.role !== 'SuperAdmin') {
       return res.status(403).json({
         success: false,

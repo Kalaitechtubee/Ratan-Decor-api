@@ -1,4 +1,3 @@
-// middleware/auth.js - Enhanced Authentication & Authorization with SuperAdmin
 const jwt = require('jsonwebtoken');
 const { User, UserType } = require('../models');
 
@@ -20,7 +19,7 @@ const authenticateToken = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret");
     
-    // Fetch user from database to ensure current data
+    // Fetch user from database
     const user = await User.findByPk(decoded.id, {
       include: [{ model: UserType, as: "userType", attributes: ["id", "name"] }],
     });
@@ -32,7 +31,7 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // FIXED: Check if user is approved (SuperAdmin and Admin bypass pending check)
+    // Check if user is approved (SuperAdmin and Admin bypass pending check)
     if (!['SuperAdmin', 'Admin'].includes(user.role) && user.status !== 'Approved') {
       return res.status(403).json({
         success: false,
@@ -71,7 +70,7 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Role authorization middleware factory
+// Role authorization middleware
 const authorizeRoles = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -83,8 +82,8 @@ const authorizeRoles = (allowedRoles) => {
 
     const userRole = req.user.role;
     
-    // SuperAdmin always has access (unless explicitly excluded)
-    if (userRole === 'SuperAdmin' && !allowedRoles.includes('!SuperAdmin')) {
+    // SuperAdmin always has access
+    if (userRole === 'SuperAdmin') {
       return next();
     }
 
@@ -100,7 +99,7 @@ const authorizeRoles = (allowedRoles) => {
   };
 };
 
-// UPDATED: Module-specific access control with SuperAdmin support
+// Module-specific access control
 const moduleAccess = {
   // SuperAdmin: Full control over everything
   requireSuperAdmin: authorizeRoles(["SuperAdmin"]),
@@ -127,7 +126,7 @@ const moduleAccess = {
   requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
 };
 
-// UPDATED: Data access control middleware
+// Data access control middleware
 const requireOwnDataOrStaff = (req, res, next) => {
   const userRole = req.user.role;
   const requestedUserId = req.params.userId || req.params.id;
@@ -148,22 +147,9 @@ const requireOwnDataOrStaff = (req, res, next) => {
   next();
 };
 
-// Legacy aliases for backward compatibility
-const authMiddleware = authenticateToken;
-const requireRole = authorizeRoles;
-
 module.exports = {
   authenticateToken,
-  authMiddleware, // Legacy alias
   authorizeRoles,
-  requireRole, // Legacy alias
   moduleAccess,
   requireOwnDataOrStaff,
-  
-  // Individual role requirements
-  requireSuperAdmin: moduleAccess.requireSuperAdmin,
-  requireAdmin: moduleAccess.requireAdmin,
-  requireManager: moduleAccess.requireManagerOrAdmin,
-  requireSales: moduleAccess.requireSalesAccess,
-  requireSupport: moduleAccess.requireSupportAccess,
 };

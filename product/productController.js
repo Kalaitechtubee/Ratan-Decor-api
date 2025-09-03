@@ -1,4 +1,4 @@
-// productController.js
+// productController.js - Improved with better error handling
 const { Product, Category, ProductRating, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
@@ -71,6 +71,18 @@ const validateColors = (colors) => {
   return colors.every(color => typeof color === 'string' && color.trim().length > 0);
 };
 
+// Helper function to safely parse JSON
+const safeJsonParse = (str, fallback = null) => {
+  if (!str) return fallback;
+  if (typeof str === 'object') return str;
+  try {
+    return JSON.parse(str);
+  } catch (error) {
+    console.warn('JSON parse error:', error.message, 'Input:', str);
+    return fallback;
+  }
+};
+
 const getProducts = async (req, res) => {
   try {
     const { 
@@ -82,13 +94,12 @@ const getProducts = async (req, res) => {
       search, 
       page = 1, 
       limit = 20,
-      isActive // New query parameter for active/inactive filter
+      isActive 
     } = req.query;
     const userRole = getReqUserRole(req);
 
     const whereClause = {};
 
-    // Add isActive filter if provided
     if (isActive !== undefined) {
       whereClause.isActive = isActive === 'true' || isActive === true;
     }
@@ -125,7 +136,6 @@ const getProducts = async (req, res) => {
 
     const offset = (page - 1) * limit;
     
-    // Get count of active and inactive products separately
     const activeCount = await Product.count({ 
       where: { ...whereClause, isActive: true }
     });
@@ -150,10 +160,10 @@ const getProducts = async (req, res) => {
 
     res.json({
       products: processedProducts,
-      count, // Count of products matching current filter
-      totalCount, // Total products (active + inactive)
-      activeCount, // Count of active products
-      inactiveCount, // Count of inactive products
+      count,
+      totalCount,
+      activeCount,
+      inactiveCount,
       totalPages: Math.ceil(count / limit),
       currentPage: Number(page),
       userType: userType || null,
@@ -166,6 +176,200 @@ const getProducts = async (req, res) => {
   }
 };
 
+const createProduct = async (req, res) => {
+  try {
+    // Enhanced debugging
+    console.log('=== CREATE PRODUCT DEBUG ===');
+    console.log('Content-Type:', req.headers['content-type']);
+    console.log('Request Body Keys:', Object.keys(req.body));
+    console.log('Request Body:', req.body);
+    console.log('Files Object:', req.files);
+    
+    // Check if body is empty (multipart not parsed)
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.error('ERROR: Request body is empty - multipart middleware may not be working');
+      return res.status(400).json({ 
+        message: 'Request body is empty. Make sure you are using multipart/form-data and the upload middleware is properly configured.',
+        debug: {
+          contentType: req.headers['content-type'],
+          bodyKeys: Object.keys(req.body || {}),
+          hasFiles: !!req.files
+        }
+      });
+    }
+
+    const {
+      name,
+      description,
+      specifications,
+      visibleTo,
+      mrpPrice,
+      generalPrice,
+      architectPrice,
+      dealerPrice,
+      designNumber,
+      size,
+      thickness,
+      categoryId,
+      productUsageTypeId,
+      colors,
+      gst,
+      brandName
+    } = req.body;
+
+    // Enhanced validation with better error messages
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      console.error('Validation Error: Invalid name', { name, type: typeof name });
+      return res.status(400).json({ 
+        message: 'Product name is required and must be a non-empty string',
+        received: { name, type: typeof name }
+      });
+    }
+
+    // Validate required prices with detailed error messages
+    const priceValidations = [
+      { field: 'generalPrice', value: generalPrice, name: 'General price' },
+      { field: 'architectPrice', value: architectPrice, name: 'Architect price' },
+      { field: 'dealerPrice', value: dealerPrice, name: 'Dealer price' }
+    ];
+
+    for (const validation of priceValidations) {
+      const { field, value, name } = validation;
+      if (value === undefined || value === null || value === '' || isNaN(value) || Number(value) <= 0) {
+        console.error(`Validation Error: Invalid ${field}`, { [field]: value, type: typeof value });
+        return res.status(400).json({ 
+          message: `${name} is required and must be a positive number`,
+          received: { [field]: value, type: typeof value }
+        });
+      }
+    }
+
+    // Validate pricing order
+    const dealerPriceNum = Number(dealerPrice);
+    const architectPriceNum = Number(architectPrice);
+    const generalPriceNum = Number(generalPrice);
+
+    if (dealerPriceNum >= architectPriceNum || architectPriceNum >= generalPriceNum) {
+      return res.status(400).json({ 
+        message: 'Invalid pricing order: dealerPrice < architectPrice < generalPrice',
+        received: {
+          dealerPrice: dealerPriceNum,
+          architectPrice: architectPriceNum,
+          generalPrice: generalPriceNum
+        }
+      });
+    }
+
+    // Handle images
+    let imageFilenames = [];
+    if (req.files && req.files.image && req.files.image[0]) {
+      imageFilenames.push(req.files.image[0].filename);
+    }
+    if (req.files && req.files.images) {
+      imageFilenames = [...imageFilenames, ...req.files.images.map(file => file.filename)];
+    }
+
+    // Parse JSON fields safely
+    const parsedSpecifications = safeJsonParse(specifications, {});
+    const parsedVisibleTo = safeJsonParse(visibleTo, ['Residential', 'Commercial', 'Modular Kitchen', 'Others']);
+    const parsedColors = safeJsonParse(colors, []);
+
+    // Validate parsed fields
+    if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
+      return res.status(400).json({ 
+        message: 'Invalid visibleTo values: must be a non-empty array',
+        received: parsedVisibleTo
+      });
+    }
+
+    if (parsedColors && !validateColors(parsedColors)) {
+      return res.status(400).json({ 
+        message: 'Invalid colors: must be an array of non-empty strings',
+        received: parsedColors
+      });
+    }
+
+    // Validate GST
+    if (gst !== undefined && gst !== null && gst !== '' && (isNaN(gst) || Number(gst) < 0 || Number(gst) > 100)) {
+      return res.status(400).json({ 
+        message: 'Invalid GST: must be a number between 0 and 100',
+        received: { gst, type: typeof gst }
+      });
+    }
+
+    // Validate categoryId if provided
+    if (categoryId && categoryId !== '' && categoryId !== 'null') {
+      const exists = await Category.findByPk(categoryId);
+      if (!exists) {
+        return res.status(400).json({ 
+          message: 'Invalid categoryId (category not found)',
+          received: categoryId
+        });
+      }
+    }
+
+    // Prepare product data
+    const productData = {
+      name: name.trim(),
+      description: description || null,
+      image: imageFilenames[0] || null,
+      images: imageFilenames.length > 0 ? imageFilenames : [],
+      specifications: parsedSpecifications,
+      visibleTo: parsedVisibleTo,
+      mrpPrice: mrpPrice && mrpPrice !== '' && mrpPrice !== 'null' ? Number(mrpPrice) : null,
+      generalPrice: Number(generalPrice),
+      architectPrice: Number(architectPrice),
+      dealerPrice: Number(dealerPrice),
+      designNumber: designNumber || null,
+      size: size || null,
+      thickness: thickness || null,
+      categoryId: (categoryId && categoryId !== '' && categoryId !== 'null') ? categoryId : null,
+      productUsageTypeId: (productUsageTypeId && productUsageTypeId !== '' && productUsageTypeId !== 'null') ? productUsageTypeId : null,
+      colors: parsedColors,
+      gst: (gst && gst !== '' && gst !== 'null') ? parseFloat(gst) : null,
+      brandName: brandName || null,
+      averageRating: 0.00,
+      totalRatings: 0,
+      isActive: true
+    };
+
+    console.log('Creating product with data:', productData);
+
+    // Create product
+    const product = await Product.create(productData);
+
+    console.log('Product created successfully:', product.id);
+
+    // Return processed product
+    res.status(201).json({
+      message: 'Product created successfully',
+      product: processProductData(product, req)
+    });
+  } catch (error) {
+    console.error('Create product error:', error);
+    
+    // Enhanced error response
+    const errorResponse = {
+      message: error.message || 'Failed to create product',
+      debug: {
+        name: error.name,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }
+    };
+
+    if (error.errors) {
+      errorResponse.validationErrors = error.errors.map(err => ({
+        field: err.path,
+        message: err.message,
+        value: err.value
+      }));
+    }
+
+    res.status(400).json(errorResponse);
+  }
+};
+
+// ... (keep all other existing methods unchanged)
 const getProductByName = async (req, res) => {
   try {
     const { name } = req.params;
@@ -261,121 +465,6 @@ const searchProductsByName = async (req, res) => {
   }
 };
 
-const createProduct = async (req, res) => {
-  try {
-    const {
-      name,
-      description,
-      specifications,
-      visibleTo,
-      mrpPrice,
-      generalPrice,
-      architectPrice,
-      dealerPrice,
-      designNumber,
-      size,
-      thickness,
-      categoryId,
-      productUsageTypeId,
-      colors,
-      gst,
-      brandName
-    } = req.body;
-
-    let imageFilenames = [];
-    if (req.files && req.files.image && req.files.image[0]) {
-      imageFilenames.push(req.files.image[0].filename);
-    }
-    if (req.files && req.files.images) {
-      imageFilenames = [...imageFilenames, ...req.files.images.map(file => file.filename)];
-    }
-
-    let parsedSpecifications = specifications;
-    if (typeof specifications === 'string') {
-      try {
-        parsedSpecifications = JSON.parse(specifications);
-      } catch {
-        parsedSpecifications = {};
-      }
-    }
-
-    let parsedVisibleTo = visibleTo;
-    if (typeof visibleTo === 'string') {
-      try {
-        parsedVisibleTo = JSON.parse(visibleTo);
-      } catch {
-        parsedVisibleTo = [];
-      }
-    }
-
-    let parsedColors = colors;
-    if (typeof colors === 'string') {
-      try {
-        parsedColors = JSON.parse(colors);
-      } catch {
-        parsedColors = [];
-      }
-    }
-
-    if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
-      return res.status(400).json({ message: 'Invalid visibleTo values: must be a non-empty array' });
-    }
-
-    if (parsedColors && !validateColors(parsedColors)) {
-      return res.status(400).json({ message: 'Invalid colors: must be an array of non-empty strings' });
-    }
-
-    if (gst !== undefined && (isNaN(gst) || gst < 0 || gst > 100)) {
-      return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
-    }
-
-    if (dealerPrice >= architectPrice || architectPrice >= generalPrice) {
-      return res.status(400).json({ message: 'Invalid pricing order: dealer < architect < general' });
-    }
-
-    if (categoryId) {
-      const exists = await Category.findByPk(categoryId);
-      if (!exists) {
-        return res.status(400).json({ message: 'Invalid categoryId (category not found)' });
-      }
-    }
-
-    const productData = {
-      name,
-      description,
-      image: null,
-      images: imageFilenames,
-      specifications: parsedSpecifications,
-      visibleTo: parsedVisibleTo || [],
-      mrpPrice,
-      generalPrice,
-      architectPrice,
-      dealerPrice,
-      designNumber: designNumber || null,
-      size: size || null,
-      thickness: thickness || null,
-      categoryId,
-      productUsageTypeId,
-      colors: parsedColors,
-      gst: gst !== undefined ? parseFloat(gst) : null,
-      brandName: brandName || null,
-      averageRating: 0.00,
-      totalRatings: 0,
-      isActive: true
-    };
-
-    const product = await Product.create(productData);
-
-    res.status(201).json({
-      message: 'Product created successfully',
-      product: processProductData(product, req)
-    });
-  } catch (error) {
-    console.error('Create product error:', error);
-    res.status(400).json({ message: error.message });
-  }
-};
-
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -453,32 +542,9 @@ const updateProduct = async (req, res) => {
       newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
-    let parsedSpecifications = specifications;
-    if (typeof specifications === 'string') {
-      try {
-        parsedSpecifications = JSON.parse(specifications);
-      } catch {
-        parsedSpecifications = {};
-      }
-    }
-
-    let parsedVisibleTo = visibleTo;
-    if (typeof visibleTo === 'string') {
-      try {
-        parsedVisibleTo = JSON.parse(visibleTo);
-      } catch {
-        parsedVisibleTo = [];
-      }
-    }
-
-    let parsedColors = colors;
-    if (typeof colors === 'string') {
-      try {
-        parsedColors = JSON.parse(colors);
-      } catch {
-        parsedColors = [];
-      }
-    }
+    const parsedSpecifications = safeJsonParse(specifications, {});
+    const parsedVisibleTo = safeJsonParse(visibleTo, []);
+    const parsedColors = safeJsonParse(colors, []);
 
     if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
       return res.status(400).json({ message: 'Invalid visibleTo values: must be a non-empty array' });
@@ -592,32 +658,9 @@ const updateProductAll = async (req, res) => {
       newImageFilenames = [...newImageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
-    let parsedSpecifications = specifications;
-    if (typeof specifications === 'string') {
-      try {
-        parsedSpecifications = JSON.parse(specifications);
-      } catch {
-        parsedSpecifications = {};
-      }
-    }
-
-    let parsedVisibleTo = visibleTo;
-    if (typeof visibleTo === 'string') {
-      try {
-        parsedVisibleTo = JSON.parse(visibleTo);
-      } catch {
-        parsedVisibleTo = [];
-      }
-    }
-
-    let parsedColors = colors;
-    if (typeof colors === 'string') {
-      try {
-        parsedColors = JSON.parse(colors);
-      } catch {
-        parsedColors = [];
-      }
-    }
+    const parsedSpecifications = safeJsonParse(specifications, {});
+    const parsedVisibleTo = safeJsonParse(visibleTo, []);
+    const parsedColors = safeJsonParse(colors, []);
 
     if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
       return res.status(400).json({ message: 'Invalid visibleTo values: must be a non-empty array' });

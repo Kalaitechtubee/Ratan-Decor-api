@@ -1,4 +1,3 @@
-// routes/auth.js - Enhanced Authentication Routes
 const express = require('express');
 const router = express.Router();
 const { 
@@ -15,8 +14,8 @@ const {
 } = require('./controller');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
 
-// Public routes (no authentication required)
-router.post('/register', register); // Self-registration for General, Customer, Architect, Dealer
+// Public routes
+router.post('/register', register);
 router.post('/login', login);
 router.get('/status/:email', checkStatus);
 router.post('/resend-approval', resendApproval);

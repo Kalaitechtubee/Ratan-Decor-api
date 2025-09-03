@@ -32,11 +32,11 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Check if user is approved (except for Admins)
-    if (user.role !== 'Admin' && user.status !== 'Approved') {
+    // Check if user is approved (except for Admins and SuperAdmin)
+    if (user.role !== 'Admin' && user.role !== 'SuperAdmin' && user.status !== 'Approved') {
       return res.status(403).json({
         success: false,
-        message: user.status === 'Pending' 
+        message: user.status === 'Pending'
           ? "Account pending approval. Please wait for admin approval."
           : "Account has been rejected. Contact support for assistance.",
         status: user.status,
@@ -98,25 +98,25 @@ const authorizeRoles = (allowedRoles) => {
 // Module-specific access control based on your requirements
 const moduleAccess = {
   // Admin: Full control over everything
-  requireAdmin: authorizeRoles(["Admin"]),
+  requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
   
   // Manager: Can approve/reject, manage roles, view stats
-  requireManagerOrAdmin: authorizeRoles(["Admin", "Manager"]),
+  requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin", "Manager"]),
   
   // Sales: Access to Enquiries + Orders modules only
-  requireSalesAccess: authorizeRoles(["Admin", "Manager", "Sales"]),
+  requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales"]),
   
   // Support: Access to Products module only
-  requireSupportAccess: authorizeRoles(["Admin", "Manager", "Support"]),
+  requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Support"]),
   
   // Business users: Limited access to own data
-  requireBusinessUser: authorizeRoles(["Admin", "Manager", "Dealer", "Architect"]),
+  requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Dealer", "Architect"]),
   
   // Any authenticated user
-  requireAuth: authorizeRoles(["Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
+  requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
   
   // Staff roles (internal users)
-  requireStaffAccess: authorizeRoles(["Admin", "Manager", "Sales", "Support"])
+  requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
 };
 
 // Data access control middleware

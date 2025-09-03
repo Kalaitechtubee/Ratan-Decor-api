@@ -1,4 +1,3 @@
-// routes/orders.js - Order Management (Sales focused)
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -14,10 +13,8 @@ const {
 } = require('./controller');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 
-// All routes require authentication
 router.use(authenticateToken);
 
-// Debug token endpoint - for debugging JWT tokens
 router.post('/debug-token', (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -28,7 +25,6 @@ router.post('/debug-token', (req, res) => {
       });
     }
 
-    // Decode token without verification for debugging
     const decoded = jwt.decode(token);
     if (!decoded) {
       return res.status(401).json({
@@ -37,7 +33,6 @@ router.post('/debug-token', (req, res) => {
       });
     }
 
-    // Verify token
     const verified = jwt.verify(token, process.env.JWT_SECRET);
 
     res.json({
@@ -68,49 +63,18 @@ router.post('/debug-token', (req, res) => {
   }
 });
 
-// User addresses (own data only)
 router.get('/addresses', getAvailableAddresses);
-
-// Create order (any user can create)
 router.post('/', createOrder);
-
-// Get orders (users see own, staff see all)
 router.get('/', (req, res, next) => {
-  // If not staff, filter to own orders only
   if (!['Admin', 'Manager', 'Sales'].includes(req.user.role)) {
     req.query.userId = req.user.id;
   }
   next();
 }, getOrders);
-
-// Order statistics (Admin, Manager, Sales only)
-router.get('/stats',
-  moduleAccess.requireSalesAccess,
-  getOrderStats
-);
-
-// Get specific order (own data or staff)
-router.get('/:id',
-  requireOwnDataOrStaff,
-  getOrderById
-);
-
-// Cancel order (own data or staff)
-router.put('/:id/cancel',
-  requireOwnDataOrStaff,
-  cancelOrder
-);
-
-// Update order (Admin, Manager, Sales only)
-router.put('/:id',
-  moduleAccess.requireSalesAccess,
-  updateOrder
-);
-
-// Delete order (Admin only)
-router.delete('/:id',
-  moduleAccess.requireAdmin,
-  deleteOrder
-);
+router.get('/stats', moduleAccess.requireSalesAccess, getOrderStats);
+router.get('/:id', requireOwnDataOrStaff, getOrderById);
+router.put('/:id/cancel', requireOwnDataOrStaff, cancelOrder);
+router.put('/:id', moduleAccess.requireSalesAccess, updateOrder);
+router.delete('/:id', moduleAccess.requireAdmin, deleteOrder);
 
 module.exports = router;

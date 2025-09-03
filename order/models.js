@@ -1,4 +1,3 @@
-// models/order.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -29,7 +28,7 @@ const Order = sequelize.define('Order', {
     defaultValue: 'Awaiting',
   },
   total: {
-    type: DataTypes.DECIMAL(10, 2), // Match DB schema
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
   },
   subtotal: {
@@ -50,7 +49,7 @@ const Order = sequelize.define('Order', {
     }
   },
   deliveryAddressType: {
-    type: DataTypes.ENUM('default', 'shipping'), // Match DB schema (no 'new')
+    type: DataTypes.ENUM('default', 'shipping'),
     allowNull: true,
     defaultValue: 'default',
     comment: 'Type of address used: default (from user profile), shipping (from shipping_addresses)'
@@ -73,12 +72,9 @@ const Order = sequelize.define('Order', {
     type: DataTypes.DATE,
     allowNull: true,
   },
-  // Removed shippingProvider - not in DB schema
-  // Removed cancellationReason - not in DB schema
-  // Removed cancelledAt - not in DB schema
 }, {
   tableName: 'orders',
-  timestamps: false, // No createdAt/updatedAt in DB
+  timestamps: false,
 });
 
 const OrderItem = sequelize.define('OrderItem', {
@@ -126,7 +122,7 @@ const OrderItem = sequelize.define('OrderItem', {
   },
 }, {
   tableName: 'order_items',
-  timestamps: true, // Has createdAt/updatedAt in DB
+  timestamps: true,
 });
 
 module.exports = {

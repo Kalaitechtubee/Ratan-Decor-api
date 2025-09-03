@@ -1,4 +1,4 @@
-// routes/products.js - Product Management (Support focused)
+// routes/products.js - Fixed Product Management Routes
 const express = require('express');
 const router = express.Router();
 const {
@@ -14,6 +14,8 @@ const {
   getProductRatings
 } = require('./productController');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
+const { uploadFields, handleUploadError } = require('../middleware/upload');
+const { validateImage } = require('../middleware/imageValidation');
 
 // Public routes (no auth needed)
 router.get('/', getProducts);
@@ -23,22 +25,32 @@ router.get('/:id', getProductById);
 router.get('/:productId/ratings', getProductRatings);
 
 // Product management (Admin, Manager, Support only)
+// FIXED: Added upload middleware BEFORE authentication
 router.post('/', 
-  authenticateToken, 
-  moduleAccess.requireSupportAccess, 
-  createProduct
+  uploadFields,           // Parse multipart data FIRST
+  handleUploadError,      // Handle upload errors
+  validateImage,          // Validate images
+  authenticateToken,      // Then authenticate
+  moduleAccess.requireSupportAccess,  // Then authorize
+  createProduct           // Finally create product
 );
 
 router.patch('/:id', 
-  authenticateToken, 
-  moduleAccess.requireSupportAccess, 
-  updateProduct
+  uploadFields,           // Parse multipart data FIRST
+  handleUploadError,      // Handle upload errors
+  validateImage,          // Validate images  
+  authenticateToken,      // Then authenticate
+  moduleAccess.requireSupportAccess,  // Then authorize
+  updateProduct           // Finally update product
 );
 
 router.put('/:id', 
-  authenticateToken, 
-  moduleAccess.requireSupportAccess, 
-  updateProductAll
+  uploadFields,           // Parse multipart data FIRST
+  handleUploadError,      // Handle upload errors
+  validateImage,          // Validate images
+  authenticateToken,      // Then authenticate
+  moduleAccess.requireSupportAccess,  // Then authorize
+  updateProductAll        // Finally update product
 );
 
 router.delete('/:id', 

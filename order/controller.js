@@ -1,46 +1,14 @@
-// controllers/order.js
 const { Order, OrderItem, Product, Cart, User, Category, ShippingAddress, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const axios = require('axios');
+const {
+  processOrderProductData,
+  calculateUserPrice,
+  processJsonField,
+  getFallbackImageUrl,
+} = require('../utils/imageUtils');
 
-const getImageUrl = (filename, req) => {
-  if (!filename) return null;
-  if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
-  if (filename.startsWith('/uploads/')) return filename;
-  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
-  return `${baseUrl}/uploads/products/${filename}`;
-};
-
-const processProductData = (product, req) => {
-  const productData = product.toJSON ? product.toJSON() : product;
-  if (productData.image) {
-    productData.imageUrl = getImageUrl(productData.image, req);
-  }
-  if (productData.images && Array.isArray(productData.images)) {
-    productData.imageUrls = productData.images.map(img => getImageUrl(img, req));
-  } else {
-    productData.imageUrls = [];
-  }
-  if (!Array.isArray(productData.colors)) {
-    productData.colors = [];
-  }
-  if (!productData.specifications || typeof productData.specifications !== 'object') {
-    productData.specifications = {};
-  }
-  return productData;
-};
-
-const computePrice = (product, userRole) => {
-  switch (userRole) {
-    case 'Dealer':
-      return parseFloat(product.dealerPrice || product.generalPrice);
-    case 'Architect':
-      return parseFloat(product.architectPrice || product.generalPrice);
-    default:
-      return parseFloat(product.generalPrice);
-  }
-};
-
+// Normalize payment method
 const normalizePaymentMethod = (method) => {
   const m = (method || '').toString().toLowerCase();
   if (m === 'gateway') return 'Gateway';
@@ -50,17 +18,23 @@ const normalizePaymentMethod = (method) => {
   return method;
 };
 
+// Validate address data
 const validateAddressData = (addressData) => {
   const requiredFields = ['name', 'phone', 'address', 'city', 'state', 'country', 'pincode'];
-  return requiredFields.every(field => addressData[field] && typeof addressData[field] === 'string' && addressData[field].trim() !== '');
+  return requiredFields.every(field => 
+    addressData[field] && typeof addressData[field] === 'string' && addressData[field].trim() !== ''
+  );
 };
 
+// Prepare order address
 const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddressData) => {
   let orderAddress = null;
+  
   if (addressType === 'new' && newAddressData) {
     if (!validateAddressData(newAddressData)) {
       throw new Error('Invalid new address data provided');
     }
+    
     const newShippingAddress = await ShippingAddress.create({
       userId: req.user.id,
       name: newAddressData.name,
@@ -73,8 +47,9 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       addressType: newAddressData.addressType || 'Home',
       isDefault: newAddressData.isDefault || false
     });
+    
     orderAddress = {
-      type: 'shipping', // Changed to 'shipping' since it's stored in shipping_addresses
+      type: 'shipping',
       shippingAddressId: newShippingAddress.id,
       addressData: {
         name: newShippingAddress.name,
@@ -92,7 +67,9 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
     const shippingAddress = await ShippingAddress.findOne({
       where: { id: shippingAddressId, userId: req.user.id }
     });
+    
     if (!shippingAddress) throw new Error('Invalid shipping address selected');
+    
     orderAddress = {
       type: 'shipping',
       shippingAddressId: shippingAddress.id,
@@ -112,7 +89,9 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
+    
     const hasUsableProfileAddress = !!(user && user.address && user.city && user.state && user.country && user.pincode);
+    
     if (hasUsableProfileAddress && (addressType === 'default' || !shippingAddressId)) {
       orderAddress = {
         type: 'default',
@@ -134,10 +113,12 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       const defaultShipping = await ShippingAddress.findOne({
         where: { userId: req.user.id, isDefault: true }
       });
+      
       const anyShipping = defaultShipping || await ShippingAddress.findOne({
         where: { userId: req.user.id },
         order: [['createdAt', 'DESC']]
       });
+      
       if (!anyShipping) {
         if (hasUsableProfileAddress) {
           orderAddress = {
@@ -179,17 +160,15 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       }
     }
   }
+  
   return orderAddress;
 };
 
-// controllers/order.js
+// CREATE ORDER
 const createOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    console.log('📦 CREATE ORDER - Request details:');
-    console.log(' User ID:', req.user?.id);
-    console.log(' User Role:', req.user?.role);
-    console.log(' Body:', JSON.stringify(req.body, null, 2));
+    console.log('📦 CREATE ORDER - User:', req.user?.id, 'Role:', req.user?.role);
 
     const {
       paymentMethod,
@@ -205,20 +184,12 @@ const createOrder = async (req, res) => {
     if (!['Gateway', 'UPI', 'BankTransfer', 'COD'].includes(normalizedPaymentMethod)) {
       throw new Error('Valid payment method is required (Gateway, UPI, BankTransfer, COD)');
     }
+
     if (!['default', 'shipping', 'new'].includes(addressType)) {
       throw new Error('Address type must be "default", "shipping", or "new"');
     }
 
     let orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId, newAddressData);
-    console.log('📦 Order address prepared:', {
-      type: orderAddress.type,
-      shippingAddressId: orderAddress.shippingAddressId,
-      addressPreview: {
-        name: orderAddress.addressData.name,
-        city: orderAddress.addressData.city,
-        state: orderAddress.addressData.state
-      }
-    });
 
     let orderItems = [];
     if (items && items.length > 0) {
@@ -231,39 +202,68 @@ const createOrder = async (req, res) => {
           as: 'product',
           where: { isActive: true },
           required: true,
-          attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive']
+          include: [{ 
+            model: Category, 
+            as: 'category', 
+            attributes: ['id', 'name', 'parentId'], 
+            required: false 
+          }],
+          attributes: [
+            'id', 'name', 'description',
+            'image', 'images',
+            'generalPrice', 'dealerPrice', 'architectPrice',
+            'isActive', 'colors', 'specifications'
+            // Removed 'features' and 'dimensions' from here
+          ]
         }]
       });
+
       if (cartItems.length === 0) {
         throw new Error('No items found in cart or provided');
       }
+
       orderItems = cartItems.map(item => ({
         productId: item.productId,
         quantity: item.quantity,
-        product: item.product // Include product data for response
+        product: item.product
       }));
     }
 
-    console.log('📦 Processing order items:', orderItems.length);
     let subtotal = 0;
     const processedOrderItems = [];
+
     for (const item of orderItems) {
       const product = item.product || await Product.findByPk(item.productId, {
-        include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }],
-        attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive']
+        include: [{ 
+          model: Category, 
+          as: 'category', 
+          attributes: ['id', 'name', 'parentId'], 
+          required: false 
+        }],
+        attributes: [
+          'id', 'name', 'description',
+          'image', 'images',
+          'generalPrice', 'dealerPrice', 'architectPrice',
+          'isActive', 'colors', 'specifications'
+          // Removed 'features' and 'dimensions' from here
+        ]
       });
+
       if (!product) {
         throw new Error(`Product with ID ${item.productId} not found`);
       }
+
       if (!product.isActive) {
         throw new Error(`Product "${product.name}" is not available`);
       }
-      const unitPrice = computePrice(product, req.user.role);
+
+      const unitPrice = calculateUserPrice(product, req.user.role);
       const quantity = parseInt(item.quantity);
       const itemSubtotal = unitPrice * quantity;
       subtotal += itemSubtotal;
 
-      const processedProduct = processProductData(product, req);
+      const processedProduct = processOrderProductData(product, req, req.user.role);
+
       processedOrderItems.push({
         productId: product.id,
         quantity: quantity,
@@ -273,10 +273,12 @@ const createOrder = async (req, res) => {
         product: {
           id: product.id,
           name: product.name,
-          imageUrl: processedProduct.imageUrl,
+          imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
           imageUrls: processedProduct.imageUrls || [],
           currentPrice: unitPrice,
           isActive: product.isActive,
+          colors: processedProduct.colors || [],
+          specifications: processedProduct.specifications || {},
           category: product.category ? {
             id: product.category.id,
             name: product.category.name,
@@ -287,10 +289,6 @@ const createOrder = async (req, res) => {
     }
 
     const finalTotal = subtotal;
-    console.log('📦 Order calculations:', {
-      subtotal: subtotal.toFixed(2),
-      finalTotal: finalTotal.toFixed(2)
-    });
 
     const order = await Order.create({
       userId: req.user.id,
@@ -307,8 +305,6 @@ const createOrder = async (req, res) => {
       orderDate: new Date()
     }, { transaction });
 
-    console.log('📦 Order created with ID:', order.id);
-
     const orderItemsData = processedOrderItems.map(item => ({
       orderId: order.id,
       productId: item.productId,
@@ -319,11 +315,9 @@ const createOrder = async (req, res) => {
     }));
 
     await OrderItem.bulkCreate(orderItemsData, { transaction });
-    console.log('📦 Order items created:', orderItemsData.length);
 
     if (!items || items.length === 0) {
       await Cart.destroy({ where: { userId: req.user.id }, transaction });
-      console.log('📦 Cart cleared after order creation');
     }
 
     try {
@@ -340,13 +334,11 @@ const createOrder = async (req, res) => {
         orderDate: order.orderDate,
         deliveryAddress: orderAddress.addressData
       }, { timeout: 5000 });
-      console.log('📦 Order sent to CRM successfully');
     } catch (crmError) {
-      console.error('❌ CRM integration failed:', crmError.message);
+      console.error('CRM integration failed:', crmError.message);
     }
 
     await transaction.commit();
-    console.log('✅ Order creation completed successfully');
 
     res.status(201).json({
       success: true,
@@ -376,9 +368,10 @@ const createOrder = async (req, res) => {
         redirectToPayment: normalizedPaymentMethod === 'Gateway'
       }
     });
+
   } catch (error) {
     await transaction.rollback();
-    console.error('❌ CREATE ORDER ERROR:', error);
+    console.error('CREATE ORDER ERROR:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to create order',
@@ -387,12 +380,9 @@ const createOrder = async (req, res) => {
   }
 };
 
+// GET ORDERS
 const getOrders = async (req, res) => {
   try {
-    console.log('📋 GET ORDERS - Request details:');
-    console.log(' User ID:', req.user?.id);
-    console.log(' User Role:', req.user?.role);
-    console.log(' Query:', req.query);
     const {
       status,
       paymentStatus,
@@ -403,7 +393,9 @@ const getOrders = async (req, res) => {
       sortBy = 'orderDate',
       sortOrder = 'DESC'
     } = req.query;
-    const where = { userId: req.user.id };
+
+    const where = req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id };
+
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
     }
@@ -415,7 +407,9 @@ const getOrders = async (req, res) => {
       if (startDate) where.orderDate[Op.gte] = new Date(startDate);
       if (endDate) where.orderDate[Op.lte] = new Date(endDate);
     }
+
     const offset = (page - 1) * limit;
+
     const { count, rows: orders } = await Order.findAndCountAll({
       where,
       include: [
@@ -425,19 +419,41 @@ const getOrders = async (req, res) => {
           include: [{
             model: Product,
             as: 'product',
-            include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
+            attributes: [
+              'id', 'name', 'description',
+              'image', 'images',
+              'generalPrice', 'dealerPrice', 'architectPrice',
+              'isActive', 'colors', 'specifications'
+              // Removed 'features' and 'dimensions'
+            ],
+            include: [{ 
+              model: Category, 
+              as: 'category', 
+              attributes: ['id', 'name', 'parentId'], 
+              required: false 
+            }]
           }]
         },
-        { model: ShippingAddress, as: 'shippingAddress', required: false },
-        { model: User, as: 'user', attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], required: false }
+        { 
+          model: ShippingAddress, 
+          as: 'shippingAddress', 
+          required: false 
+        },
+        { 
+          model: User, 
+          as: 'user', 
+          attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], 
+          required: false 
+        }
       ],
       order: [[sortBy, sortOrder.toUpperCase()]],
       limit: Number(limit),
       offset: Number(offset)
     });
-    console.log('📋 Found orders:', orders.length);
+
     const processedOrders = orders.map(order => {
       const orderData = order.toJSON();
+
       let deliveryAddress = null;
       if (orderData.deliveryAddressData) {
         try {
@@ -451,6 +467,7 @@ const getOrders = async (req, res) => {
           console.warn('Failed to parse delivery address data:', e);
         }
       }
+
       if (!deliveryAddress) {
         if (orderData.shippingAddress) {
           deliveryAddress = {
@@ -482,23 +499,40 @@ const getOrders = async (req, res) => {
           };
         }
       }
+
       orderData.deliveryAddress = deliveryAddress;
+
       if (orderData.orderItems) {
         orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
           if (item.product) {
-            const processedProduct = processProductData(item.product, req);
+            const processedProduct = processOrderProductData(item.product, req, req.user.role);
+            
             itemData.product = {
-              ...processedProduct,
-              currentPrice: computePrice(item.product, req.user.role),
-              orderPrice: parseFloat(item.price)
+              id: item.product.id,
+              name: item.product.name,
+              imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
+              imageUrls: processedProduct.imageUrls || [],
+              currentPrice: calculateUserPrice(item.product, req.user.role),
+              orderPrice: parseFloat(item.price),
+              priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
+              isActive: item.product.isActive,
+              colors: processedProduct.colors || [],
+              specifications: processedProduct.specifications || {},
+              category: item.product.category ? {
+                id: item.product.category.id,
+                name: item.product.category.name,
+                parentId: item.product.category.parentId
+              } : null
             };
           }
           return itemData;
         });
       }
+
       return orderData;
     });
+
     const orderSummary = {
       totalOrders: count,
       totalPages: Math.ceil(count / limit),
@@ -507,8 +541,9 @@ const getOrders = async (req, res) => {
       statusBreakdown: {},
       paymentStatusBreakdown: {}
     };
+
     const statusStats = await Order.findAll({
-      where: { userId: req.user.id },
+      where: req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id },
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -517,14 +552,16 @@ const getOrders = async (req, res) => {
       group: ['status'],
       raw: true
     });
+
     statusStats.forEach(stat => {
       orderSummary.statusBreakdown[stat.status] = {
         count: parseInt(stat.count),
         totalAmount: parseFloat(stat.totalAmount || 0)
       };
     });
+
     const paymentStats = await Order.findAll({
-      where: { userId: req.user.id },
+      where: req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id },
       attributes: [
         'paymentStatus',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -533,23 +570,30 @@ const getOrders = async (req, res) => {
       group: ['paymentStatus'],
       raw: true
     });
+
     paymentStats.forEach(stat => {
       orderSummary.paymentStatusBreakdown[stat.paymentStatus] = {
         count: parseInt(stat.count),
         totalAmount: parseFloat(stat.totalAmount || 0)
       };
     });
-    console.log('📋 Returning', processedOrders.length, 'processed orders');
+
     res.json({
       success: true,
       orders: processedOrders,
       orderSummary: orderSummary,
       filters: { status, paymentStatus, startDate, endDate },
-      pagination: { page: Number(page), limit: Number(limit), total: count, totalPages: Math.ceil(count / limit) },
+      pagination: { 
+        page: Number(page), 
+        limit: Number(limit), 
+        total: count, 
+        totalPages: Math.ceil(count / limit) 
+      },
       sorting: { sortBy, sortOrder }
     });
+
   } catch (error) {
-    console.error('❌ GET ORDERS ERROR:', error);
+    console.error('GET ORDERS ERROR:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch orders',
@@ -558,11 +602,10 @@ const getOrders = async (req, res) => {
   }
 };
 
-// controllers/order.js
+// GET ORDER BY ID
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('📋 GET ORDER BY ID - Order ID:', id, 'User ID:', req.user?.id);
 
     const order = await Order.findOne({
       where: {
@@ -576,8 +619,19 @@ const getOrderById = async (req, res) => {
           include: [{
             model: Product,
             as: 'product',
-            attributes: ['id', 'name', 'image', 'images', 'generalPrice', 'dealerPrice', 'architectPrice', 'isActive'],
-            include: [{ model: Category, as: 'category', attributes: ['id', 'name', 'parentId'], required: false }]
+            attributes: [
+              'id', 'name', 'description',
+              'image', 'images',
+              'generalPrice', 'dealerPrice', 'architectPrice',
+              'isActive', 'colors', 'specifications'
+              // Removed 'features' and 'dimensions'
+            ],
+            include: [{ 
+              model: Category, 
+              as: 'category', 
+              attributes: ['id', 'name', 'parentId'], 
+              required: false 
+            }]
           }],
           required: false
         },
@@ -602,7 +656,6 @@ const getOrderById = async (req, res) => {
 
     const orderData = order.toJSON();
 
-    // Handle delivery address
     let deliveryAddress = null;
     if (orderData.deliveryAddressData) {
       try {
@@ -653,20 +706,24 @@ const getOrderById = async (req, res) => {
       }
     }
 
-    // Process order items with product details
     orderData.orderItems = (orderData.orderItems || []).map(item => {
       const itemData = { ...item };
       if (item.product) {
-        const processedProduct = processProductData(item.product, req);
+        const processedProduct = processOrderProductData(item.product, req, req.user.role);
+        
         itemData.product = {
           id: item.product.id,
           name: item.product.name,
-          imageUrl: processedProduct.imageUrl,
+          description: item.product.description || null,
+          imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
           imageUrls: processedProduct.imageUrls || [],
-          currentPrice: computePrice(item.product, req.user.role),
+          currentPrice: calculateUserPrice(item.product, req.user.role),
           orderPrice: parseFloat(item.price),
-          priceChange: parseFloat((computePrice(item.product, req.user.role) - item.price).toFixed(2)),
+          priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
           isActive: item.product.isActive,
+          colors: processedProduct.colors || [],
+          specifications: processedProduct.specifications || [],
+          // Removed features and dimensions references
           category: item.product.category ? {
             id: item.product.category.id,
             name: item.product.category.name,
@@ -677,7 +734,7 @@ const getOrderById = async (req, res) => {
         itemData.product = {
           id: item.productId,
           name: 'Unknown Product',
-          imageUrl: null,
+          imageUrl: getFallbackImageUrl(req),
           imageUrls: [],
           currentPrice: parseFloat(item.price),
           orderPrice: parseFloat(item.price),
@@ -689,7 +746,6 @@ const getOrderById = async (req, res) => {
       return itemData;
     });
 
-    console.log('📋 Returning order details for order:', id);
     res.json({
       success: true,
       order: {
@@ -707,8 +763,9 @@ const getOrderById = async (req, res) => {
         orderItems: orderData.orderItems
       }
     });
+
   } catch (error) {
-    console.error('❌ GET ORDER BY ID ERROR:', error);
+    console.error('GET ORDER BY ID ERROR:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch order',
@@ -716,23 +773,28 @@ const getOrderById = async (req, res) => {
     });
   }
 };
+
+// UPDATE ORDER
 const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, paymentStatus, notes, expectedDeliveryDate } = req.body; // Removed shippingProvider
+    const { status, paymentStatus, notes, expectedDeliveryDate } = req.body;
     
-    console.log('🔄 UPDATE ORDER - Order ID:', id, 'User Role:', req.user?.role);
-    console.log(' Update data:', { status, paymentStatus, notes });
+    console.log('UPDATE ORDER - Order ID:', id, 'User Role:', req.user?.role);
+    
     const order = await Order.findOne({
       where: {
         id: id,
         ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
       }
     });
+    
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    
     const updateData = {};
+    
     if (req.user.role === 'Admin' || req.user.role === 'Manager') {
       if (status !== undefined) updateData.status = status;
       if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
@@ -741,9 +803,11 @@ const updateOrder = async (req, res) => {
     } else {
       if (notes !== undefined) updateData.notes = notes;
     }
+    
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ success: false, message: 'No valid fields to update' });
     }
+    
     if (status && order.status !== status) {
       const validTransitions = {
         'Pending': ['Processing', 'Cancelled'],
@@ -752,12 +816,17 @@ const updateOrder = async (req, res) => {
         'Completed': [],
         'Cancelled': []
       };
+      
       if (!validTransitions[order.status]?.includes(status)) {
-        return res.status(400).json({ success: false, message: `Cannot change order status from ${order.status} to ${status}` });
+        return res.status(400).json({ 
+          success: false, 
+          message: `Cannot change order status from ${order.status} to ${status}` 
+        });
       }
     }
+    
     await order.update(updateData);
-    console.log('✅ Order updated successfully');
+    
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}`, {
         orderId: id,
@@ -766,11 +835,10 @@ const updateOrder = async (req, res) => {
         updatedByRole: req.user.role,
         updatedAt: new Date()
       }, { timeout: 5000 });
-      console.log('📦 Order update sent to CRM successfully');
     } catch (crmError) {
-      console.error('❌ CRM update failed:', crmError.message);
-      // Do not throw
+      console.error('CRM update failed:', crmError.message);
     }
+    
     res.json({
       success: true,
       message: 'Order updated successfully',
@@ -783,8 +851,9 @@ const updateOrder = async (req, res) => {
         updatedAt: order.updatedAt
       }
     });
+    
   } catch (error) {
-    console.error('❌ UPDATE ORDER ERROR:', error);
+    console.error('UPDATE ORDER ERROR:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to update order',
@@ -793,26 +862,33 @@ const updateOrder = async (req, res) => {
   }
 };
 
+// CANCEL ORDER
 const cancelOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body; // Reason not stored, but logged or sent to CRM
+    const { reason } = req.body;
     
-    console.log('❌ CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id);
+    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id);
+    
     const order = await Order.findOne({
       where: { id: id, userId: req.user.id }
     });
+    
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    
     if (!['Pending', 'Processing'].includes(order.status)) {
-      return res.status(400).json({ success: false, message: `Cannot cancel order with status: ${order.status}` });
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot cancel order with status: ${order.status}` 
+      });
     }
+    
     await order.update({
       status: 'Cancelled'
-      // Removed cancellationReason and cancelledAt
     });
-    console.log('✅ Order cancelled successfully');
+    
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}/cancel`, {
         orderId: id,
@@ -821,8 +897,9 @@ const cancelOrder = async (req, res) => {
         cancelledAt: new Date()
       }, { timeout: 5000 });
     } catch (crmError) {
-      console.error('❌ CRM cancellation notification failed:', crmError.message);
+      console.error('CRM cancellation notification failed:', crmError.message);
     }
+    
     res.json({
       success: true,
       message: 'Order cancelled successfully',
@@ -831,8 +908,9 @@ const cancelOrder = async (req, res) => {
         status: order.status
       }
     });
+    
   } catch (error) {
-    console.error('❌ CANCEL ORDER ERROR:', error);
+    console.error('CANCEL ORDER ERROR:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to cancel order',
@@ -841,36 +919,42 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+// DELETE ORDER
 const deleteOrder = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     
-    console.log('🗑️ DELETE ORDER - Order ID:', id, 'Admin:', req.user?.role);
+    console.log('DELETE ORDER - Order ID:', id, 'Admin:', req.user?.role);
+    
     const order = await Order.findByPk(id);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    
     await OrderItem.destroy({ where: { orderId: id }, transaction });
     await order.destroy({ transaction });
+    
     await transaction.commit();
-    console.log('✅ Order deleted successfully');
+    
     try {
       await axios.delete(`https://crm-api.example.com/orders/${id}`, {
         data: { deletedBy: req.user.id, deletedAt: new Date() },
         timeout: 5000
       });
     } catch (crmError) {
-      console.error('❌ CRM deletion notification failed:', crmError.message);
+      console.error('CRM deletion notification failed:', crmError.message);
     }
+    
     res.json({
       success: true,
       message: 'Order deleted successfully',
       deletedOrderId: parseInt(id)
     });
+    
   } catch (error) {
     await transaction.rollback();
-    console.error('❌ DELETE ORDER ERROR:', error);
+    console.error('DELETE ORDER ERROR:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Failed to delete order',
@@ -879,14 +963,17 @@ const deleteOrder = async (req, res) => {
   }
 };
 
+// GET ORDER STATS
 const getOrderStats = async (req, res) => {
   try {
     const userId = req.user.role === 'Admin' || req.user.role === 'Manager' ? null : req.user.id;
     const whereClause = userId ? { userId } : {};
+    
     const totalOrders = await Order.count({ where: whereClause });
     const pendingOrders = await Order.count({ where: { ...whereClause, status: 'Pending' } });
     const completedOrders = await Order.count({ where: { ...whereClause, status: 'Completed' } });
     const cancelledOrders = await Order.count({ where: { ...whereClause, status: 'Cancelled' } });
+    
     const totalValue = await Order.sum('total', { where: whereClause }) || 0;
     const thisMonthValue = await Order.sum('total', {
       where: {
@@ -894,6 +981,7 @@ const getOrderStats = async (req, res) => {
         orderDate: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
       }
     }) || 0;
+    
     const recentOrders = await Order.findAll({
       where: whereClause,
       order: [['orderDate', 'DESC']],
@@ -901,6 +989,7 @@ const getOrderStats = async (req, res) => {
       attributes: ['id', 'status', 'total', 'orderDate', 'paymentStatus'],
       include: [{ model: User, as: 'user', attributes: ['name', 'email'] }]
     });
+    
     res.json({
       success: true,
       stats: {
@@ -921,8 +1010,9 @@ const getOrderStats = async (req, res) => {
         customerName: order.user ? order.user.name : 'Unknown'
       }))
     });
+    
   } catch (error) {
-    console.error('❌ GET ORDER STATS ERROR:', error);
+    console.error('GET ORDER STATS ERROR:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch order statistics',
@@ -931,12 +1021,15 @@ const getOrderStats = async (req, res) => {
   }
 };
 
+// GET AVAILABLE ADDRESSES
 const getAvailableAddresses = async (req, res) => {
   try {
     const userId = req.user.id;
+    
     const user = await User.findByPk(userId, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
+    
     const shippingAddresses = await ShippingAddress.findAll({
       where: { userId },
       order: [['isDefault', 'DESC'], ['createdAt', 'DESC']]
@@ -971,8 +1064,9 @@ const getAvailableAddresses = async (req, res) => {
         defaultShippingAddress: shippingAddresses.find(addr => addr.isDefault) || null
       }
     });
+    
   } catch (error) {
-    console.error('❌ GET AVAILABLE ADDRESSES ERROR:', error);
+    console.error('GET AVAILABLE ADDRESSES ERROR:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to fetch available addresses',
