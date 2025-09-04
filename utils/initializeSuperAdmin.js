@@ -1,24 +1,12 @@
-// utils/initializeSuperAdmin.js - Auto-create SuperAdmin on startup
+// utils/initializeSuperAdmin.js
 const bcrypt = require('bcrypt');
 const { User, UserType } = require('../models');
 
 const initializeSuperAdmin = async () => {
   try {
     console.log('🔍 Checking for SuperAdmin user...');
-    
-    // Check if any SuperAdmin exists
-    const existingSuperAdmin = await User.findOne({ 
-      where: { role: 'SuperAdmin' } 
-    });
 
-    if (existingSuperAdmin) {
-      console.log('✅ SuperAdmin already exists:', existingSuperAdmin.email);
-      return;
-    }
-
-    console.log('🔧 No SuperAdmin found. Creating default SuperAdmin...');
-
-    // Get SuperAdmin credentials from environment
+    // Get credentials from env (with fallbacks)
     const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'superadmin@ratandecor.com';
     const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD || 'SuperAdmin@123';
     const SUPERADMIN_NAME = process.env.SUPERADMIN_NAME || 'Super Administrator';
@@ -34,29 +22,36 @@ const initializeSuperAdmin = async () => {
       });
     }
 
-    // Hash the password
+    // Hash password
     const hashedPassword = await bcrypt.hash(SUPERADMIN_PASSWORD, 12);
 
-    // Create SuperAdmin user
-    const superAdminUser = await User.create({
-      name: SUPERADMIN_NAME,
-      email: SUPERADMIN_EMAIL,
-      password: hashedPassword,
-      role: 'SuperAdmin',
-      status: 'Approved',
-   
-      mobile: '0000000000',
-      country: 'India',
-      state: 'Tamil Nadu',
-      city: 'Chennai',
-      address: 'System Generated',
-      company: 'Ratan Decor'
+    // Find or create user by EMAIL (avoids duplicate constraint error)
+    const [superAdminUser, created] = await User.findOrCreate({
+      where: { email: SUPERADMIN_EMAIL },
+      defaults: {
+        name: SUPERADMIN_NAME,
+        email: SUPERADMIN_EMAIL,
+        password: hashedPassword,
+        role: 'SuperAdmin',
+        status: 'Approved',
+        mobile: '0000000000',
+        country: 'India',
+        state: 'Tamil Nadu',
+        city: 'Chennai',
+        address: 'System Generated',
+        company: 'Ratan Decor',
+        userTypeId: superAdminUserType.id
+      }
     });
 
-    console.log('✅ SuperAdmin created successfully!');
-    console.log('📧 Email:', SUPERADMIN_EMAIL);
-    console.log('🔑 Password:', SUPERADMIN_PASSWORD);
-    console.log('⚠️  Please change the password after first login!');
+    if (created) {
+      console.log('✅ SuperAdmin created successfully!');
+      console.log('📧 Email:', SUPERADMIN_EMAIL);
+      console.log('🔑 Password:', SUPERADMIN_PASSWORD);
+      console.log('⚠️ Please change the password after first login!');
+    } else {
+      console.log('✅ SuperAdmin already exists:', superAdminUser.email);
+    }
 
     return superAdminUser;
 

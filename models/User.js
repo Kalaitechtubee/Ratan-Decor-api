@@ -33,7 +33,8 @@ module.exports = (sequelize, DataTypes) => {
         'Admin',
         'Manager',
         'Sales',
-        'Support'
+        'Support',
+        'SuperAdmin'
       ),
       allowNull: false,
       defaultValue: 'General'

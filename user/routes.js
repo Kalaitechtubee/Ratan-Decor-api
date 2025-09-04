@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, createUser, updateUser, deleteUser } = require('./controller');
+const { getAllUsers, getUserById, createUser, updateUser, deleteUser, getUserOrderHistory, getFullOrderHistory } = require('./controller');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 const { rateLimits } = require('../middleware/security');
 
@@ -33,9 +33,20 @@ router.put('/:id',
   updateUser
 );
 
-router.delete('/:id', 
-  moduleAccess.requireAdmin, 
+router.delete('/:id',
+  moduleAccess.requireAdmin,
   deleteUser
+);
+
+// Order history routes
+router.get('/:id/orders',
+  requireOwnDataOrStaff,
+  getUserOrderHistory
+);
+
+router.get('/orders/full',
+  moduleAccess.requireAdmin,
+  getFullOrderHistory
 );
 
 module.exports = router;
