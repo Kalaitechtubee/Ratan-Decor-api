@@ -1,3 +1,4 @@
+// auth/controller.js
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
@@ -44,7 +45,7 @@ const canCreateRole = (creatorRole, targetRole) => {
   const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
   
   if (creatorRole === 'SuperAdmin') {
-    return targetRole !== 'SuperAdmin';
+    return true; // Changed to allow SuperAdmin to create any role, including another SuperAdmin for developers
   }
   
   if (creatorRole === 'Admin') {
@@ -268,13 +269,11 @@ const register = async (req, res) => {
     if (REGISTRATION_RULES.PUBLIC_ROLES.includes(requestedRole)) {
       canCreate = true;
       initialStatus = 'Approved';
-    }
-    else if (REGISTRATION_RULES.BUSINESS_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.BUSINESS_ROLES.includes(requestedRole)) {
       canCreate = true;
       initialStatus = 'Pending';
       requiresApproval = true;
-    }
-    else if (REGISTRATION_RULES.STAFF_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.STAFF_ROLES.includes(requestedRole)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
@@ -283,8 +282,7 @@ const register = async (req, res) => {
       }
       canCreate = true;
       initialStatus = 'Approved';
-    }
-    else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRole)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
@@ -293,8 +291,7 @@ const register = async (req, res) => {
       }
       canCreate = true;
       initialStatus = 'Approved';
-    }
-    else if (REGISTRATION_RULES.SUPERADMIN_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.SUPERADMIN_ROLES.includes(requestedRole)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
@@ -303,8 +300,7 @@ const register = async (req, res) => {
       }
       canCreate = true;
       initialStatus = 'Approved';
-    }
-    else {
+    } else {
       return res.status(400).json({
         success: false,
         message: `Invalid role: ${requestedRole}`
@@ -426,7 +422,7 @@ const createStaffUser = async (req, res) => {
     if (!canCreateRole(creator.role, role)) {
       const allowedRoles = [];
       if (creator.role === 'SuperAdmin') {
-        allowedRoles.push(...REGISTRATION_RULES.STAFF_ROLES, ...REGISTRATION_RULES.ADMIN_ROLES);
+        allowedRoles.push(...REGISTRATION_RULES.STAFF_ROLES, ...REGISTRATION_RULES.ADMIN_ROLES, ...REGISTRATION_RULES.SUPERADMIN_ROLES);
       } else if (creator.role === 'Admin') {
         allowedRoles.push(...REGISTRATION_RULES.STAFF_ROLES);
       } else if (creator.role === 'Manager') {

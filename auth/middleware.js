@@ -1,3 +1,4 @@
+// middleware/auth.js - Corrected version with SuperAdmin having full access
 const jwt = require('jsonwebtoken');
 const { User, UserType } = require('../models');
 
@@ -21,7 +22,7 @@ const authenticateToken = async (req, res, next) => {
     
     // Fetch user from database
     const user = await User.findByPk(decoded.id, {
-      include: [{ model: UserType, as: "userType", attributes: ["id", "name"] }],
+      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
     });
 
     if (!user) {
@@ -32,7 +33,7 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Check if user is approved (SuperAdmin and Admin bypass pending check)
-    if (!['SuperAdmin', 'Admin'].includes(user.role) && user.status !== 'Approved') {
+    if (user.role !== 'SuperAdmin' && user.role !== 'Admin' && user.status !== 'Approved') {
       return res.status(403).json({
         success: false,
         message: user.status === 'Pending'
@@ -101,37 +102,34 @@ const authorizeRoles = (allowedRoles) => {
 
 // Module-specific access control
 const moduleAccess = {
-  // SuperAdmin: Full control over everything
-  requireSuperAdmin: authorizeRoles(["SuperAdmin"]),
-  
-  // Admin: Full control over everything except SuperAdmin functions
+  // SuperAdmin and Admin: Full control
   requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
   
-  // Manager: Can approve/reject, manage roles, view stats
+  // Manager, Admin, SuperAdmin
   requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin", "Manager"]),
   
-  // Sales: Access to Enquiries + Orders modules only
+  // Sales access
   requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales"]),
   
-  // Support: Access to Products module only
+  // Support access
   requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Support"]),
   
-  // Business users: Limited access to own data
+  // Business users
   requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Dealer", "Architect"]),
   
-  // Any authenticated user
+  // Any authenticated
   requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
   
-  // Staff roles (internal users)
+  // Staff access
   requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
 };
 
-// Data access control middleware
+// Data access control middleware - Corrected to include SuperAdmin
 const requireOwnDataOrStaff = (req, res, next) => {
   const userRole = req.user.role;
   const requestedUserId = req.params.userId || req.params.id;
   
-  // SuperAdmin and staff can access any data
+  // Staff (including SuperAdmin) can access any data
   if (['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
     return next();
   }

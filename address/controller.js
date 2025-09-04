@@ -13,6 +13,16 @@ const createAddress = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+const getAddressById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const address = await Address.findOne({ where: { id, userId: req.user.id } });
+    if (!address) return res.status(404).json({ message: 'Address not found' });
+    res.json(address);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
 
 const getAddresses = async (req, res) => {
   try {
@@ -48,4 +58,10 @@ const deleteAddress = async (req, res) => {
   }
 };
 
-module.exports = { createAddress, getAddresses, updateAddress, deleteAddress };
+module.exports = { 
+  createAddress, 
+  getAddresses, 
+  getAddressById,   // 👈 add this
+  updateAddress, 
+  deleteAddress 
+};

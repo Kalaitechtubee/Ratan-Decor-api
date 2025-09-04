@@ -9,36 +9,49 @@ const { sanitizeInput, auditLogger } = require('../middleware/security');
 router.use(authenticateToken);
 router.use(sanitizeInput);
 
-// Create video call enquiry (any authenticated user)
+/* ---------------------------------
+   PUBLIC (Any Authenticated User)
+----------------------------------*/
+
+// Create video call enquiry
 router.post('/create', auditLogger, videoCallEnquiryController.create);
 
-// Get own enquiries (any authenticated user)
+// Get own enquiries
 router.get('/my-enquiries', videoCallEnquiryController.getMyEnquiries);
 
-// Staff-only routes for managing all enquiries (Sales team access)
+/* ---------------------------------
+   STAFF (Sales/Admin/Manager/SuperAdmin)
+----------------------------------*/
+
+// Get all video call enquiries
 router.get('/all',
-  moduleAccess.requireSalesAccess,
+  moduleAccess.requireSalesAccess, // Sales + higher roles
   videoCallEnquiryController.getAll
 );
 
+// Get specific enquiry
 router.get('/:id',
   requireOwnDataOrStaff,
   videoCallEnquiryController.getById
 );
 
+// Update enquiry
 router.put('/:id',
   moduleAccess.requireSalesAccess,
   auditLogger,
   videoCallEnquiryController.update
 );
 
+// Delete enquiry
 router.delete('/:id',
   moduleAccess.requireSalesAccess,
   auditLogger,
   videoCallEnquiryController.delete
 );
 
-// INTERNAL NOTES ROUTES (Sales team only)
+/* ---------------------------------
+   INTERNAL NOTES (Sales/Admin/Manager/SuperAdmin)
+----------------------------------*/
 router.post('/:id/internal-notes',
   moduleAccess.requireSalesAccess,
   auditLogger,
@@ -62,7 +75,9 @@ router.delete('/internal-notes/:noteId',
   videoCallEnquiryController.deleteInternalNote
 );
 
-// FOLLOW-UP DASHBOARD (Sales team dashboard)
+/* ---------------------------------
+   FOLLOW-UP DASHBOARD (Sales/Admin/Manager/SuperAdmin)
+----------------------------------*/
 router.get('/dashboard/follow-ups',
   moduleAccess.requireSalesAccess,
   videoCallEnquiryController.getFollowUpDashboard

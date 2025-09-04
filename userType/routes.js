@@ -1,15 +1,45 @@
 const express = require('express');
 const router = express.Router();
 const userTypeController = require('./controller');
-const { authMiddleware, requireRole } = require('../middleware');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
+const { sanitizeInput, auditLogger } = require('../middleware/security');
 
-// Public routes - Get user types
+/* -------------------------------
+   PUBLIC ROUTES
+--------------------------------*/
+// Anyone can view user types
 router.get('/', userTypeController.getAllUserTypes);
 router.get('/:id', userTypeController.getUserTypeById);
 
-// Protected routes - User type management (Admin/Manager only)
-router.post('/', authMiddleware, requireRole(['Admin', 'Manager']), userTypeController.createUserType);
-router.put('/:id', authMiddleware, requireRole(['Admin', 'Manager']), userTypeController.updateUserType);
-router.delete('/:id', authMiddleware, requireRole(['Admin']), userTypeController.deleteUserType);
+/* -------------------------------
+   PROTECTED ROUTES (Admin/Manager/SuperAdmin)
+--------------------------------*/
+
+// Create user type (Admin, Manager, SuperAdmin)
+router.post('/',
+  authenticateToken,
+  sanitizeInput,
+  moduleAccess.requireManagerOrAdmin,
+  auditLogger,
+  userTypeController.createUserType
+);
+
+// Update user type (Admin, Manager, SuperAdmin)
+router.put('/:id',
+  authenticateToken,
+  sanitizeInput,
+  moduleAccess.requireManagerOrAdmin,
+  auditLogger,
+  userTypeController.updateUserType
+);
+
+// Delete user type (Admin + SuperAdmin only)
+router.delete('/:id',
+  authenticateToken,
+  sanitizeInput,
+  moduleAccess.requireAdmin,
+  auditLogger,
+  userTypeController.deleteUserType
+);
 
 module.exports = router;

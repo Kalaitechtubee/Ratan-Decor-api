@@ -1,14 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const seoController = require("./controllers");
+const { authMiddleware, requireRole } = require("../middleware");
 
-// All routes are now public
-router.get("/", seoController.getAllSeo); // Get all page SEO details
+// ==========================
+// Public Routes
+// ==========================
+router.get("/", seoController.getAllSeo);               // Get all page SEO details
 router.get("/pagenames", seoController.getAllPageNames); // Get all page names
-router.get("/:id", seoController.getSeoById);
+router.get("/:id", seoController.getSeoById);           
 router.get("/page/:pageName", seoController.getSeoByPageName);
-router.post("/", seoController.createSeo);
-router.put("/:id", seoController.updateSeo);
-router.delete("/:id", seoController.deleteSeo);
+
+// ==========================
+// Protected Routes (Admin/Manager Only)
+// ==========================
+router.post("/", authMiddleware, requireRole(["Admin", "Manager"]), seoController.createSeo);
+router.put("/:id", authMiddleware, requireRole(["Admin", "Manager"]), seoController.updateSeo);
+router.delete("/:id", authMiddleware, requireRole(["Admin"]), seoController.deleteSeo);
 
 module.exports = router;

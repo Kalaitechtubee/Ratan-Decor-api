@@ -31,61 +31,83 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
   let orderAddress = null;
   
   if (addressType === 'new' && newAddressData) {
-    if (!validateAddressData(newAddressData)) {
-      throw new Error('Invalid new address data provided');
-    }
-    
-    const newShippingAddress = await ShippingAddress.create({
-      userId: req.user.id,
+    // Map the fields correctly for your database schema
+    const addressData = {
       name: newAddressData.name,
       phone: newAddressData.phone,
-      address: newAddressData.address,
+      street: newAddressData.address || newAddressData.street, // Handle both field names
       city: newAddressData.city,
       state: newAddressData.state,
       country: newAddressData.country,
-      pincode: newAddressData.pincode,
-      addressType: newAddressData.addressType || 'Home',
-      isDefault: newAddressData.isDefault || false
+      postalCode: newAddressData.pincode || newAddressData.postalCode, // Handle both field names
+      type: newAddressData.addressType || newAddressData.type || 'Home'
+    };
+
+    // Validate required fields
+    const requiredFields = ['name', 'phone', 'street', 'city', 'state', 'country', 'postalCode'];
+    const missingFields = requiredFields.filter(field => 
+      !addressData[field] || typeof addressData[field] !== 'string' || addressData[field].trim() === ''
+    );
+
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required address fields: ${missingFields.join(', ')}`);
+    }
+    
+    // Create new address using the Address model (consistent with your address controller)
+    const { Address } = require('../models'); // Make sure this matches your address controller
+    
+    const newAddress = await Address.create({
+      userId: req.user.id,
+      ...addressData
     });
     
     orderAddress = {
-      type: 'shipping',
-      shippingAddressId: newShippingAddress.id,
+      type: 'new',
+      shippingAddressId: newAddress.id,
       addressData: {
-        name: newShippingAddress.name,
-        phone: newShippingAddress.phone,
-        address: newShippingAddress.address,
-        city: newShippingAddress.city,
-        state: newShippingAddress.state,
-        country: newShippingAddress.country,
-        pincode: newShippingAddress.pincode,
-        addressType: newShippingAddress.addressType,
-        isDefault: newShippingAddress.isDefault
+        name: newAddress.name,
+        phone: newAddress.phone,
+        address: newAddress.street, // Convert back to expected format
+        city: newAddress.city,
+        state: newAddress.state,
+        country: newAddress.country,
+        pincode: newAddress.postalCode, // Convert back to expected format
+        addressType: newAddress.type,
+        isDefault: false
       }
     };
   } else if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
-    const shippingAddress = await ShippingAddress.findOne({
-      where: { id: shippingAddressId, userId: req.user.id }
+    // Use consistent Address model
+    const { Address } = require('../models');
+    
+    const shippingAddress = await Address.findOne({
+      where: { 
+        id: shippingAddressId, 
+        userId: req.user.id 
+      }
     });
     
-    if (!shippingAddress) throw new Error('Invalid shipping address selected');
+    if (!shippingAddress) {
+      throw new Error(`Shipping address with ID ${shippingAddressId} not found or doesn't belong to user`);
+    }
     
     orderAddress = {
       type: 'shipping',
       shippingAddressId: shippingAddress.id,
       addressData: {
-        name: shippingAddress.name,
-        phone: shippingAddress.phone,
-        address: shippingAddress.address,
+        name: shippingAddress.name || 'N/A',
+        phone: shippingAddress.phone || 'N/A',
+        address: shippingAddress.street, // Convert field name
         city: shippingAddress.city,
         state: shippingAddress.state,
         country: shippingAddress.country,
-        pincode: shippingAddress.pincode,
-        addressType: shippingAddress.addressType,
-        isDefault: shippingAddress.isDefault
+        pincode: shippingAddress.postalCode, // Convert field name
+        addressType: shippingAddress.type, // Convert field name
+        isDefault: false
       }
     };
   } else {
+    // Fallback to user profile address
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
@@ -110,17 +132,17 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
         }
       };
     } else {
-      const defaultShipping = await ShippingAddress.findOne({
-        where: { userId: req.user.id, isDefault: true }
-      });
+      // Try to find any address for this user
+      const { Address } = require('../models');
       
-      const anyShipping = defaultShipping || await ShippingAddress.findOne({
+      const anyAddress = await Address.findOne({
         where: { userId: req.user.id },
         order: [['createdAt', 'DESC']]
       });
       
-      if (!anyShipping) {
+      if (!anyAddress) {
         if (hasUsableProfileAddress) {
+          // Fallback to user profile
           orderAddress = {
             type: 'default',
             shippingAddressId: null,
@@ -143,18 +165,18 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       } else {
         orderAddress = {
           type: 'shipping',
-          shippingAddressId: anyShipping.id,
+          shippingAddressId: anyAddress.id,
           addressData: {
-            name: anyShipping.name,
-            phone: anyShipping.phone,
-            address: anyShipping.address,
-            city: anyShipping.city,
-            state: anyShipping.state,
-            country: anyShipping.country,
-            pincode: anyShipping.pincode,
-            addressType: anyShipping.addressType,
-            isDefault: !!anyShipping.isDefault,
-            source: 'shipping_address_fallback'
+            name: anyAddress.name || user.name,
+            phone: anyAddress.phone || user.mobile || 'Not provided',
+            address: anyAddress.street, // Convert field name
+            city: anyAddress.city,
+            state: anyAddress.state,
+            country: anyAddress.country,
+            pincode: anyAddress.postalCode, // Convert field name
+            addressType: anyAddress.type, // Convert field name
+            isDefault: false,
+            source: 'address_fallback'
           }
         };
       }
@@ -1021,7 +1043,7 @@ const getOrderStats = async (req, res) => {
   }
 };
 
-// GET AVAILABLE ADDRESSES
+// Also update the getAvailableAddresses function to be consistent
 const getAvailableAddresses = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1030,14 +1052,28 @@ const getAvailableAddresses = async (req, res) => {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
     
-    const shippingAddresses = await ShippingAddress.findAll({
+    // Use consistent Address model
+    const { Address } = require('../models');
+    
+    const addresses = await Address.findAll({
       where: { userId },
-      order: [['isDefault', 'DESC'], ['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']]
     });
     
     const availableAddresses = {
       defaultAddress: null,
-      shippingAddresses: shippingAddresses || []
+      shippingAddresses: addresses.map(addr => ({
+        id: addr.id,
+        name: addr.name,
+        phone: addr.phone,
+        address: addr.street, // Convert field name
+        city: addr.city,
+        state: addr.state,
+        country: addr.country,
+        pincode: addr.postalCode, // Convert field name
+        addressType: addr.type, // Convert field name
+        isDefault: false // Your Address model might not have isDefault
+      }))
     };
     
     if (user && user.address && user.city && user.state && user.country && user.pincode) {
@@ -1060,8 +1096,7 @@ const getAvailableAddresses = async (req, res) => {
       addresses: availableAddresses,
       summary: {
         hasDefaultAddress: !!availableAddresses.defaultAddress,
-        totalShippingAddresses: shippingAddresses.length,
-        defaultShippingAddress: shippingAddresses.find(addr => addr.isDefault) || null
+        totalAddresses: addresses.length
       }
     });
     

@@ -757,98 +757,51 @@ const updateCategory = async (req, res) => {
 };
 
 // Delete category and all its subcategories recursively
+// Delete category and its subcategories (products untouched)
 const deleteCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { id } = req.params;
-    
     const categoryId = parseInt(id, 10);
+
     if (isNaN(categoryId)) {
       await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid category ID' 
-      });
+      return res.status(400).json({ success: false, message: 'Invalid category ID' });
     }
 
-    // Check if category exists
     const category = await Category.findByPk(categoryId, { transaction });
     if (!category) {
       await transaction.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Category not found' 
-      });
+      return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
     // Get all descendant category IDs
     const descendantIds = await getDescendants(categoryId);
     const allIds = [categoryId, ...descendantIds];
-    
-    // Check if any products are associated with this category or its descendants
-    const productsCount = await Product.count({
-      where: {
-        categoryId: { [Op.in]: allIds },
-        isActive: true
-      },
-      transaction
-    });
-    
-    if (productsCount > 0) {
-      await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot delete: ${productsCount} active products are associated with this category or its subcategories` 
-      });
+
+    // ✅ Delete all subcategories first
+    if (descendantIds.length > 0) {
+      await Category.destroy({ where: { id: { [Op.in]: descendantIds } }, transaction });
     }
 
-    // Delete all descendant categories first
-    if (descendantIds.length > 0) {
-      await Category.destroy({
-        where: { id: { [Op.in]: descendantIds } },
-        transaction
-      });
-    }
-    
-    // Delete the main category
+    // ✅ Delete main category
     await category.destroy({ transaction });
-    
+
     await transaction.commit();
-    
+
     res.json({
       success: true,
-      message: `Category deleted successfully along with ${descendantIds.length} subcategories`,
-      deletedIds: allIds
+      message: `Category deleted successfully. ${descendantIds.length} subcategories also deleted.`,
+      deletedIds: allIds,
     });
   } catch (err) {
     await transaction.rollback();
     console.error('Error deleting category:', err);
-    
-    // Check for specific error types
-    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
-      return res.status(503).json({ 
-        success: false, 
-        message: 'Database connection error. Please try again later.',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
-    if (err.name === 'SequelizeForeignKeyConstraintError') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Cannot delete category because it has associated products or subcategories',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete category',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    res.status(500).json({ success: false, message: 'Failed to delete category', error: err.message });
   }
 };
+
 
 // Search categories by name
 const searchCategories = async (req, res) => {

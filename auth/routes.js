@@ -1,3 +1,4 @@
+// auth/router.js - Updated with security middleware
 const express = require('express');
 const router = express.Router();
 const { 
@@ -13,15 +14,16 @@ const {
   verifyOTP
 } = require('./controller');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
+const { rateLimits, trackSuspiciousActivity, enhanceLoginSecurity, secureLogout } = require('../middleware/security');
 
-// Public routes
-router.post('/register', register);
-router.post('/login', login);
+// Public routes with rate limiting
+router.post('/register', rateLimits.register, register);
+router.post('/login', rateLimits.auth, trackSuspiciousActivity, enhanceLoginSecurity(login));
 router.get('/status/:email', checkStatus);
 router.post('/resend-approval', resendApproval);
-router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', resetPassword);
-router.post('/verify-otp', verifyOTP);
+router.post('/forgot-password', rateLimits.otp, forgotPassword);
+router.post('/reset-password', rateLimits.otp, resetPassword);
+router.post('/verify-otp', rateLimits.otp, verifyOTP);
 
 // Admin/Manager routes for creating staff
 router.post('/create-staff', 
@@ -33,8 +35,6 @@ router.post('/create-staff',
 // Protected user routes
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateUser);
-router.post('/logout', authenticateToken, (req, res) => {
-  res.json({ success: true, message: 'Logout successful' });
-});
+router.post('/logout', authenticateToken, secureLogout);
 
 module.exports = router;

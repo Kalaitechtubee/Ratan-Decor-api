@@ -1,14 +1,41 @@
 const express = require('express');
 const router = express.Router();
 const { getAllUsers, getUserById, createUser, updateUser, deleteUser } = require('./controller');
-const { authMiddleware: authenticateToken, requireRole: authorizeRoles } = require('../middleware');
+const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
+const { rateLimits } = require('../middleware/security');
 
+// Apply authentication middleware to all routes
 router.use(authenticateToken);
 
-router.post('/', authorizeRoles(['Admin']), createUser);
-router.get('/', authorizeRoles(['Admin']), getAllUsers);
-router.get('/:id', authorizeRoles(['Admin']), getUserById);
-router.put('/:id', authorizeRoles(['Admin']), updateUser);
-router.delete('/:id', authorizeRoles(['Admin']), deleteUser);
+// Apply rate limiting to all routes
+router.use(rateLimits.general);
+
+// User management routes with proper role restrictions
+router.post('/', 
+  moduleAccess.requireAdmin, 
+  createUser
+);
+
+router.get('/', 
+  moduleAccess.requireAdmin, 
+  getAllUsers
+);
+
+router.get('/:id', 
+  moduleAccess.requireAdmin, 
+  requireOwnDataOrStaff, 
+  getUserById
+);
+
+router.put('/:id', 
+  moduleAccess.requireAdmin, 
+  requireOwnDataOrStaff, 
+  updateUser
+);
+
+router.delete('/:id', 
+  moduleAccess.requireAdmin, 
+  deleteUser
+);
 
 module.exports = router;

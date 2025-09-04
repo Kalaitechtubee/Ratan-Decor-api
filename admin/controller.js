@@ -1,3 +1,4 @@
+// admin/controller.js
 const { User } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { canCreateRole } = require('../auth/controller');
@@ -121,15 +122,15 @@ const approveUser = async (req, res) => {
       });
     }
 
-    // Security: Prevent modifying SuperAdmin
-    if (user.role === 'SuperAdmin') {
+    // Security: Prevent modifying SuperAdmin unless by SuperAdmin
+    if (user.role === 'SuperAdmin' && currentUser.role !== 'SuperAdmin') {
       return res.status(403).json({
         success: false,
-        message: 'Cannot modify SuperAdmin users',
+        message: 'Only SuperAdmin can modify SuperAdmin users',
       });
     }
 
-    // Security: Admin cannot modify other Admins
+    // Security: Admin cannot modify other Admins unless by SuperAdmin
     if (user.role === 'Admin' && currentUser.role !== 'SuperAdmin') {
       return res.status(403).json({
         success: false,
@@ -245,7 +246,7 @@ const updateUserRole = async (req, res) => {
       });
     }
 
-    // Security: Cannot modify SuperAdmin
+    // Security: Cannot modify SuperAdmin unless by SuperAdmin
     if (user.role === 'SuperAdmin' && currentUser.role !== 'SuperAdmin') {
       return res.status(403).json({
         success: false,

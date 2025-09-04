@@ -139,11 +139,15 @@ const userTypeController = {
       // Check if name is being changed and if it already exists
       if (name && name.trim() !== userType.name) {
         const existingUserType = await UserType.findOne({
-          where: Sequelize.where(
-            Sequelize.fn('LOWER', Sequelize.col('name')),
-            '=', name.trim().toLowerCase()
-          ),
-          id: { [Op.ne]: parseInt(id, 10) },
+          where: {
+            [Op.and]: [
+              Sequelize.where(
+                Sequelize.fn('LOWER', Sequelize.col('name')),
+                '=', name.trim().toLowerCase()
+              ),
+              { id: { [Op.ne]: parseInt(id, 10) } }
+            ]
+          }
         });
 
         if (existingUserType) {
@@ -160,7 +164,7 @@ const userTypeController = {
       if (isActive !== undefined) {
         updateData.isActive = isActive;
 
-        // If deactivating, check for associated users and categories
+        // If deactivating, check for associated users
         if (isActive === false) {
           const userCount = await User.count({
             where: { userTypeId: id },
@@ -172,14 +176,21 @@ const userTypeController = {
             });
           }
 
-          const categoryCount = await Category.count({
-            where: { userTypeId: id },
-          });
-          if (categoryCount > 0) {
-            return res.status(400).json({
-              success: false,
-              message: `Cannot deactivate user type. ${categoryCount} category(ies) are associated with it.`,
+          // Only check categories if the Category model has userTypeId column
+          // Remove this check if Category doesn't have userTypeId relationship
+          try {
+            const categoryCount = await Category.count({
+              where: { userTypeId: id },
             });
+            if (categoryCount > 0) {
+              return res.status(400).json({
+                success: false,
+                message: `Cannot deactivate user type. ${categoryCount} category(ies) are associated with it.`,
+              });
+            }
+          } catch (categoryError) {
+            // If Category doesn't have userTypeId, skip this check
+            console.warn('Category model does not have userTypeId column, skipping category check');
           }
         }
       }
@@ -205,66 +216,70 @@ const userTypeController = {
       });
     }
   },
-  
 
   // Soft delete user type (Admin only)
-  async deleteUserType(req, res) {
-    try {
-      const { id } = req.params;
+// Soft delete user type (Admin only) with auto reassignment
+async deleteUserType(req, res) {
+  try {
+    const { id } = req.params;
+    const fallbackTypeId = 1; // 👈 Default userTypeId (e.g., Customer)
 
-      if (!Number.isInteger(parseInt(id, 10))) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid user type ID',
-        });
-      }
-
-      const userType = await UserType.findByPk(parseInt(id, 10));
-      if (!userType) {
-        return res.status(404).json({
-          success: false,
-          message: 'User type not found',
-        });
-      }
-
-      // Check if any users are using this type
-      const userCount = await User.count({
-        where: { userTypeId: id },
-      });
-      if (userCount > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot delete user type. ${userCount} user(s) are currently using it.`,
-        });
-      }
-
-      // Check if any categories are using this type
-      const categoryCount = await Category.count({
-        where: { userTypeId: id },
-      });
-      if (categoryCount > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot delete user type. ${categoryCount} category(ies) are associated with it.`,
-        });
-      }
-
-      // Soft delete by setting isActive to false
-      await userType.update({ isActive: false });
-
-      res.json({
-        success: true,
-        message: 'User type deactivated successfully',
-      });
-    } catch (error) {
-      console.error('Error deleting user type:', error);
-      res.status(500).json({
+    if (!Number.isInteger(parseInt(id, 10))) {
+      return res.status(400).json({
         success: false,
-        message: 'Failed to delete user type',
-        error: error.message,
+        message: 'Invalid user type ID',
       });
     }
-  },
+
+    const userType = await UserType.findByPk(parseInt(id, 10));
+    if (!userType) {
+      return res.status(404).json({
+        success: false,
+        message: 'User type not found',
+      });
+    }
+
+    // ⚠️ Prevent deleting the fallback type itself
+    if (parseInt(id, 10) === fallbackTypeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete the default user type.',
+      });
+    }
+
+    // Reassign users to fallback user type
+    const reassigned = await User.update(
+      { userTypeId: fallbackTypeId },
+      { where: { userTypeId: id } }
+    );
+
+    // Optionally also handle categories
+    try {
+      await Category.update(
+        { userTypeId: fallbackTypeId },
+        { where: { userTypeId: id } }
+      );
+    } catch (categoryError) {
+      console.warn('Skipping category reassignment:', categoryError.message);
+    }
+
+    // Soft delete by setting isActive to false
+    await userType.update({ isActive: false });
+
+    res.json({
+      success: true,
+      message: `User type deleted successfully. ${reassigned[0]} user(s) reassigned to default type.`,
+    });
+  } catch (error) {
+    console.error('Error deleting user type:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete user type',
+      error: error.message,
+    });
+  }
+}
+
 };
 
 module.exports = userTypeController;
