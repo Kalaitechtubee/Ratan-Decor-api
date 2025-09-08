@@ -1,5 +1,5 @@
 // enquiry/controller.js
-const { Enquiry, User, Product, EnquiryInternalNote } = require("../models");
+const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
 const { Op } = require("sequelize");
 
 const enquiryController = {
@@ -130,8 +130,19 @@ const enquiryController = {
             attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
             required: false,
           },
+          {
+            model: UserType,
+            as: "userTypeData",
+            attributes: ["id", "name"],
+            required: false,
+          },
         ],
       });
+
+      // Replace userType ID with name from userTypeData
+      if (enrichedEnquiry && enrichedEnquiry.userTypeData) {
+        enrichedEnquiry.userType = enrichedEnquiry.userTypeData.name;
+      }
 
       res.status(201).json({
         success: true,
@@ -222,6 +233,12 @@ async getAllEnquiries(req, res) {
         attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
         required: false,
       },
+      {
+        model: UserType,
+        as: "userTypeData",
+        attributes: ["id", "name"],
+        required: false,
+      },
     ];
 
     // Conditionally include internal notes
@@ -242,6 +259,13 @@ async getAllEnquiries(req, res) {
       limit: limitNum,
       offset: (pageNum - 1) * limitNum,
       order: [["createdAt", "DESC"]],
+    });
+
+    // Replace userType ID with name from userTypeData for each enquiry
+    enquiries.rows.forEach(enquiry => {
+      if (enquiry && enquiry.userTypeData) {
+        enquiry.userType = enquiry.userTypeData.name;
+      }
     });
 
     res.json({
@@ -278,17 +302,23 @@ async getEnquiryById(req, res) {
     }
 
     const include = [
-      { 
-        model: User, 
-        as: "user", 
+      {
+        model: User,
+        as: "user",
         attributes: ["id", "name", "email", "role"],
-        required: false 
+        required: false
       },
-      { 
-        model: Product, 
-        as: "product", 
+      {
+        model: Product,
+        as: "product",
         attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
-        required: false 
+        required: false
+      },
+      {
+        model: UserType,
+        as: "userTypeData",
+        attributes: ["id", "name"],
+        required: false,
       },
     ];
 
@@ -310,6 +340,11 @@ async getEnquiryById(req, res) {
         success: false,
         message: "Enquiry not found",
       });
+    }
+
+    // Replace userType ID with name from userTypeData
+    if (enquiry && enquiry.userTypeData) {
+      enquiry.userType = enquiry.userTypeData.name;
     }
 
     res.json({
@@ -404,7 +439,7 @@ async getEnquiryById(req, res) {
           message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
         });
       }
-      const validStatuses = ["New", "InProgress", "Confirmed", "Delivered", "Rejected"];
+      const validStatuses = ["New", "In Progress", "Confirmed", "Delivered", "Rejected"];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
@@ -464,8 +499,19 @@ async getEnquiryById(req, res) {
             attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
             required: false,
           },
+          {
+            model: UserType,
+            as: "userTypeData",
+            attributes: ["id", "name"],
+            required: false,
+          },
         ],
       });
+
+      // Replace userType ID with name from userTypeData
+      if (updatedEnquiry && updatedEnquiry.userTypeData) {
+        updatedEnquiry.userType = updatedEnquiry.userTypeData.name;
+      }
 
       res.json({
         success: true,
@@ -510,7 +556,7 @@ async getEnquiryById(req, res) {
         });
       }
 
-      const validStatuses = ["New", "InProgress", "Confirmed", "Delivered", "Rejected"];
+      const validStatuses = ["New", "In Progress", "Confirmed", "Delivered", "Rejected"];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
@@ -565,8 +611,19 @@ async getEnquiryById(req, res) {
             attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
             required: false,
           },
+          {
+            model: UserType,
+            as: "userTypeData",
+            attributes: ["id", "name"],
+            required: false,
+          },
         ],
       });
+
+      // Replace userType ID with name from userTypeData
+      if (updatedEnquiry && updatedEnquiry.userTypeData) {
+        updatedEnquiry.userType = updatedEnquiry.userTypeData.name;
+      }
 
       res.json({
         success: true,

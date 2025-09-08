@@ -134,10 +134,9 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
     } else {
       // Try to find any address for this user
       const { Address } = require('../models');
-      
+
       const anyAddress = await Address.findOne({
-        where: { userId: req.user.id },
-        order: [['createdAt', 'DESC']]
+        where: { userId: req.user.id }
       });
       
       if (!anyAddress) {
@@ -1056,8 +1055,7 @@ const getAvailableAddresses = async (req, res) => {
     const { Address } = require('../models');
     
     const addresses = await Address.findAll({
-      where: { userId },
-      order: [['createdAt', 'DESC']]
+      where: { userId }
     });
     
     const availableAddresses = {

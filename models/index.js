@@ -105,6 +105,10 @@ ShippingAddress.hasMany(Order, { foreignKey: "shippingAddressId", as: "orders" }
 Enquiry.belongsTo(Product, { foreignKey: "productId", as: "product" });
 Product.hasMany(Enquiry, { foreignKey: "productId", as: "enquiries" });
 
+// Enquiry & UserType associations
+Enquiry.belongsTo(UserType, { foreignKey: "userType", as: "userTypeData" });
+UserType.hasMany(Enquiry, { foreignKey: "userType", as: "enquiries" });
+
 // ProductRating associations
 ProductRating.belongsTo(User, { foreignKey: "userId", as: "user" });
 User.hasMany(ProductRating, { foreignKey: "userId", as: "ratings" });
