@@ -53,12 +53,30 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       throw new Error(`Missing required address fields: ${missingFields.join(', ')}`);
     }
     
-    // Create new address using the Address model (consistent with your address controller)
-    const { Address } = require('../models'); // Make sure this matches your address controller
-    
-    const newAddress = await Address.create({
+    // Create new shipping address using the ShippingAddress model
+    const { ShippingAddress } = require('../models');
+
+    // Map addressType to allowed enum values
+    const allowedAddressTypes = ['Home', 'Office', 'Other'];
+    let mappedAddressType = addressData.type || 'Home';
+
+    // Map common address types to allowed values
+    if (mappedAddressType === 'Billing') {
+      mappedAddressType = 'Home';
+    } else if (!allowedAddressTypes.includes(mappedAddressType)) {
+      mappedAddressType = 'Home'; // Default fallback
+    }
+
+    const newAddress = await ShippingAddress.create({
       userId: req.user.id,
-      ...addressData
+      name: addressData.name,
+      phone: addressData.phone,
+      address: addressData.street,
+      city: addressData.city,
+      state: addressData.state,
+      country: addressData.country,
+      pincode: addressData.postalCode,
+      addressType: mappedAddressType
     });
     
     orderAddress = {
@@ -77,13 +95,13 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       }
     };
   } else if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
-    // Use consistent Address model
-    const { Address } = require('../models');
-    
-    const shippingAddress = await Address.findOne({
-      where: { 
-        id: shippingAddressId, 
-        userId: req.user.id 
+    // Use ShippingAddress model
+    const { ShippingAddress } = require('../models');
+
+    const shippingAddress = await ShippingAddress.findOne({
+      where: {
+        id: shippingAddressId,
+        userId: req.user.id
       }
     });
     
@@ -132,14 +150,14 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
         }
       };
     } else {
-      // Try to find any address for this user
-      const { Address } = require('../models');
-      
-      const anyAddress = await Address.findOne({
+      // Try to find any shipping address for this user
+      const { ShippingAddress } = require('../models');
+
+      const anyAddress = await ShippingAddress.findOne({
         where: { userId: req.user.id },
         order: [['createdAt', 'DESC']]
       });
-      
+
       if (!anyAddress) {
         if (hasUsableProfileAddress) {
           // Fallback to user profile
@@ -169,13 +187,13 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
           addressData: {
             name: anyAddress.name || user.name,
             phone: anyAddress.phone || user.mobile || 'Not provided',
-            address: anyAddress.street, // Convert field name
+            address: anyAddress.address,
             city: anyAddress.city,
             state: anyAddress.state,
             country: anyAddress.country,
-            pincode: anyAddress.postalCode, // Convert field name
-            addressType: anyAddress.type, // Convert field name
-            isDefault: false,
+            pincode: anyAddress.pincode,
+            addressType: anyAddress.addressType,
+            isDefault: anyAddress.isDefault,
             source: 'address_fallback'
           }
         };
@@ -312,6 +330,9 @@ const createOrder = async (req, res) => {
 
     const finalTotal = subtotal;
 
+    // Map address type to database enum values
+    const deliveryAddressType = orderAddress.type === 'new' ? 'shipping' : orderAddress.type;
+
     const order = await Order.create({
       userId: req.user.id,
       paymentMethod: normalizedPaymentMethod,
@@ -320,7 +341,7 @@ const createOrder = async (req, res) => {
       paymentStatus: normalizedPaymentMethod === 'COD' ? 'Awaiting' : 'Awaiting',
       status: 'Pending',
       shippingAddressId: orderAddress.shippingAddressId,
-      deliveryAddressType: orderAddress.type,
+      deliveryAddressType: deliveryAddressType,
       deliveryAddressData: orderAddress.addressData,
       notes: notes || null,
       expectedDeliveryDate: expectedDeliveryDate || null,
@@ -629,11 +650,8 @@ const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const order = await Order.findOne({
-      where: {
-        id: id,
-        ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
-      },
+    // First find order without userId filter to check existence
+    const order = await Order.findByPk(id, {
       include: [
         {
           model: OrderItem,
@@ -674,6 +692,11 @@ const getOrderById = async (req, res) => {
 
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    // Check if user is authorized to view this order
+    if (!(req.user.role === 'Admin' || req.user.role === 'Manager' || req.user.role === 'Sales') && order.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Access denied: You can only view your own orders' });
     }
 
     const orderData = order.toJSON();
@@ -1047,32 +1070,32 @@ const getOrderStats = async (req, res) => {
 const getAvailableAddresses = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const user = await User.findByPk(userId, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
-    
-    // Use consistent Address model
-    const { Address } = require('../models');
-    
-    const addresses = await Address.findAll({
+
+    // Use ShippingAddress model
+    const { ShippingAddress } = require('../models');
+
+    const addresses = await ShippingAddress.findAll({
       where: { userId },
       order: [['createdAt', 'DESC']]
     });
-    
+
     const availableAddresses = {
       defaultAddress: null,
       shippingAddresses: addresses.map(addr => ({
         id: addr.id,
         name: addr.name,
         phone: addr.phone,
-        address: addr.street, // Convert field name
+        address: addr.address,
         city: addr.city,
         state: addr.state,
         country: addr.country,
-        pincode: addr.postalCode, // Convert field name
-        addressType: addr.type, // Convert field name
-        isDefault: false // Your Address model might not have isDefault
+        pincode: addr.pincode,
+        addressType: addr.addressType,
+        isDefault: addr.isDefault
       }))
     };
     
