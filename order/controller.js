@@ -31,21 +31,21 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
   let orderAddress = null;
   
   if (addressType === 'new' && newAddressData) {
-    // Map the fields correctly for your database schema
+    // Map the fields correctly for ShippingAddress model
     const addressData = {
       name: newAddressData.name,
       phone: newAddressData.phone,
-      street: newAddressData.address || newAddressData.street, // Handle both field names
+      address: newAddressData.address || newAddressData.street, // Handle both field names
       city: newAddressData.city,
       state: newAddressData.state,
       country: newAddressData.country,
-      postalCode: newAddressData.pincode || newAddressData.postalCode, // Handle both field names
-      type: newAddressData.addressType || newAddressData.type || 'Home'
+      pincode: newAddressData.pincode || newAddressData.postalCode, // Handle both field names
+      addressType: newAddressData.addressType || newAddressData.type || 'Home'
     };
 
     // Validate required fields
-    const requiredFields = ['name', 'phone', 'street', 'city', 'state', 'country', 'postalCode'];
-    const missingFields = requiredFields.filter(field => 
+    const requiredFields = ['name', 'phone', 'address', 'city', 'state', 'country', 'pincode'];
+    const missingFields = requiredFields.filter(field =>
       !addressData[field] || typeof addressData[field] !== 'string' || addressData[field].trim() === ''
     );
 
@@ -53,10 +53,10 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       throw new Error(`Missing required address fields: ${missingFields.join(', ')}`);
     }
     
-    // Create new address using the Address model (consistent with your address controller)
-    const { Address } = require('../models'); // Make sure this matches your address controller
-    
-    const newAddress = await Address.create({
+    // Create new address using the ShippingAddress model
+    const { ShippingAddress } = require('../models');
+
+    const newAddress = await ShippingAddress.create({
       userId: req.user.id,
       ...addressData
     });
@@ -67,23 +67,23 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       addressData: {
         name: newAddress.name,
         phone: newAddress.phone,
-        address: newAddress.street, // Convert back to expected format
+        address: newAddress.address, // Use correct field name
         city: newAddress.city,
         state: newAddress.state,
         country: newAddress.country,
-        pincode: newAddress.postalCode, // Convert back to expected format
-        addressType: newAddress.type,
+        pincode: newAddress.pincode, // Use correct field name
+        addressType: newAddress.addressType,
         isDefault: false
       }
     };
   } else if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
-    // Use consistent Address model
-    const { Address } = require('../models');
-    
-    const shippingAddress = await Address.findOne({
-      where: { 
-        id: shippingAddressId, 
-        userId: req.user.id 
+    // Use ShippingAddress model for orders
+    const { ShippingAddress } = require('../models');
+
+    const shippingAddress = await ShippingAddress.findOne({
+      where: {
+        id: shippingAddressId,
+        userId: req.user.id
       }
     });
     
@@ -97,12 +97,12 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       addressData: {
         name: shippingAddress.name || 'N/A',
         phone: shippingAddress.phone || 'N/A',
-        address: shippingAddress.street, // Convert field name
+        address: shippingAddress.address, // Use correct field name
         city: shippingAddress.city,
         state: shippingAddress.state,
         country: shippingAddress.country,
-        pincode: shippingAddress.postalCode, // Convert field name
-        addressType: shippingAddress.type, // Convert field name
+        pincode: shippingAddress.pincode, // Use correct field name
+        addressType: shippingAddress.addressType, // Use correct field name
         isDefault: false
       }
     };
@@ -132,10 +132,10 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
         }
       };
     } else {
-      // Try to find any address for this user
-      const { Address } = require('../models');
+      // Try to find any shipping address for this user
+      const { ShippingAddress } = require('../models');
 
-      const anyAddress = await Address.findOne({
+      const anyAddress = await ShippingAddress.findOne({
         where: { userId: req.user.id }
       });
       
@@ -168,12 +168,12 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
           addressData: {
             name: anyAddress.name || user.name,
             phone: anyAddress.phone || user.mobile || 'Not provided',
-            address: anyAddress.street, // Convert field name
+            address: anyAddress.address, // Use correct field name
             city: anyAddress.city,
             state: anyAddress.state,
             country: anyAddress.country,
-            pincode: anyAddress.postalCode, // Convert field name
-            addressType: anyAddress.type, // Convert field name
+            pincode: anyAddress.pincode, // Use correct field name
+            addressType: anyAddress.addressType, // Use correct field name
             isDefault: false,
             source: 'address_fallback'
           }
@@ -1064,12 +1064,12 @@ const getAvailableAddresses = async (req, res) => {
         id: addr.id,
         name: addr.name,
         phone: addr.phone,
-        address: addr.street, // Convert field name
+        address: addr.address, // Use correct field name
         city: addr.city,
         state: addr.state,
         country: addr.country,
-        pincode: addr.postalCode, // Convert field name
-        addressType: addr.type, // Convert field name
+        pincode: addr.pincode, // Use correct field name
+        addressType: addr.addressType, // Use correct field name
         isDefault: false // Your Address model might not have isDefault
       }))
     };

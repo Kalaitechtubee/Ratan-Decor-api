@@ -558,11 +558,15 @@ const updateProduct = async (req, res) => {
       return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
     }
 
+    const dealerPriceNum = Number(dealerPrice);
+    const architectPriceNum = Number(architectPrice);
+    const generalPriceNum = Number(generalPrice);
+
     if (
       dealerPrice !== undefined &&
       architectPrice !== undefined &&
       generalPrice !== undefined &&
-      (dealerPrice >= architectPrice || architectPrice >= generalPrice)
+      (dealerPriceNum >= architectPriceNum || architectPriceNum >= generalPriceNum)
     ) {
       return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
     }
@@ -674,11 +678,15 @@ const updateProductAll = async (req, res) => {
       return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
     }
 
+    const dealerPriceNum = Number(dealerPrice);
+    const architectPriceNum = Number(architectPrice);
+    const generalPriceNum = Number(generalPrice);
+
     if (
       dealerPrice !== undefined &&
       architectPrice !== undefined &&
       generalPrice !== undefined &&
-      (dealerPrice >= architectPrice || architectPrice >= generalPrice)
+      (dealerPriceNum >= architectPriceNum || architectPriceNum >= generalPriceNum)
     ) {
       return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
     }

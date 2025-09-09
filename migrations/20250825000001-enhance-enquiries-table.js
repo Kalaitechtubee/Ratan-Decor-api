@@ -24,15 +24,15 @@ module.exports = {
         userName: { type: Sequelize.STRING, allowNull: true },
         userEmail: { type: Sequelize.STRING, allowNull: true },
         userPhone: { type: Sequelize.STRING, allowNull: true },
-        companyName: { type: Sequelize.STRING },
+        companyName: { type: Sequelize.STRING, allowNull: true },
         userRole: {
           type: Sequelize.ENUM('General', 'Architect', 'Dealer', 'Interior Designer', 'Contractor', 'Builder', 'Other'),
           defaultValue: 'General'
         },
 
         // Location
-        stateName: { type: Sequelize.STRING },
-        cityName: { type: Sequelize.STRING },
+        stateName: { type: Sequelize.STRING, allowNull: true },
+        cityName: { type: Sequelize.STRING, allowNull: true },
 
         // Product Info
         productId: {
@@ -40,7 +40,7 @@ module.exports = {
           allowNull: true,
           references: { model: 'products', key: 'id' }
         },
-        productDesignNumber: { type: Sequelize.STRING },
+        productDesignNumber: { type: Sequelize.STRING, allowNull: true },
         userType: { type: Sequelize.STRING },
 
         // Source & Status
@@ -150,6 +150,7 @@ module.exports = {
     await queryInterface.addIndex('enquiries', ['isActive'], { name: 'idx_enquiries_is_active' });
     await queryInterface.addIndex('enquiries', ['createdAt'], { name: 'idx_enquiries_created_at' });
     await queryInterface.addIndex('enquiries', ['enquiryNumber'], { name: 'idx_enquiries_enquiry_number' });
+    await queryInterface.addIndex('enquiries', ['productDesignNumber'], { name: 'idx_enquiries_product_design_number' });
   },
 
   down: async (queryInterface) => {
@@ -170,5 +171,6 @@ module.exports = {
     await queryInterface.removeIndex('enquiries', 'idx_enquiries_is_active').catch(() => {});
     await queryInterface.removeIndex('enquiries', 'idx_enquiries_created_at').catch(() => {});
     await queryInterface.removeIndex('enquiries', 'idx_enquiries_enquiry_number').catch(() => {});
+    await queryInterface.removeIndex('enquiries', 'idx_enquiries_product_design_number').catch(() => {});
   }
 };

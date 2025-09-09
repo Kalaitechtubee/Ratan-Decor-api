@@ -5,6 +5,7 @@
   - Replace postalCode with pincode
   - Replace type with addressType
 - [x] Fix fallback address usage to use correct field names
+- [x] Fix getAvailableAddresses function field mappings
 - [x] Verify no duplicate or redundant lines introduced
 - [ ] Test order creation with new, shipping, and default address types
 - [ ] Test order retrieval and address data correctness

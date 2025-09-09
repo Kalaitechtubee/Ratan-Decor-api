@@ -19,7 +19,6 @@ const enquiryController = {
         notes,
         videoCallDate,
         videoCallTime,
-        productDesignNumber,
         role,
         pincode, // New field
       } = req.body;
@@ -110,7 +109,6 @@ const enquiryController = {
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,
         videoCallTime: videoCallTime || null,
-        productDesignNumber: productDesignNumber?.trim() || null,
         status: "New",
         role: role || "Customer",
         pincode: cleanPincode, // New field
@@ -208,7 +206,6 @@ async getAllEnquiries(req, res) {
         { email: { [Op.like]: `%${search}%` } },
         { phoneNo: { [Op.like]: `%${search}%` } },
         { companyName: { [Op.like]: `%${search}%` } },
-        { productDesignNumber: { [Op.like]: `%${search}%` } },
         { pincode: { [Op.like]: `%${search}%` } },
       ];
     }
@@ -377,7 +374,6 @@ async getEnquiryById(req, res) {
         videoCallDate,
         videoCallTime,
         productId,
-        productDesignNumber,
         role,
         status,
         pincode, // New field
@@ -439,7 +435,7 @@ async getEnquiryById(req, res) {
           message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
         });
       }
-      const validStatuses = ["New", "In Progress", "Confirmed", "Delivered", "Rejected"];
+      const validStatuses = ["New", "InProgress", "Confirmed", "Delivered", "Rejected"];
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
@@ -477,7 +473,6 @@ async getEnquiryById(req, res) {
       if (videoCallDate !== undefined) updateData.videoCallDate = videoCallDate || null;
       if (videoCallTime !== undefined) updateData.videoCallTime = videoCallTime || null;
       if (productId !== undefined) updateData.productId = productId ? parseInt(productId, 10) : null;
-      if (productDesignNumber !== undefined) updateData.productDesignNumber = productDesignNumber?.trim() || null;
       if (role !== undefined) updateData.role = role;
       if (status !== undefined) updateData.status = status;
       if (pincode !== undefined) updateData.pincode = cleanPincode; // New field
@@ -556,7 +551,7 @@ async getEnquiryById(req, res) {
         });
       }
 
-      const validStatuses = ["New", "In Progress", "Confirmed", "Delivered", "Rejected"];
+      const validStatuses = ["New", "InProgress", "Confirmed", "Delivered", "Rejected"];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,

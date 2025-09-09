@@ -96,7 +96,7 @@ const Enquiry = sequelize.define(
     notes: { type: DataTypes.TEXT, allowNull: true },
     videoCallDate: { type: DataTypes.DATEONLY, allowNull: true },
     videoCallTime: { type: DataTypes.TIME, allowNull: true },
-    productDesignNumber: { type: DataTypes.STRING, allowNull: true },
+
     pincode: {
       type: DataTypes.STRING,
       allowNull: true,
