@@ -123,20 +123,31 @@ const moduleAccess = {
 const requireOwnDataOrStaff = (req, res, next) => {
   const userRole = req.user.role;
   const requestedUserId = req.params.userId || req.params.id;
-  
+
   // Staff can access any data
   if (['Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
     return next();
   }
-  
-  // Non-staff can only access their own data
+
+  // Customers can access only their own data
+  if (userRole === 'Customer') {
+    if (requestedUserId && parseInt(requestedUserId) !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Customers can only access their own data"
+      });
+    }
+    return next();
+  }
+
+  // Other roles: restrict access if not own data
   if (requestedUserId && parseInt(requestedUserId) !== req.user.id) {
     return res.status(403).json({
       success: false,
       message: "You can only access your own data"
     });
   }
-  
+
   next();
 };
 

@@ -34,28 +34,19 @@ const ROLE_HIERARCHY = {
 const REGISTRATION_RULES = {
   PUBLIC_ROLES: ['General', 'Customer'],
   BUSINESS_ROLES: ['Architect', 'Dealer'],
-  STAFF_ROLES: ['Manager', 'Sales', 'Support'],
+  STAFF_ROLES: ['Manager', 'Sales', 'Support', 'Architect'],
   ADMIN_ROLES: ['Admin'],
   SUPERADMIN_ROLES: ['SuperAdmin']
 };
 
 // Check if creator can create target role
 const canCreateRole = (creatorRole, targetRole) => {
-  const creatorLevel = ROLE_HIERARCHY[creatorRole] || 0;
-  const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
-  
-  if (creatorRole === 'SuperAdmin') {
-    return true; // Changed to allow SuperAdmin to create any role, including another SuperAdmin for developers
+  if (creatorRole === 'SuperAdmin' || creatorRole === 'Admin') {
+    return true; // Both SuperAdmin and Admin can assign any role
   }
-  
-  if (creatorRole === 'Admin') {
-    return REGISTRATION_RULES.STAFF_ROLES.includes(targetRole);
-  }
-  
   if (creatorRole === 'Manager') {
     return ['Sales', 'Support'].includes(targetRole);
   }
-  
   return false;
 };
 

@@ -269,6 +269,13 @@ const createProduct = async (req, res) => {
       imageFilenames = [...imageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
+    // Safely extract subcategoryId from body or query
+    let subcategoryId = null;
+    if (typeof req.body.subcategoryId !== 'undefined') {
+      subcategoryId = req.body.subcategoryId;
+    } else if (typeof req.query.subcategoryId !== 'undefined') {
+      subcategoryId = req.query.subcategoryId;
+    }
     // Parse JSON fields safely
     const parsedSpecifications = safeJsonParse(specifications, {});
     const parsedVisibleTo = safeJsonParse(visibleTo, ['Residential', 'Commercial', 'Modular Kitchen', 'Others']);
@@ -308,7 +315,13 @@ const createProduct = async (req, res) => {
       }
     }
 
-    // Prepare product data
+    // Prepare product data, prioritize subcategoryId if provided
+    let finalCategoryId = null;
+    if (subcategoryId && subcategoryId !== '' && subcategoryId !== 'null') {
+      finalCategoryId = subcategoryId;
+    } else if (categoryId && categoryId !== '' && categoryId !== 'null') {
+      finalCategoryId = categoryId;
+    }
     const productData = {
       name: name.trim(),
       description: description || null,
@@ -323,7 +336,7 @@ const createProduct = async (req, res) => {
       designNumber: designNumber || null,
       size: size || null,
       thickness: thickness || null,
-      categoryId: (categoryId && categoryId !== '' && categoryId !== 'null') ? categoryId : null,
+      categoryId: finalCategoryId,
       productUsageTypeId: (productUsageTypeId && productUsageTypeId !== '' && productUsageTypeId !== 'null') ? productUsageTypeId : null,
       colors: parsedColors,
       gst: (gst && gst !== '' && gst !== 'null') ? parseFloat(gst) : null,

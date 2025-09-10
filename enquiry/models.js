@@ -78,7 +78,7 @@ const Enquiry = sequelize.define(
       onDelete: "SET NULL",
     },
     source: {
-      type: DataTypes.ENUM("Email", "WhatsApp", "Phone", "VideoCall"),
+      type: DataTypes.ENUM("Email", "WhatsApp","WebSite", "Phone", "VideoCall"),
       allowNull: false,
       defaultValue: "Email",
     },

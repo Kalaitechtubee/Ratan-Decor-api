@@ -21,6 +21,7 @@ const enquiryController = {
         videoCallTime,
         role,
         pincode, // New field
+        productDesignNumber, // New field
       } = req.body;
 
       // Get userId from token if not provided
@@ -112,6 +113,7 @@ const enquiryController = {
         status: "New",
         role: role || "Customer",
         pincode: cleanPincode, // New field
+        productDesignNumber: productDesignNumber?.trim() || null, // New field
       });
 
       const enrichedEnquiry = await Enquiry.findByPk(enquiry.id, {
@@ -207,6 +209,7 @@ async getAllEnquiries(req, res) {
         { phoneNo: { [Op.like]: `%${search}%` } },
         { companyName: { [Op.like]: `%${search}%` } },
         { pincode: { [Op.like]: `%${search}%` } },
+        { productDesignNumber: { [Op.like]: `%${search}%` } },
       ];
     }
     if (status) where.status = status;
@@ -377,6 +380,7 @@ async getEnquiryById(req, res) {
         role,
         status,
         pincode, // New field
+        productDesignNumber, // New field
       } = req.body;
 
       if (!id || isNaN(parseInt(id))) {
@@ -476,6 +480,7 @@ async getEnquiryById(req, res) {
       if (role !== undefined) updateData.role = role;
       if (status !== undefined) updateData.status = status;
       if (pincode !== undefined) updateData.pincode = cleanPincode; // New field
+      if (productDesignNumber !== undefined) updateData.productDesignNumber = productDesignNumber?.trim() || null; // New field
       updateData.updatedAt = new Date();
 
       await enquiry.update(updateData);

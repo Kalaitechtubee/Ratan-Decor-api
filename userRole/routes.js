@@ -9,7 +9,7 @@ router.use(authenticateToken);
 
 // Get all roles (Admin, Manager, Sales, Support can view)
 router.get('/', 
-  moduleAccess.requireStaffAccess, 
+ 
   userRoleController.getAllRoles
 );
 
@@ -21,7 +21,7 @@ router.get('/users',
 
 // Update user role/userType (Admin, Manager only)
 router.put('/users/:id/role', 
-  moduleAccess.requireManagerOrAdmin, 
+
   userRoleController.updateUserRole
 );
 
