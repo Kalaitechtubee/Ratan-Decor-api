@@ -84,11 +84,13 @@ router.get('/', (req, res, next) => {
 // Get order statistics (admin/manager only)
 router.get('/stats', moduleAccess.requireSalesAccess, getOrderStats);
 
-// Get specific order by ID (with ownership check)
-router.get('/:id', requireOwnDataOrStaff, getOrderById);
+// Get specific order by ID - FIXED: Remove the problematic middleware
+// The getOrderById controller already handles ownership checking correctly
+router.get('/:id', getOrderById);
 
-// Cancel order (user can cancel their own orders)
-router.put('/:id/cancel', requireOwnDataOrStaff, cancelOrder);
+// Cancel order - FIXED: Remove the problematic middleware
+// The cancelOrder controller already handles ownership checking correctly
+router.put('/:id/cancel', cancelOrder);
 
 // Update order (admin/manager only)
 router.put('/:id', moduleAccess.requireSalesAccess, updateOrder);

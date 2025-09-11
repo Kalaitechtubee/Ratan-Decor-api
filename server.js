@@ -58,6 +58,7 @@ const seoConfig = [
   { pageName: 'disclaimer', title: 'Disclaimer - Ratan Decor', description: 'Read our legal disclaimer.', keywords: 'disclaimer, legal, terms' },
   { pageName: 'faq', title: 'FAQ - Ratan Decor', description: 'Find answers to frequently asked questions.', keywords: 'faq, help, support' },
   { pageName: 'profile', title: 'Profile - Ratan Decor', description: 'Manage your account settings.', keywords: 'profile, account, user' },
+  { pageName: 'OrderDetails', title: 'OrderDetails - Ratan Decor', description: 'Manage your account settings.', keywords: 'OrderDetails, account, user' },
 ];
 
 // Database migrations
