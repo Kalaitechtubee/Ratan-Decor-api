@@ -1,6 +1,30 @@
 // enquiry/controller.js
 const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
 const { Op } = require("sequelize");
+const jwt = require('jsonwebtoken');
+
+// Helper functions for user role and price computation
+const getReqUserRole = (req) => {
+  if (req.user && req.user.role) {
+    return req.user.role;
+  }
+  const auth = req.header('Authorization');
+  if (!auth) return 'General';
+  const token = auth.replace('Bearer ', '');
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    return decoded.role || 'General';
+  } catch {
+    return 'General';
+  }
+};
+
+const computePrice = (product, role) =>
+  role === 'Dealer'
+    ? product.dealerPrice
+    : role === 'Architect'
+    ? product.architectPrice
+    : product.generalPrice;
 
 const enquiryController = {
   async createEnquiry(req, res) {
@@ -127,7 +151,8 @@ const enquiryController = {
           {
             model: Product,
             as: "product",
-            attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
+            // Return all product details for the enquiry response
+            attributes: { exclude: [] },
             required: false,
           },
           {
@@ -142,6 +167,18 @@ const enquiryController = {
       // Replace userType ID with name from userTypeData
       if (enrichedEnquiry && enrichedEnquiry.userTypeData) {
         enrichedEnquiry.userType = enrichedEnquiry.userTypeData.name;
+      }
+
+      // Compute role-based price for product and remove all price fields except the role-based one
+      if (enrichedEnquiry && enrichedEnquiry.product) {
+        const userRole = getReqUserRole(req);
+        const computedPrice = computePrice(enrichedEnquiry.product, userRole);
+        // Remove all price fields
+        delete enrichedEnquiry.product.generalPrice;
+        delete enrichedEnquiry.product.architectPrice;
+        delete enrichedEnquiry.product.dealerPrice;
+        // Add only the role-based price
+        enrichedEnquiry.product.price = computedPrice;
       }
 
       res.status(201).json({
@@ -266,6 +303,16 @@ async getAllEnquiries(req, res) {
       if (enquiry && enquiry.userTypeData) {
         enquiry.userType = enquiry.userTypeData.name;
       }
+      // Compute role-based price for product
+      if (enquiry && enquiry.product) {
+        const userRole = getReqUserRole(req);
+        const computedPrice = computePrice(enquiry.product, userRole);
+        enquiry.product.price = computedPrice;
+        // Remove individual price fields to show only role-based price
+        delete enquiry.product.generalPrice;
+        delete enquiry.product.architectPrice;
+        delete enquiry.product.dealerPrice;
+      }
     });
 
     res.json({
@@ -345,6 +392,17 @@ async getEnquiryById(req, res) {
     // Replace userType ID with name from userTypeData
     if (enquiry && enquiry.userTypeData) {
       enquiry.userType = enquiry.userTypeData.name;
+    }
+
+    // Compute role-based price for product
+    if (enquiry && enquiry.product) {
+      const userRole = getReqUserRole(req);
+      const computedPrice = computePrice(enquiry.product, userRole);
+      enquiry.product.price = computedPrice;
+      // Remove individual price fields to show only role-based price
+      delete enquiry.product.generalPrice;
+      delete enquiry.product.architectPrice;
+      delete enquiry.product.dealerPrice;
     }
 
     res.json({
@@ -513,6 +571,17 @@ async getEnquiryById(req, res) {
         updatedEnquiry.userType = updatedEnquiry.userTypeData.name;
       }
 
+      // Compute role-based price for product
+      if (updatedEnquiry && updatedEnquiry.product) {
+        const userRole = getReqUserRole(req);
+        const computedPrice = computePrice(updatedEnquiry.product, userRole);
+        updatedEnquiry.product.price = computedPrice;
+        // Remove individual price fields to show only role-based price
+        delete updatedEnquiry.product.generalPrice;
+        delete updatedEnquiry.product.architectPrice;
+        delete updatedEnquiry.product.dealerPrice;
+      }
+
       res.json({
         success: true,
         message: "Enquiry updated successfully",
@@ -623,6 +692,17 @@ async getEnquiryById(req, res) {
       // Replace userType ID with name from userTypeData
       if (updatedEnquiry && updatedEnquiry.userTypeData) {
         updatedEnquiry.userType = updatedEnquiry.userTypeData.name;
+      }
+
+      // Compute role-based price for product
+      if (updatedEnquiry && updatedEnquiry.product) {
+        const userRole = getReqUserRole(req);
+        const computedPrice = computePrice(updatedEnquiry.product, userRole);
+        updatedEnquiry.product.price = computedPrice;
+        // Remove individual price fields to show only role-based price
+        delete updatedEnquiry.product.generalPrice;
+        delete updatedEnquiry.product.architectPrice;
+        delete updatedEnquiry.product.dealerPrice;
       }
 
       res.json({

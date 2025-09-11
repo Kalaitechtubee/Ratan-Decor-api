@@ -888,13 +888,19 @@ const cancelOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    
-    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id);
-    
+
+    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id, 'User Role:', req.user?.role);
+
+    // Staff users can cancel any order, regular users can only cancel their own orders
+    let whereCondition = { id: id };
+    if (!['Admin', 'SuperAdmin', 'Manager', 'Sales', 'Support'].includes(req.user.role)) {
+      whereCondition.userId = req.user.id;
+    }
+
     const order = await Order.findOne({
-      where: { id: id, userId: req.user.id }
+      where: whereCondition
     });
-    
+
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }

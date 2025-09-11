@@ -1,3 +1,4 @@
+// routes/orders.js
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -13,8 +14,10 @@ const {
 } = require('./controller');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 
+// Apply authentication to all routes
 router.use(authenticateToken);
 
+// Debug token endpoint (development only)
 router.post('/debug-token', (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -63,18 +66,34 @@ router.post('/debug-token', (req, res) => {
   }
 });
 
+// Get available addresses for order creation
 router.get('/addresses', getAvailableAddresses);
+
+// Create new order
 router.post('/', createOrder);
+
+// Get orders with role-based filtering
 router.get('/', (req, res, next) => {
+  // If user is not admin/manager, filter by their userId
   if (!['Admin', 'Manager', 'Sales'].includes(req.user.role)) {
     req.query.userId = req.user.id;
   }
   next();
 }, getOrders);
+
+// Get order statistics (admin/manager only)
 router.get('/stats', moduleAccess.requireSalesAccess, getOrderStats);
+
+// Get specific order by ID (with ownership check)
 router.get('/:id', requireOwnDataOrStaff, getOrderById);
+
+// Cancel order (user can cancel their own orders)
 router.put('/:id/cancel', requireOwnDataOrStaff, cancelOrder);
+
+// Update order (admin/manager only)
 router.put('/:id', moduleAccess.requireSalesAccess, updateOrder);
+
+// Delete order (admin only)
 router.delete('/:id', moduleAccess.requireAdmin, deleteOrder);
 
 module.exports = router;

@@ -11,3 +11,9 @@
 - [ ] Test order retrieval and address data correctness
 - [ ] Test address fallback scenarios
 - [ ] Review and refactor if any further improvements needed
+
+# TODO for Order Cancel API Fix
+
+- [x] Fix cancelOrder function to allow staff users to cancel any order
+- [x] Keep restriction for regular users to cancel only their own orders
+- [ ] Test the fix with different user roles
