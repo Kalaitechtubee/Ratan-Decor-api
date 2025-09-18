@@ -139,7 +139,15 @@ const getCategoryById = async (req, res) => {
         {
           model: Product,
           as: 'products',
-          attributes: ['id', 'name', 'price', 'isActive'],
+          attributes: [
+            'id',
+            'name',
+            'mrpPrice',
+            'generalPrice',
+            'architectPrice',
+            'dealerPrice',
+            'isActive'
+          ],
           where: { isActive: true },
           required: false,
         },

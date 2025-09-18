@@ -59,6 +59,8 @@ const seoConfig = [
   { pageName: 'faq', title: 'FAQ - Ratan Decor', description: 'Find answers to frequently asked questions.', keywords: 'faq, help, support' },
   { pageName: 'profile', title: 'Profile - Ratan Decor', description: 'Manage your account settings.', keywords: 'profile, account, user' },
   { pageName: 'OrderDetails', title: 'OrderDetails - Ratan Decor', description: 'Manage your account settings.', keywords: 'OrderDetails, account, user' },
+    { pageName: "VideoCall", title: "Video Call - Ratan Decor", description: "Connect with our experts via video call for personalized assistance.", keywords: "video call, support, consultation, home decor" },
+
 ];
 
 // Database migrations

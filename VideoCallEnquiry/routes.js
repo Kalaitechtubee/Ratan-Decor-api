@@ -29,28 +29,28 @@ router.get('/all',
   videoCallEnquiryController.getAll
 );
 
-// Get specific enquiry
+// Get specific enquiry (own or staff)
 router.get('/:id',
   requireOwnDataOrStaff,
   videoCallEnquiryController.getById
 );
 
-// Update enquiry
+// Update enquiry (own or staff)
 router.put('/:id',
-  moduleAccess.requireSalesAccess,
+  requireOwnDataOrStaff,
   auditLogger,
   videoCallEnquiryController.update
 );
 
-// Delete enquiry
+// Delete enquiry (own or staff)
 router.delete('/:id',
-  moduleAccess.requireSalesAccess,
+  requireOwnDataOrStaff,
   auditLogger,
   videoCallEnquiryController.delete
 );
 
 /* ---------------------------------
-   INTERNAL NOTES (Sales/Admin/Manager/SuperAdmin)
+   INTERNAL NOTES (Staff only)
 ----------------------------------*/
 router.post('/:id/internal-notes',
   moduleAccess.requireSalesAccess,
@@ -76,7 +76,7 @@ router.delete('/internal-notes/:noteId',
 );
 
 /* ---------------------------------
-   FOLLOW-UP DASHBOARD (Sales/Admin/Manager/SuperAdmin)
+   FOLLOW-UP DASHBOARD (Staff only)
 ----------------------------------*/
 router.get('/dashboard/follow-ups',
   moduleAccess.requireSalesAccess,

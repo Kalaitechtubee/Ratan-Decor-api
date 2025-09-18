@@ -57,12 +57,12 @@ User.belongsTo(UserType, { foreignKey: "userTypeId", as: "userType" });
 UserType.hasMany(User, { foreignKey: "userTypeId", as: "users" });
 
 // Category self-associations
-Category.hasMany(Category, { as: "subCategories", foreignKey: "parentId" });
-Category.belongsTo(Category, { as: "parent", foreignKey: "parentId" });
+// Category.hasMany(Category, { as: "subCategories", foreignKey: "parentId" }); // Already defined in Category.associate
+// Category.belongsTo(Category, { as: "parent", foreignKey: "parentId" }); // Already defined in Category.associate
 
 // Product & Category associations
 Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
-Category.hasMany(Product, { foreignKey: "categoryId", as: "products" });
+// Category.hasMany(Product, { foreignKey: "categoryId", as: "products" }); // Already defined in Category.associate
 
 // User & Address associations
 User.hasMany(Address, { foreignKey: "userId", as: "addresses" });
@@ -116,7 +116,32 @@ User.hasMany(ProductRating, { foreignKey: "userId", as: "ratings" });
 ProductRating.belongsTo(Product, { foreignKey: "productId", as: "product" });
 Product.hasMany(ProductRating, { foreignKey: "productId", as: "ratings" });
 
-console.log("✅ Model associations completed with consistent lowercase aliases");
+
+// Register all associations for models that define them
+const db = {
+  UserType,
+  User,
+  ProductRating,
+  Category,
+  Product,
+  Enquiry,
+  Address,
+  ShippingAddress,
+  Cart,
+  Order,
+  OrderItem,
+  VideoCallEnquiry,
+  VideoCallInternalNote,
+  EnquiryInternalNote
+};
+
+Object.values(db).forEach(model => {
+  if (model.associate) {
+    model.associate(db);
+  }
+});
+
+console.log("✅ Model associations completed and registered.");
 
 module.exports = {
   sequelize,

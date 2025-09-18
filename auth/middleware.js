@@ -1,8 +1,10 @@
 // middleware/auth.js - Corrected version with SuperAdmin having full access
 const jwt = require('jsonwebtoken');
-const { User, UserType } = require('../models');
+const { User, UserType, VideoCallEnquiry } = require('../models');
 
-// Main authentication middleware
+// -----------------------------
+// Authentication Middleware
+// -----------------------------
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.header("Authorization");
@@ -71,7 +73,9 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// Role authorization middleware
+// -----------------------------
+// Role Authorization Middleware
+// -----------------------------
 const authorizeRoles = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -100,49 +104,66 @@ const authorizeRoles = (allowedRoles) => {
   };
 };
 
-// Module-specific access control
+// -----------------------------
+// Module-specific Access
+// -----------------------------
 const moduleAccess = {
-  // SuperAdmin and Admin: Full control
   requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
-  
-  // Manager, Admin, SuperAdmin
   requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin", "Manager"]),
-  
-  // Sales access
   requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales"]),
-  
-  // Support access
   requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Support"]),
-  
-  // Business users
   requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Dealer", "Architect"]),
-  
-  // Any authenticated
   requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
-  
-  // Staff access
   requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
 };
 
-// Data access control middleware - Corrected to include SuperAdmin
-const requireOwnDataOrStaff = (req, res, next) => {
-  const userRole = req.user.role;
-  const requestedUserId = req.params.userId || req.params.id;
-  
-  // Staff (including SuperAdmin) can access any data
-  if (['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
-    return next();
-  }
-  
-  // Non-staff can only access their own data
-  if (requestedUserId && parseInt(requestedUserId) !== req.user.id) {
-    return res.status(403).json({
+// -----------------------------
+// Own Data or Staff Access
+// -----------------------------
+const requireOwnDataOrStaff = async (req, res, next) => {
+  try {
+    const userRole = req.user.role;
+
+    // Staff (including SuperAdmin) can access any data
+    if (['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
+      return next();
+    }
+
+    // Non-staff → must own the enquiry
+    const enquiryId = req.params.id;
+    if (!enquiryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing enquiry ID in request"
+      });
+    }
+
+    const enquiry = await VideoCallEnquiry.findByPk(enquiryId);
+
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: "Enquiry not found"
+      });
+    }
+
+    if (enquiry.userId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only access your own enquiries"
+      });
+    }
+
+    // Attach enquiry to request for controller use
+    req.enquiry = enquiry;
+    next();
+  } catch (err) {
+    return res.status(500).json({
       success: false,
-      message: "You can only access your own data"
+      message: "Authorization error",
+      error: err.message
     });
   }
-  
-  next();
 };
 
 module.exports = {
