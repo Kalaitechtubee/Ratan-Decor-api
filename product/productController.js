@@ -94,7 +94,8 @@ const getProducts = async (req, res) => {
       search, 
       page = 1, 
       limit = 20,
-      isActive 
+      isActive,
+      designNumber // Add designNumber to destructured query params
     } = req.query;
     const userRole = getReqUserRole(req);
 
@@ -118,6 +119,10 @@ const getProducts = async (req, res) => {
       whereClause.generalPrice = {};
       if (minPrice) whereClause.generalPrice[Op.gte] = Number(minPrice);
       if (maxPrice) whereClause.generalPrice[Op.lte] = Number(maxPrice);
+    }
+
+    if (designNumber) {
+      whereClause.designNumber = { [Op.iLike]: `%${designNumber}%` }; // Add designNumber filter
     }
 
     if (search) {
@@ -168,7 +173,8 @@ const getProducts = async (req, res) => {
       currentPage: Number(page),
       userType: userType || null,
       userRole,
-      isActiveFilter: isActive !== undefined ? whereClause.isActive : null
+      isActiveFilter: isActive !== undefined ? whereClause.isActive : null,
+      designNumberFilter: designNumber || null // Include designNumber in response for clarity
     });
   } catch (error) {
     console.error('Get products error:', error);

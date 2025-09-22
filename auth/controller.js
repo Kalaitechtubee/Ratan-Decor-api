@@ -78,9 +78,9 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email and password are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
       });
     }
 
@@ -160,10 +160,18 @@ const login = async (req, res) => {
       include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
     });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Password is incorrect'
       });
     }
 
@@ -211,12 +219,13 @@ const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Login failed. Please try again.' 
+    res.status(500).json({
+      success: false,
+      message: 'Login failed. Please try again.'
     });
   }
 };
+
 
 // User registration
 const register = async (req, res) => {
