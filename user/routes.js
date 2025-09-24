@@ -1,49 +1,75 @@
 const express = require('express');
 const router = express.Router();
-const { getAllUsers, getUserById, createUser, updateUser, deleteUser, getUserOrderHistory, getFullOrderHistory } = require('./controller');
-const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
+
+const {
+  getAllUsers,
+  getUserById,
+  createUser,
+  updateUser,
+  deleteUser,
+  getUserOrderHistory,
+  getFullOrderHistory
+} = require('./controller');
+
+const {
+  authenticateToken,
+  moduleAccess,
+  requireOwnDataOrStaff
+} = require('../middleware/auth');
+
 const { rateLimits } = require('../middleware/security');
 
-// Apply authentication middleware to all routes
+// 🔒 Apply authentication middleware to all routes
 router.use(authenticateToken);
 
-// Apply rate limiting to all routes
+// 🚦 Apply rate limiting to all routes
 router.use(rateLimits.general);
 
-// User management routes with proper role restrictions
-router.post('/', 
-  moduleAccess.requireAdmin, 
+/* -------------------------------
+   USER MANAGEMENT ROUTES
+-------------------------------- */
+
+// ➕ Create new user (admin only)
+router.post('/',
+  moduleAccess.requireAdmin,
   createUser
 );
 
-router.get('/', 
-  moduleAccess.requireAdmin, 
+// 📋 Get all users (admin only)
+router.get('/',
+  moduleAccess.requireAdmin,
   getAllUsers
 );
 
-router.get('/:id', 
-  moduleAccess.requireAdmin, 
-  requireOwnDataOrStaff, 
+// 👤 Get user by ID (self or admin/staff)
+router.get('/:id',
+  requireOwnDataOrStaff,   // ✅ allows user to fetch own data OR staff/admin to fetch any
   getUserById
 );
 
-router.put('/:id', 
-  moduleAccess.requireAdmin, 
-  requireOwnDataOrStaff, 
+// ✏️ Update user (self or admin/staff)
+router.put('/:id',
+  requireOwnDataOrStaff,   // ✅ allows user to update own account OR staff/admin to update any
   updateUser
 );
 
+// ❌ Delete user (admin only)
 router.delete('/:id',
   moduleAccess.requireAdmin,
   deleteUser
 );
 
-// Order history routes
+/* -------------------------------
+   ORDER HISTORY ROUTES
+-------------------------------- */
+
+// 📦 Get order history for a user (self or admin/staff)
 router.get('/:id/orders',
   requireOwnDataOrStaff,
   getUserOrderHistory
 );
 
+// 📦 Get full order history (admin only)
 router.get('/orders/full',
   moduleAccess.requireAdmin,
   getFullOrderHistory

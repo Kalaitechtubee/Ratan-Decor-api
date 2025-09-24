@@ -88,14 +88,16 @@ const login = async (req, res) => {
     const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'superadmin@ratandecor.com';
     const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD || 'SuperAdmin@123';
 
+    let user;
+
     if (email === SUPERADMIN_EMAIL && password === SUPERADMIN_PASSWORD) {
-      let superAdminUser = await User.findOne({
+      user = await User.findOne({
         where: { email: SUPERADMIN_EMAIL },
         include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
       });
 
       // Create SuperAdmin if doesn't exist
-      if (!superAdminUser) {
+      if (!user) {
         let superAdminUserType = await UserType.findOne({ where: { name: 'SuperAdmin' } });
         if (!superAdminUserType) {
           superAdminUserType = await UserType.create({
@@ -106,7 +108,7 @@ const login = async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(SUPERADMIN_PASSWORD, 12);
-        superAdminUser = await User.create({
+        user = await User.create({
           name: 'Super Administrator',
           email: SUPERADMIN_EMAIL,
           password: hashedPassword,
@@ -116,79 +118,38 @@ const login = async (req, res) => {
           mobile: '0000000000',
           country: 'India',
           state: 'Tamil Nadu',
-          city: 'Chennai'
+          city: 'Chennai',
+          company: 'Ratan Decor'
         });
 
-        superAdminUser = await User.findByPk(superAdminUser.id, {
+        user = await User.findByPk(user.id, {
           include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
         });
       }
-
-      const token = jwt.sign(
-        {
-          id: superAdminUser.id,
-          role: superAdminUser.role,
-          status: superAdminUser.status,
-          email: superAdminUser.email,
-          userTypeId: superAdminUser.userTypeId
-        },
-        process.env.JWT_SECRET || 'secret',
-        { expiresIn: '7d' }
-      );
-
-      return res.json({
-        success: true,
-        token,
-        user: {
-          id: superAdminUser.id,
-          name: superAdminUser.name,
-          email: superAdminUser.email,
-          role: superAdminUser.role,
-          status: superAdminUser.status,
-          company: superAdminUser.company,
-          mobile: superAdminUser.mobile,
-          userTypeId: superAdminUser.userTypeId,
-          userTypeName: superAdminUser.userType ? superAdminUser.userType.name : null
-        },
-        message: 'SuperAdmin login successful'
+    } else {
+      // Regular user login
+      user = await User.findOne({
+        where: { email },
+        include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
       });
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          message: 'Password is incorrect'
+        });
+      }
     }
 
-    // Regular user login
-    const user = await User.findOne({
-      where: { email },
-      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Password is incorrect'
-      });
-    }
-
-    if (user.status === 'Rejected') {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account has been rejected. Please contact support.'
-      });
-    }
-
-    if (user.status === 'Pending' && user.role !== 'SuperAdmin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account is pending approval.'
-      });
-    }
-
+    // Generate JWT
     const token = jwt.sign(
       {
         id: user.id,
@@ -201,7 +162,8 @@ const login = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.json({
+    // Unified Response for all statuses
+    return res.json({
       success: true,
       token,
       user: {
@@ -209,8 +171,8 @@ const login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        status: user.status,
-        company: user.company,
+        status: user.status, // Pending / Rejected / Approved
+        company: user.company || 'Ratan Decor',
         mobile: user.mobile,
         userTypeId: user.userTypeId,
         userTypeName: user.userType ? user.userType.name : null
@@ -374,6 +336,13 @@ const register = async (req, res) => {
       }
     }
 
+    // Generate JWT token after registration
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '90d' } // 90 days like you wanted
+    );
+
     res.status(201).json({
       success: true,
       message: requiresApproval
@@ -385,7 +354,8 @@ const register = async (req, res) => {
         email: user.email,
         role: user.role,
         status: initialStatus,
-        requiresApproval
+        requiresApproval,
+        token
       }
     });
 
@@ -397,7 +367,6 @@ const register = async (req, res) => {
     });
   }
 };
-
 // Create staff user (Admin/Manager only)
 const createStaffUser = async (req, res) => {
   try {
@@ -449,17 +418,29 @@ const createStaffUser = async (req, res) => {
 };
 
 // Check user status by email
+// Check user status by ID
 const checkStatus = async (req, res) => {
   try {
-    const { email } = req.params;
-    const user = await User.findOne({ where: { email } });
+    const { id } = req.params; // get id from route params
+    const user = await User.findByPk(id); // cleaner than findOne({ where: { id } })
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
     }
-    res.json({ success: true, status: user.status });
+
+    return res.json({
+      success: true,
+      status: user.status,
+    });
   } catch (error) {
     console.error('Check status error:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+    });
   }
 };
 

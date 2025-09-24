@@ -85,70 +85,100 @@ const safeJsonParse = (str, fallback = null) => {
 
 const getProducts = async (req, res) => {
   try {
-    const { 
-      userType, 
-      categoryId, 
-      subcategoryId, 
-      minPrice, 
-      maxPrice, 
-      search, 
-      page = 1, 
+    const {
+      userType,
+      categoryId,
+      subcategoryId,
+      minPrice,
+      maxPrice,
+      search,
+      page = 1,
       limit = 20,
       isActive,
-      designNumber // Add designNumber to destructured query params
+      designNumber,
+      minDesignNumber,
+      maxDesignNumber
     } = req.query;
+    
     const userRole = getReqUserRole(req);
-
     const whereClause = {};
-
+    
+    // Active status filter
     if (isActive !== undefined) {
       whereClause.isActive = isActive === 'true' || isActive === true;
     }
-
+    
+    // User type visibility filter
     if (userType) {
       whereClause[Op.and] = sequelize.where(
         sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
         true
       );
     }
-
+    
+    // Category filters
     if (categoryId) whereClause.categoryId = categoryId;
     if (subcategoryId) whereClause.categoryId = subcategoryId;
-
+    
+    // Price range filter
     if (minPrice || maxPrice) {
       whereClause.generalPrice = {};
       if (minPrice) whereClause.generalPrice[Op.gte] = Number(minPrice);
       if (maxPrice) whereClause.generalPrice[Op.lte] = Number(maxPrice);
     }
-
-    if (designNumber) {
-      whereClause.designNumber = { [Op.iLike]: `%${designNumber}%` }; // Add designNumber filter
+    
+    // CORRECTED: Design number filtering
+    if (designNumber && !minDesignNumber && !maxDesignNumber) {
+      // Only exact/partial match when no range is specified
+      whereClause.designNumber = { [Op.like]: `%${designNumber}%` };
+    } else if (minDesignNumber || maxDesignNumber) {
+      // Range filter takes priority
+      const rangeCondition = {};
+      if (minDesignNumber) {
+        rangeCondition[Op.gte] = isNaN(minDesignNumber) ? minDesignNumber : Number(minDesignNumber);
+      }
+      if (maxDesignNumber) {
+        rangeCondition[Op.lte] = isNaN(maxDesignNumber) ? maxDesignNumber : Number(maxDesignNumber);
+      }
+      whereClause.designNumber = rangeCondition;
     }
-
+    
+    // Search functionality
     if (search) {
-      const searchTerms = search.trim().split(/\s+/);
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-        { brandName: { [Op.iLike]: `%${search}%` } },
-        { designNumber: { [Op.iLike]: `%${search}%` } },
+      const searchConditions = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+        { brandName: { [Op.like]: `%${search}%` } },
+        { designNumber: { [Op.like]: `%${search}%` } },
         sequelize.where(
           sequelize.fn('JSON_CONTAINS', sequelize.col('specifications'), sequelize.literal(`"${search}"`)),
           true
         )
       ];
+      
+      // Handle combining search with existing conditions
+      if (whereClause[Op.and]) {
+        whereClause[Op.and] = [
+          ...Array.isArray(whereClause[Op.and]) ? whereClause[Op.and] : [whereClause[Op.and]],
+          { [Op.or]: searchConditions }
+        ];
+      } else {
+        whereClause[Op.or] = searchConditions;
+      }
     }
-
+    
     const offset = (page - 1) * limit;
     
-    const activeCount = await Product.count({ 
+    // Count queries for different states
+    const activeCount = await Product.count({
       where: { ...whereClause, isActive: true }
     });
-    const inactiveCount = await Product.count({ 
+    const inactiveCount = await Product.count({
       where: { ...whereClause, isActive: false }
     });
     const totalCount = activeCount + inactiveCount;
-
+    
+    // Main query
     const { count, rows: products } = await Product.findAndCountAll({
       where: whereClause,
       include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
@@ -156,13 +186,14 @@ const getProducts = async (req, res) => {
       limit: Number(limit),
       offset: Number(offset)
     });
-
+    
+    // Process products
     const processedProducts = products.map(product => {
       const productData = processProductData(product, req);
       productData.price = computePrice(product, userRole);
       return productData;
     });
-
+    
     res.json({
       products: processedProducts,
       count,
@@ -174,7 +205,9 @@ const getProducts = async (req, res) => {
       userType: userType || null,
       userRole,
       isActiveFilter: isActive !== undefined ? whereClause.isActive : null,
-      designNumberFilter: designNumber || null // Include designNumber in response for clarity
+      designNumberFilter: designNumber || null,
+      minDesignNumberFilter: minDesignNumber || null,
+      maxDesignNumberFilter: maxDesignNumber || null
     });
   } catch (error) {
     console.error('Get products error:', error);
