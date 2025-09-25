@@ -337,9 +337,8 @@ const createOrder = async (req, res) => {
 
     await OrderItem.bulkCreate(orderItemsData, { transaction });
 
-    if (!items || items.length === 0) {
-      await Cart.destroy({ where: { userId: req.user.id }, transaction });
-    }
+    // Always clear the cart after successful order creation
+    await Cart.destroy({ where: { userId: req.user.id }, transaction });
 
     try {
       await axios.post('https://crm-api.example.com/orders', {
