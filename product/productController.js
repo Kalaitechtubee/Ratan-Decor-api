@@ -111,7 +111,7 @@ const getProducts = async (req, res) => {
     // User type visibility filter
     if (userType) {
       whereClause[Op.and] = sequelize.where(
-        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        sequelize.literal(`visibleTo LIKE '%"${userType}"%'`),
         true
       );
     }
@@ -145,13 +145,14 @@ const getProducts = async (req, res) => {
     
     // Search functionality
     if (search) {
+      const escapedSearch = search.replace(/'/g, "\\'").replace(/"/g, '\\"');
       const searchConditions = [
         { name: { [Op.like]: `%${search}%` } },
         { description: { [Op.like]: `%${search}%` } },
         { brandName: { [Op.like]: `%${search}%` } },
         { designNumber: { [Op.like]: `%${search}%` } },
         sequelize.where(
-          sequelize.fn('JSON_CONTAINS', sequelize.col('specifications'), sequelize.literal(`"${search}"`)),
+          sequelize.literal(`JSON_VALID(specifications) AND JSON_CONTAINS(specifications, '"${escapedSearch}"')`),
           true
         )
       ];
@@ -181,7 +182,16 @@ const getProducts = async (req, res) => {
     // Main query
     const { count, rows: products } = await Product.findAndCountAll({
       where: whereClause,
-      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
+      include: [
+        { 
+          model: Category, 
+          as: 'category', 
+          attributes: ['id', 'name', 'parentId'],
+          include: [
+            { model: Category, as: 'parent', attributes: ['id', 'name'] }
+          ]
+        }
+      ],
       order: [['createdAt', 'DESC']],
       limit: Number(limit),
       offset: Number(offset)
@@ -256,6 +266,13 @@ const createProduct = async (req, res) => {
       brandName
     } = req.body;
 
+    let subcategoryId = null;
+    if (typeof req.body.subcategoryId !== 'undefined') {
+      subcategoryId = req.body.subcategoryId;
+    } else if (typeof req.query.subcategoryId !== 'undefined') {
+      subcategoryId = req.query.subcategoryId;
+    }
+
     // Enhanced validation with better error messages
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       console.error('Validation Error: Invalid name', { name, type: typeof name });
@@ -308,13 +325,6 @@ const createProduct = async (req, res) => {
       imageFilenames = [...imageFilenames, ...req.files.images.map(file => file.filename)];
     }
 
-    // Safely extract subcategoryId from body or query
-    let subcategoryId = null;
-    if (typeof req.body.subcategoryId !== 'undefined') {
-      subcategoryId = req.body.subcategoryId;
-    } else if (typeof req.query.subcategoryId !== 'undefined') {
-      subcategoryId = req.query.subcategoryId;
-    }
     // Parse JSON fields safely
     const parsedSpecifications = safeJsonParse(specifications, {});
     const parsedVisibleTo = safeJsonParse(visibleTo, ['Residential', 'Commercial', 'Modular Kitchen', 'Others']);
@@ -439,14 +449,27 @@ const getProductByName = async (req, res) => {
 
     if (userType) {
       whereClause[Op.and] = sequelize.where(
-        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        sequelize.literal(`visibleTo LIKE '%"${userType}"%'`),
         true
       );
     }
 
     const product = await Product.findOne({
       where: whereClause,
-      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }]
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'parentId'],
+          include: [
+            {
+              model: Category,
+              as: 'parent',
+              attributes: ['id', 'name']
+            }
+          ]
+        }
+      ]
     });
 
     if (!product) {
@@ -483,7 +506,7 @@ const searchProductsByName = async (req, res) => {
 
     if (userType) {
       whereClause[Op.and] = sequelize.where(
-        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        sequelize.literal(`visibleTo LIKE '%"${userType}"%'`),
         true
       );
     }
@@ -527,7 +550,7 @@ const getProductById = async (req, res) => {
 
     if (userType) {
       whereClause[Op.and] = sequelize.where(
-        sequelize.literal(`JSON_CONTAINS(visibleTo, '"${userType}"')`),
+        sequelize.literal(`visibleTo LIKE '%"${userType}"%'`),
         true
       );
     }
@@ -558,24 +581,31 @@ const getProductById = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      name,
-      description,
-      specifications,
-      categoryId,
-      visibleTo,
-      mrpPrice,
-      generalPrice,
-      architectPrice,
-      dealerPrice,
-      designNumber,
-      size,
-      thickness,
-      isActive,
-      colors,
-      gst,
-      brandName
-    } = req.body;
+  const {
+    name,
+    description,
+    specifications,
+    categoryId,
+    visibleTo,
+    mrpPrice,
+    generalPrice,
+    architectPrice,
+    dealerPrice,
+    designNumber,
+    size,
+    thickness,
+    isActive,
+    colors,
+    gst,
+    brandName
+  } = req.body;
+
+    let subcategoryId = null;
+    if (typeof req.body.subcategoryId !== 'undefined') {
+      subcategoryId = req.body.subcategoryId;
+    } else if (typeof req.query.subcategoryId !== 'undefined') {
+      subcategoryId = req.query.subcategoryId;
+    }
 
     let keptImages = [];
     if (req.body.keptImages) {
@@ -641,11 +671,19 @@ const updateProduct = async (req, res) => {
       }
     }
 
+    // Prepare final categoryId, prioritize subcategoryId if provided (same as createProduct)
+    let finalCategoryId = product.categoryId; // Default to existing
+    if (subcategoryId !== undefined && subcategoryId !== '' && subcategoryId !== 'null') {
+      finalCategoryId = subcategoryId;
+    } else if (categoryId !== undefined && categoryId !== '' && categoryId !== 'null') {
+      finalCategoryId = categoryId;
+    }
+
     const updateData = {
       name: name !== undefined ? name : product.name,
       description: description !== undefined ? description : product.description,
       specifications: parsedSpecifications !== undefined ? parsedSpecifications : product.specifications,
-      categoryId: categoryId !== undefined ? categoryId : product.categoryId,
+      categoryId: finalCategoryId,
       visibleTo: parsedVisibleTo !== undefined ? parsedVisibleTo : product.visibleTo,
       mrpPrice: mrpPrice !== undefined ? mrpPrice : product.mrpPrice,
       generalPrice: generalPrice !== undefined ? generalPrice : product.generalPrice,
@@ -664,9 +702,23 @@ const updateProduct = async (req, res) => {
 
     await product.update(updateData);
 
+    // Re-fetch updated product with category and parent included
+    const updatedProduct = await Product.findByPk(product.id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'parentId'],
+          include: [
+            { model: Category, as: 'parent', attributes: ['id', 'name'] }
+          ]
+        }
+      ]
+    });
+
     res.json({
       message: 'Product updated successfully',
-      product: processProductData(product, req)
+      product: processProductData(updatedProduct, req)
     });
   } catch (error) {
     console.error('Update product error:', error);
@@ -696,6 +748,14 @@ const updateProductAll = async (req, res) => {
       brandName,
       isActive
     } = req.body;
+
+    // Safely extract subcategoryId from body or query (same as createProduct)
+    let subcategoryId = null;
+    if (typeof req.body.subcategoryId !== 'undefined') {
+      subcategoryId = req.body.subcategoryId;
+    } else if (typeof req.query.subcategoryId !== 'undefined') {
+      subcategoryId = req.query.subcategoryId;
+    }
 
     let keptImages = [];
     if (req.body.keptImages) {
@@ -768,6 +828,14 @@ const updateProductAll = async (req, res) => {
       }
     }
 
+    // Prepare final categoryId, prioritize subcategoryId if provided (same as createProduct)
+    let finalCategoryId = null;
+    if (subcategoryId && subcategoryId !== '' && subcategoryId !== 'null') {
+      finalCategoryId = subcategoryId;
+    } else if (categoryId && categoryId !== '' && categoryId !== 'null') {
+      finalCategoryId = categoryId;
+    }
+
     const updateData = {
       name,
       description,
@@ -780,7 +848,7 @@ const updateProductAll = async (req, res) => {
       designNumber: designNumber || null,
       size: size || null,
       thickness: thickness || null,
-      categoryId,
+      categoryId: finalCategoryId,
       productUsageTypeId,
       colors: parsedColors,
       gst: gst !== undefined ? parseFloat(gst) : null,
