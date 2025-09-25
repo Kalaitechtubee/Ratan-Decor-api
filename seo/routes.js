@@ -14,8 +14,8 @@ router.get("/page/:pageName", seoController.getSeoByPageName);
 // ==========================
 // Protected Routes (Admin/Manager Only)
 // ==========================
-router.post("/", authMiddleware, requireRole(["Admin", "Manager"]), seoController.createSeo);
-router.put("/:id", authMiddleware, requireRole(["Admin", "Manager"]), seoController.updateSeo);
-router.delete("/:id", authMiddleware, requireRole(["Admin"]), seoController.deleteSeo);
+router.post("/", authMiddleware, requireRole(["admin", "manager"]), seoController.createSeo);
+router.put("/:id", authMiddleware, requireRole(["admin", "manager"]), seoController.updateSeo);
+router.delete("/:id", authMiddleware, requireRole(["admin"]), seoController.deleteSeo);
 
 module.exports = router;

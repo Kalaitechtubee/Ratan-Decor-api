@@ -5,24 +5,23 @@ module.exports = {
     // First, update any invalid role values to 'General'
     await queryInterface.sequelize.query(`
       UPDATE users
-      SET role = 'General'
-      WHERE role NOT IN ('customer', 'General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support')
+      SET role = 'customer'
+      WHERE role NOT IN ('customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support')
     `);
 
     // Then alter the column with the correct ENUM values
     await queryInterface.changeColumn('users', 'role', {
       type: Sequelize.ENUM(
         'customer',
-        'General',
-        'Architect',
-        'Dealer',
-        'Admin',
-        'Manager',
-        'Sales',
-        'Support'
+        'architect',
+        'dealer',
+        'admin',
+        'manager',
+        'sales',
+        'support'
       ),
       allowNull: false,
-      defaultValue: 'General'
+      defaultValue: 'customer'
     });
   },
 

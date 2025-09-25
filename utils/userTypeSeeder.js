@@ -6,7 +6,7 @@ const defaultUserTypes = [
   { name: 'Residential', description: 'Individual residential customers' },
   { name: 'Commercial', description: 'Business and commercial customers' },
   { name: 'Modular Kitchen', description: 'Customers interested in modular kitchen solutions' },
-  { name: 'General', description: 'Default user type' },  // Added this line
+
   { name: 'Others', description: 'Other types of customers' }
 ];
 

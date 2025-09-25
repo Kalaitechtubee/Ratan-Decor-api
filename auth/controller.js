@@ -20,32 +20,33 @@ const transporter = nodemailer.createTransport({
 
 // Role hierarchy and permissions
 const ROLE_HIERARCHY = {
-  'SuperAdmin': 100,
-  'Admin': 90,
-  'Manager': 80,
-  'Sales': 60,
-  'Support': 50,
-  'Dealer': 40,
-  'Architect': 40,
-  'Customer': 20,
-  'General': 10
+  'superadmin': 100,
+  'admin': 90,
+  'manager': 80,
+  'sales': 60,
+  'support': 50,
+  'dealer': 40,
+  'architect': 40,
+  'customer': 20
 };
 
 const REGISTRATION_RULES = {
-  PUBLIC_ROLES: ['General', 'Customer'],
-  BUSINESS_ROLES: ['Architect', 'Dealer'],
-  STAFF_ROLES: ['Manager', 'Sales', 'Support', 'Architect'],
-  ADMIN_ROLES: ['Admin'],
-  SUPERADMIN_ROLES: ['SuperAdmin']
+  PUBLIC_ROLES: ['customer'],
+  BUSINESS_ROLES: ['architect', 'dealer'],
+  STAFF_ROLES: ['manager', 'sales', 'support', 'architect'],
+  ADMIN_ROLES: ['admin'],
+  SUPERADMIN_ROLES: ['superadmin']
 };
 
 // Check if creator can create target role
 const canCreateRole = (creatorRole, targetRole) => {
-  if (creatorRole === 'SuperAdmin' || creatorRole === 'Admin') {
-    return true; // Both SuperAdmin and Admin can assign any role
+  const creatorRoleLower = creatorRole.toLowerCase();
+  const targetRoleLower = targetRole.toLowerCase();
+  if (creatorRoleLower === 'superadmin' || creatorRoleLower === 'admin') {
+    return true; // Both superadmin and admin can assign any role
   }
-  if (creatorRole === 'Manager') {
-    return ['Sales', 'Support'].includes(targetRole);
+  if (creatorRoleLower === 'manager') {
+    return ['sales', 'support'].includes(targetRoleLower);
   }
   return false;
 };
@@ -98,10 +99,10 @@ const login = async (req, res) => {
 
       // Create SuperAdmin if doesn't exist
       if (!user) {
-        let superAdminUserType = await UserType.findOne({ where: { name: 'SuperAdmin' } });
+        let superAdminUserType = await UserType.findOne({ where: { name: 'superadmin' } });
         if (!superAdminUserType) {
           superAdminUserType = await UserType.create({
-            name: 'SuperAdmin',
+            name: 'superadmin',
             description: 'Super Administrator - Developer access',
             isActive: true
           });
@@ -112,7 +113,7 @@ const login = async (req, res) => {
           name: 'Super Administrator',
           email: SUPERADMIN_EMAIL,
           password: hashedPassword,
-          role: 'SuperAdmin',
+          role: 'superadmin',
           status: 'Approved',
           userTypeId: superAdminUserType.id,
           mobile: '0000000000',
@@ -222,7 +223,7 @@ const register = async (req, res) => {
       });
     }
 
-    const requestedRole = role || 'General';
+    const requestedRole = role || 'customer';
     let initialStatus = 'Approved';
     let requiresApproval = false;
     let canCreate = false;
@@ -239,7 +240,7 @@ const register = async (req, res) => {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
-          message: 'Staff roles can only be created by Admin or SuperAdmin'
+          message: 'Staff roles can only be created by admin or superadmin'
         });
       }
       canCreate = true;
@@ -248,7 +249,7 @@ const register = async (req, res) => {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
-          message: 'Admin role can only be created by SuperAdmin'
+          message: 'Admin role can only be created by superadmin'
         });
       }
       canCreate = true;
@@ -257,7 +258,7 @@ const register = async (req, res) => {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
-          message: 'SuperAdmin role can only be created by existing SuperAdmin'
+          message: 'superadmin role can only be created by existing superadmin'
         });
       }
       canCreate = true;
@@ -286,13 +287,13 @@ const register = async (req, res) => {
     }
 
     if (!finalUserTypeId) {
-      let defaultTypeName = ['General', 'Customer'].includes(requestedRole) ? 'General' : requestedRole;
+      let defaultTypeName = ['customer'].includes(requestedRole) ? 'customer' : requestedRole;
       let defaultType = await UserType.findOne({ where: { name: defaultTypeName } });
       if (!defaultType) {
-        defaultType = await UserType.findOne({ where: { name: 'General' } });
+        defaultType = await UserType.findOne({ where: { name: 'customer' } });
         if (!defaultType) {
           defaultType = await UserType.create({
-            name: 'General',
+            name: 'customer',
             description: 'Default user type',
             isActive: true
           });
@@ -371,8 +372,8 @@ const register = async (req, res) => {
 const createStaffUser = async (req, res) => {
   try {
     const creator = req.user;
-    
-    if (!['SuperAdmin', 'Admin', 'Manager'].includes(creator.role)) {
+
+    if (!['superadmin', 'admin', 'manager'].includes(creator.role.toLowerCase())) {
       return res.status(403).json({
         success: false,
         message: 'Only SuperAdmin, Admin, or Manager can create staff users'
@@ -389,15 +390,16 @@ const createStaffUser = async (req, res) => {
     }
 
     if (!canCreateRole(creator.role, role)) {
+      const creatorRoleLower = creator.role.toLowerCase();
       const allowedRoles = [];
-      if (creator.role === 'SuperAdmin') {
+      if (creatorRoleLower === 'superadmin') {
         allowedRoles.push(...REGISTRATION_RULES.STAFF_ROLES, ...REGISTRATION_RULES.ADMIN_ROLES, ...REGISTRATION_RULES.SUPERADMIN_ROLES);
-      } else if (creator.role === 'Admin') {
+      } else if (creatorRoleLower === 'admin') {
         allowedRoles.push(...REGISTRATION_RULES.STAFF_ROLES);
-      } else if (creator.role === 'Manager') {
-        allowedRoles.push('Sales', 'Support');
+      } else if (creatorRoleLower === 'manager') {
+        allowedRoles.push('sales', 'support');
       }
-      
+
       return res.status(403).json({
         success: false,
         message: `${creator.role} cannot assign ${role} role`,

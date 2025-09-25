@@ -6,7 +6,7 @@ const userRoleController = {
   // ✅ Get all roles
   async getAllRoles(req, res) {
     try {
-      const roles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
+      const roles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support'];
       res.json({
         success: true,
         data: roles,
@@ -77,7 +77,7 @@ const userRoleController = {
       const user = await User.findByPk(id);
       if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-      const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
+      const validRoles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support'];
       if (role && !validRoles.includes(role)) {
         return res.status(400).json({ success: false, message: 'Invalid role' });
       }

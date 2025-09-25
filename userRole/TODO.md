@@ -1,0 +1,2 @@
+- [x] Update the roles array in getAllRoles function to: ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support']
+- [x] Update the validRoles array in updateUserRole function to match the new roles

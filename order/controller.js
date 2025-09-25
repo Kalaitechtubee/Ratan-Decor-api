@@ -414,7 +414,7 @@ const getOrders = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    const where = req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id };
+    const where = req.user.role === 'admin' || req.user.role === 'manager' ? {} : { userId: req.user.id };
 
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -630,7 +630,7 @@ const getOrderById = async (req, res) => {
     const order = await Order.findOne({
       where: {
         id: id,
-        ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
+        ...(req.user.role === 'admin' || req.user.role === 'manager' ? {} : { userId: req.user.id })
       },
       include: [
         {

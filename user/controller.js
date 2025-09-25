@@ -81,7 +81,7 @@ const getUserById = async (req, res) => {
 const createUser = async (req, res) => {
   try {
     const { name, email, password, mobile, company, role, status, userTypeId } = req.body;
-    const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
+    const validRoles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support', 'superadmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate required fields
@@ -121,12 +121,12 @@ const createUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
       }
     } else {
-      // Ensure General user type exists
-      let generalType = await UserType.findOne({ where: { name: 'General' } });
-      if (!generalType) {
-        generalType = await UserType.create({ name: 'General', isActive: true });
+      // Ensure customer user type exists
+      let customerType = await UserType.findOne({ where: { name: 'customer' } });
+      if (!customerType) {
+        customerType = await UserType.create({ name: 'customer', isActive: true });
       }
-      finalUserTypeId = generalType.id;
+      finalUserTypeId = customerType.id;
     }
 
     // Check for duplicate email
@@ -168,7 +168,7 @@ const updateUser = async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const validRoles = ['General', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'];
+    const validRoles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support', 'superadmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate email if provided
@@ -255,7 +255,7 @@ const getUserOrderHistory = async (req, res) => {
     } = req.query;
 
     // Check if user can access this data (consistent with middleware)
-    const allowedRoles = ['Admin', 'Manager', 'Sales', 'Support'];
+    const allowedRoles = ['admin', 'manager', 'sales', 'support'];
     if (!allowedRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -481,7 +481,7 @@ const getFullOrderHistory = async (req, res) => {
     } = req.query;
 
     // Only admin and manager can access full order history
-    if (req.user.role !== 'Admin' && req.user.role !== 'Manager') {
+    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 

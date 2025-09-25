@@ -94,7 +94,7 @@ const getProfileOrderHistory = async (req, res) => {
     const userId = req.params.userId || req.user.id;
 
     // Check if user can access this data (consistent with middleware)
-    const allowedRoles = ['Admin', 'Manager', 'Sales', 'Support'];
+    const allowedRoles = ['admin', 'manager', 'sales', 'support'];
     if (!allowedRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -321,7 +321,7 @@ const getProfileOrderHistoryById = async (req, res) => {
     const userId = req.params.id;
 
     // Check if user can access this data (consistent with middleware)
-    const allowedRoles = ['Admin', 'Manager', 'Sales', 'Support'];
+    const allowedRoles = ['admin', 'manager', 'sales', 'support'];
     if (!allowedRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }

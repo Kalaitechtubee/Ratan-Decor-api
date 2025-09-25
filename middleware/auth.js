@@ -33,7 +33,8 @@ const authenticateToken = async (req, res, next) => {
     }
 
     // Check if user is approved (except for Admins and SuperAdmin)
-    if (user.role !== 'Admin' && user.role !== 'SuperAdmin' && user.status !== 'Approved') {
+    const userRoleLower = user.role.toLowerCase();
+    if (userRoleLower !== 'admin' && userRoleLower !== 'superadmin' && user.status !== 'Approved') {
       return res.status(403).json({
         success: false,
         message: user.status === 'Pending'
@@ -76,19 +77,20 @@ const authenticateToken = async (req, res, next) => {
 const authorizeRoles = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: "Authentication required" 
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
       });
     }
 
-    const userRole = req.user.role;
-    if (!allowedRoles.includes(userRole)) {
+    const userRole = req.user.role.toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+    if (!normalizedAllowedRoles.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: `Access denied for role ${userRole}`,
+        message: `Access denied for role ${req.user.role}`,
         requiredRoles: allowedRoles,
-        userRole: userRole
+        userRole: req.user.role
       });
     }
     next();
@@ -98,39 +100,39 @@ const authorizeRoles = (allowedRoles) => {
 // Module-specific access control based on your requirements
 const moduleAccess = {
   // Admin: Full control over everything
-  requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
-  
+  requireAdmin: authorizeRoles(["superadmin", "admin"]),
+
   // Manager: Can approve/reject, manage roles, view stats
-  requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin", "Manager"]),
-  
+  requireManagerOrAdmin: authorizeRoles(["superadmin", "admin", "manager"]),
+
   // Sales: Access to Enquiries + Orders modules only
-  requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales"]),
-  
+  requireSalesAccess: authorizeRoles(["superadmin", "admin", "manager", "sales"]),
+
   // Support: Access to Products module only
-  requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Support"]),
-  
+  requireSupportAccess: authorizeRoles(["superadmin", "admin", "manager", "support"]),
+
   // Business users: Limited access to own data
-  requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Dealer", "Architect"]),
-  
+  requireBusinessUser: authorizeRoles(["superadmin", "admin", "manager", "dealer", "architect"]),
+
   // Any authenticated user
-  requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support", "Dealer", "Architect", "General", "Customer"]),
-  
+  requireAuth: authorizeRoles(["superadmin", "admin", "manager", "sales", "support", "dealer", "architect", "general", "customer"]),
+
   // Staff roles (internal users)
-  requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin", "Manager", "Sales", "Support"])
+  requireStaffAccess: authorizeRoles(["superadmin", "admin", "manager", "sales", "support"])
 };
 
 // Data access control middleware
 const requireOwnDataOrStaff = (req, res, next) => {
-  const userRole = req.user.role;
+  const userRole = req.user.role.toLowerCase();
   const requestedUserId = req.params.userId || req.params.id;
 
   // Staff can access any data
-  if (['Admin', 'Manager', 'Sales', 'Support'].includes(userRole)) {
+  if (['admin', 'manager', 'sales', 'support'].includes(userRole)) {
     return next();
   }
 
   // Customers can access only their own data
-  if (userRole === 'Customer') {
+  if (userRole === 'customer') {
     if (requestedUserId && parseInt(requestedUserId) !== req.user.id) {
       return res.status(403).json({
         success: false,

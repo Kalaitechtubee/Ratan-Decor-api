@@ -183,7 +183,7 @@ const processUploadedFiles = (files) => {
   return result;
 };
 
-const processOrderProductData = (product, req, userRole = 'General') => {
+const processOrderProductData = (product, req, userRole = 'customer') => {
   if (!product) return null;
   
   const processedProduct = processProductData(product, req);

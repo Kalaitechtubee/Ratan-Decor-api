@@ -71,7 +71,7 @@ router.post(
   '/',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     body('name')
       .trim()
       .isLength({ min: 2 })
@@ -93,7 +93,7 @@ router.post(
   '/subcategory/:parentId',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     param('parentId').isInt({ min: 1 }).withMessage('Parent ID must be a positive integer'),
     body('name')
       .trim()
@@ -116,7 +116,7 @@ router.put(
   '/:id',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('name')
       .optional()
@@ -151,7 +151,7 @@ router.get(
   '/:id/deletion-check',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')
   ],
   validate,
@@ -163,7 +163,7 @@ router.delete(
   '/:id/force',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('action')
       .isIn(['deactivate_products', 'move_to_uncategorized', 'delete_products'])
@@ -178,7 +178,7 @@ router.delete(
   '/:id',
   [
     authMiddleware,
-    requireRole(['Admin', 'Manager', 'SuperAdmin']),
+    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')
   ],
   validate,
