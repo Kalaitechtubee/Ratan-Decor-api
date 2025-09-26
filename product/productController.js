@@ -19,9 +19,9 @@ const getReqUserRole = (req) => {
 };
 
 const computePrice = (product, role) =>
-  role === 'Dealer'
+  role.toLowerCase() === 'dealer'
     ? product.dealerPrice
-    : role === 'Architect'
+    : role.toLowerCase() === 'architect'
     ? product.architectPrice
     : product.generalPrice;
 

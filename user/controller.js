@@ -481,7 +481,7 @@ const getFullOrderHistory = async (req, res) => {
     } = req.query;
 
     // Only admin and manager can access full order history
-    if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    if (req.user.role.toLowerCase() !== 'admin' && req.user.role.toLowerCase() !== 'manager') {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 

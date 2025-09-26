@@ -74,8 +74,8 @@ router.post('/', createOrder);
 
 // Get orders with role-based filtering
 router.get('/', (req, res, next) => {
-  // If user is not admin/manager, filter by their userId
-  if (!['admin', 'manager', 'sales'].includes(req.user.role)) {
+  // If user is not admin/manager/sales/User, filter by their userId
+  if (!['admin', 'manager', 'sales', 'User'].includes(req.user.role)) {
     req.query.userId = req.user.id;
   }
   next();

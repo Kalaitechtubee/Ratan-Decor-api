@@ -414,7 +414,7 @@ const getOrders = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    const where = req.user.role === 'admin' || req.user.role === 'manager' ? {} : { userId: req.user.id };
+    const where = ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id };
 
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -563,7 +563,7 @@ const getOrders = async (req, res) => {
     };
 
     const statusStats = await Order.findAll({
-      where: req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id },
+      where: ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id },
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -581,7 +581,7 @@ const getOrders = async (req, res) => {
     });
 
     const paymentStats = await Order.findAll({
-      where: req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id },
+      where: ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id },
       attributes: [
         'paymentStatus',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -630,7 +630,7 @@ const getOrderById = async (req, res) => {
     const order = await Order.findOne({
       where: {
         id: id,
-        ...(req.user.role === 'admin' || req.user.role === 'manager' ? {} : { userId: req.user.id })
+        ...(['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id })
       },
       include: [
         {
@@ -805,7 +805,7 @@ const updateOrder = async (req, res) => {
     const order = await Order.findOne({
       where: {
         id: id,
-        ...(req.user.role === 'Admin' || req.user.role === 'Manager' ? {} : { userId: req.user.id })
+        ...(['admin', 'manager'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id })
       }
     });
     
@@ -815,7 +815,7 @@ const updateOrder = async (req, res) => {
     
     const updateData = {};
     
-    if (req.user.role === 'Admin' || req.user.role === 'Manager') {
+    if (['admin', 'manager'].includes(req.user.role.toLowerCase())) {
       if (status !== undefined) updateData.status = status;
       if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
       if (notes !== undefined) updateData.notes = notes;
@@ -892,7 +892,7 @@ const cancelOrder = async (req, res) => {
 
     // Staff users can cancel any order, regular users can only cancel their own orders
     let whereCondition = { id: id };
-    if (!['Admin', 'SuperAdmin', 'Manager', 'Sales', 'Support'].includes(req.user.role)) {
+    if (!['admin', 'superadmin', 'manager', 'sales', 'support'].includes(req.user.role.toLowerCase())) {
       whereCondition.userId = req.user.id;
     }
 
@@ -992,7 +992,7 @@ const deleteOrder = async (req, res) => {
 // GET ORDER STATS
 const getOrderStats = async (req, res) => {
   try {
-    const userId = req.user.role === 'Admin' || req.user.role === 'Manager' ? null : req.user.id;
+    const userId = ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? null : req.user.id;
     const whereClause = userId ? { userId } : {};
     
     const totalOrders = await Order.count({ where: whereClause });
