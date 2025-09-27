@@ -179,12 +179,34 @@ const sanitizeInput = (req, res, next) => {
       }
     }
   };
-  
+
   if (req.body) sanitize(req.body);
   if (req.query) sanitize(req.query);
   if (req.params) sanitize(req.params);
-  
+
   next();
+};
+
+// Utility function to sanitize input objects
+const sanitizeInputObject = (obj) => {
+  const sanitize = (input) => {
+    if (typeof input === 'string') {
+      return input
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/javascript:/gi, '')
+        .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+        .trim();
+    } else if (typeof input === 'object' && input !== null) {
+      const sanitized = {};
+      for (let key in input) {
+        sanitized[key] = sanitize(input[key]);
+      }
+      return sanitized;
+    }
+    return input;
+  };
+
+  return sanitize(obj);
 };
 
 // Request logging for audit trails
@@ -255,6 +277,7 @@ module.exports = {
   enhanceLoginSecurity,
   validatePasswordPolicy,
   sanitizeInput,
+  sanitizeInputObject,
   auditLogger,
   sessionSecurity,
   secureLogout

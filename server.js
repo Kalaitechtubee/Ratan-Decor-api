@@ -31,6 +31,7 @@ const userRoleRoutes = require('./userRole/routes');
 const enquiryRoutes = require('./enquiry/routes');
 const seoRoutes = require('./seo/routes');
 const videoCallEnquiryRoutes = require('./VideoCallEnquiry/routes');
+const contactRoutes = require('./contact/router');
 
 // Security middleware
 const { 
@@ -413,6 +414,7 @@ app.use('/api/roles', userRoleRoutes);
 app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/seo', cors(corsOptions), seoRoutes);
 app.use('/api/video-call-enquiries', videoCallEnquiryRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Health check endpoints with Swagger documentation
 /**
@@ -569,7 +571,7 @@ const startServer = async () => {
     
     // Sync database
     console.log('🔄 Syncing database...');
-    await sequelize.sync({ alter:false }); 
+    await sequelize.sync({ alter: false}); 
     console.log('✅ Database synced successfully');
     
     // Run migrations
