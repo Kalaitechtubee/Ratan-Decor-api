@@ -406,6 +406,7 @@ const getOrders = async (req, res) => {
     const {
       status,
       paymentStatus,
+      customer,
       startDate,
       endDate,
       page = 1,
@@ -429,6 +430,14 @@ const getOrders = async (req, res) => {
     }
 
     const offset = (page - 1) * limit;
+
+    const userInclude = { 
+      model: User, 
+      as: 'user', 
+      attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], 
+      where: customer ? { name: { [Op.iLike]: `%${customer}%` } } : undefined,
+      required: !!customer
+    };
 
     const { count, rows: orders } = await Order.findAndCountAll({
       where,
@@ -459,12 +468,7 @@ const getOrders = async (req, res) => {
           as: 'shippingAddress', 
           required: false 
         },
-        { 
-          model: User, 
-          as: 'user', 
-          attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], 
-          required: false 
-        }
+        userInclude
       ],
       order: [[sortBy, sortOrder.toUpperCase()]],
       limit: Number(limit),
