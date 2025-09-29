@@ -1,13 +1,11 @@
-// routes/category.js - FIXED Category Management Routes
 const express = require('express');
 const router = express.Router();
 const categoryController = require('./controller');
 const { body, param, query, validationResult } = require('express-validator');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { uploadCategoryImage, handleCategoryUploadError } = require('../middleware/categoryUpload');
 
-// ===============================
 // Validation middleware
-// ===============================
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -35,12 +33,11 @@ router.get(
   categoryController.searchCategories
 );
 
-// FIXED: Get subcategories for a specific parent category (handles 'null' properly)
+// Get subcategories for a specific parent category
 router.get(
   '/subcategories/:parentId',
   [
     param('parentId').custom((value) => {
-      // Allow 'null', 'undefined', empty string, or valid integers
       if (value === 'null' || value === 'undefined' || value === '') {
         return true;
       }
@@ -66,12 +63,13 @@ router.get(
 // Protected Routes (Admin/Manager only)
 // ===============================
 
-// Create a new main category
+// Create a new main category (WITH IMAGE UPLOAD)
 router.post(
   '/',
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
+  uploadCategoryImage, // Allow image upload for main categories
   [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
     body('name')
       .trim()
       .isLength({ min: 2 })
@@ -88,12 +86,13 @@ router.post(
   categoryController.createCategory
 );
 
-// Create a new subcategory under a specific parent
+// Create a new subcategory (NO IMAGE UPLOAD - middleware not applied)
 router.post(
   '/subcategory/:parentId',
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
+  // NOTE: uploadCategoryImage NOT applied here - subcategories cannot have images
   [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
     param('parentId').isInt({ min: 1 }).withMessage('Parent ID must be a positive integer'),
     body('name')
       .trim()
@@ -111,12 +110,13 @@ router.post(
   categoryController.createSubCategory
 );
 
-// Update a category
+// Update a category (WITH IMAGE UPLOAD - but controller checks if main category)
 router.put(
   '/:id',
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
+  uploadCategoryImage, // Middleware allows upload, but controller validates
   [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('name')
       .optional()
@@ -146,24 +146,22 @@ router.put(
   categoryController.updateCategory
 );
 
-// ADDED: Check category deletion impact
+// Check category deletion impact
 router.get(
   '/:id/deletion-check',
-  [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
-    param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')
-  ],
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
+  [param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')],
   validate,
   categoryController.checkCategoryDeletion
 );
 
-// ADDED: Force delete category with product handling options
+// Force delete category with product handling options
 router.delete(
   '/:id/force',
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
   [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('action')
       .isIn(['deactivate_products', 'move_to_uncategorized', 'delete_products'])
@@ -176,11 +174,9 @@ router.delete(
 // Delete a category and all its subcategories
 router.delete(
   '/:id',
-  [
-    authMiddleware,
-    requireRole(['admin', 'manager', 'superadmin']),
-    param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')
-  ],
+  authMiddleware,
+  requireRole(['admin', 'manager', 'superadmin']),
+  [param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')],
   validate,
   categoryController.deleteCategory
 );
@@ -212,5 +208,8 @@ router.use((error, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? error.message : undefined
   });
 });
+
+// Category upload error handler
+router.use(handleCategoryUploadError);
 
 module.exports = router;

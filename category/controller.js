@@ -1,5 +1,6 @@
 const { Category, Product, sequelize } = require('../models');
 const { Op, Sequelize } = require('sequelize');
+const { generateImageUrl } = require('../utils/imageUtils');
 
 // Utility: Build recursive category tree with improved structure
 const buildTree = (categories, parentId = null) => {
@@ -9,6 +10,8 @@ const buildTree = (categories, parentId = null) => {
       id: c.id,
       name: c.name,
       brandName: c.brandName,
+      image: c.image, // Will be null for subcategories
+      imageUrl: c.image ? generateImageUrl(c.image, null, 'categories') : null,
       parentId: c.parentId,
       isSubcategory: !!c.parentId,
       productCount: c.productCount || 0,
@@ -16,7 +19,7 @@ const buildTree = (categories, parentId = null) => {
     }));
 };
 
-// Utility: Get all descendant IDs recursively with improved error handling
+// Utility: Get all descendant IDs recursively
 const getDescendants = async (catId) => {
   try {
     const descendants = [];
@@ -45,7 +48,6 @@ const getDescendants = async (catId) => {
 // Get all categories as nested tree with product counts
 const getCategoryTree = async (req, res) => {
   try {
-    // Fetch categories with product counts
     const categories = await Category.findAll({
       include: [
         {
@@ -60,6 +62,7 @@ const getCategoryTree = async (req, res) => {
         'name', 
         'parentId',
         'brandName',
+        'image',
         [sequelize.fn('COUNT', sequelize.col('products.id')), 'productCount']
       ],
       group: ['Category.id'],
@@ -75,11 +78,11 @@ const getCategoryTree = async (req, res) => {
       });
     }
 
-    // Build tree structure
     const mappedCategories = categories.map(c => ({
       id: c.id,
       name: c.name,
       brandName: c.brandName,
+      image: c.image,
       parentId: c.parentId,
       productCount: parseInt(c.productCount) || 0,
     }));
@@ -93,23 +96,6 @@ const getCategoryTree = async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching category tree:', err);
-    
-    if (err.name === 'SequelizeConnectionError' || err.name === 'SequelizeConnectionRefusedError') {
-      return res.status(503).json({ 
-        success: false, 
-        message: 'Database connection error. Please try again later.',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
-    if (err.name === 'SequelizeDatabaseError') {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Database query error. Please check your request parameters.',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch categories',
@@ -118,17 +104,14 @@ const getCategoryTree = async (req, res) => {
   }
 };
 
-// FIXED: Get subcategories by parentId with proper null handling
+// Get subcategories by parentId
 const getSubCategories = async (req, res) => {
   try {
     const { parentId } = req.params;
-    
-    // Parse pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const offset = (page - 1) * limit;
 
-    // FIXED: Proper parentId handling
     let categoryId;
     if (parentId === 'null' || parentId === 'undefined' || !parentId || parentId === '') {
       categoryId = null;
@@ -141,7 +124,6 @@ const getSubCategories = async (req, res) => {
         });
       }
       
-      // Verify parent category exists if not null
       const parentExists = await Category.findByPk(categoryId);
       if (!parentExists) {
         return res.status(404).json({ 
@@ -151,20 +133,14 @@ const getSubCategories = async (req, res) => {
       }
     }
 
-    console.log(`Fetching subcategories for parentId: ${parentId} (parsed as: ${categoryId})`);
-
-    // Find subcategories with pagination
     const { count: totalCount, rows: subcategories } = await Category.findAndCountAll({
       where: { parentId: categoryId },
-      attributes: ['id', 'name', 'brandName', 'parentId'],
+      attributes: ['id', 'name', 'brandName', 'image', 'parentId'],
       limit,
       offset,
       order: [['name', 'ASC']],
     });
 
-    console.log(`Found ${subcategories.length} subcategories`);
-
-    // Get product and subcategory counts for each subcategory
     const response = await Promise.all(subcategories.map(async (subcat) => {
       const productCount = await Product.count({
         where: {
@@ -181,6 +157,8 @@ const getSubCategories = async (req, res) => {
         id: subcat.id,
         name: subcat.name,
         brandName: subcat.brandName,
+        image: subcat.image,
+        imageUrl: subcat.image ? generateImageUrl(subcat.image, req, 'categories') : null,
         parentId: subcat.parentId,
         productCount,
         subcategoryCount,
@@ -210,72 +188,77 @@ const getSubCategories = async (req, res) => {
   }
 };
 
-// FIXED: Create subcategory with proper validation
+// Create subcategory - NO IMAGE ALLOWED
 const createSubCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { parentId } = req.params;
     const { name, brandName } = req.body;
-    
-    // Enhanced validation
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+
+    // PREVENT IMAGE UPLOAD FOR SUBCATEGORIES
+    if (req.file) {
       await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Subcategory name must be at least 2 characters long' 
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategories cannot have images. Only main categories can have images.'
       });
     }
-    
+
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Subcategory name must be at least 2 characters long'
+      });
+    }
+
     const parsedParentId = parseInt(parentId);
     if (isNaN(parsedParentId)) {
       await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid parent category ID' 
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid parent category ID'
       });
     }
 
     const trimmedName = name.trim();
 
-    // Validate parent category exists
     const parent = await Category.findByPk(parsedParentId, { transaction });
     if (!parent) {
       await transaction.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Parent category not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Parent category not found'
       });
     }
 
-    // Check for duplicate name (case-insensitive) under this parent
     const existingCategory = await Category.findOne({
-      where: { 
+      where: {
         name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
         parentId: parsedParentId
       },
       transaction
     });
-    
+
     if (existingCategory) {
       await transaction.rollback();
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Subcategory name already exists under this parent category' 
+      return res.status(409).json({
+        success: false,
+        message: 'Subcategory name already exists under this parent category'
       });
     }
 
-    // Create subcategory
+    // Create subcategory WITHOUT image
     const category = await Category.create({
       name: trimmedName,
       parentId: parsedParentId,
       brandName: brandName || null,
+      image: null, // ALWAYS null for subcategories
     }, { transaction });
 
     await transaction.commit();
 
-    console.log(`Created subcategory: ${trimmedName} under parent ID: ${parsedParentId}`);
-    
     res.status(201).json({
       success: true,
       message: 'Subcategory created successfully',
@@ -283,6 +266,8 @@ const createSubCategory = async (req, res) => {
         id: category.id,
         name: category.name,
         brandName: category.brandName,
+        image: null,
+        imageUrl: null,
         parentId: category.parentId,
         parentName: parent.name,
         isSubcategory: true,
@@ -293,24 +278,15 @@ const createSubCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error creating subcategory:', err);
-    
-    if (err.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Subcategory name already exists under this parent',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create subcategory',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// FIXED: Update category with proper validation and change detection
+// Update category
 const updateCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
   
@@ -327,9 +303,7 @@ const updateCategory = async (req, res) => {
       });
     }
 
-    const category = await Category.findByPk(categoryId, {
-      transaction
-    });
+    const category = await Category.findByPk(categoryId, { transaction });
     
     if (!category) {
       await transaction.rollback();
@@ -354,7 +328,6 @@ const updateCategory = async (req, res) => {
 
       const trimmedName = name.trim();
       
-      // Only check for duplicates if the name is actually changing
       if (trimmedName !== category.name) {
         const existingCategory = await Category.findOne({
           where: { 
@@ -387,6 +360,23 @@ const updateCategory = async (req, res) => {
       }
     }
 
+    // Handle image update - ONLY FOR MAIN CATEGORIES
+    if (req.file) {
+      if (category.parentId !== null) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Subcategories cannot have images. Only main categories can have images.'
+        });
+      }
+
+      const imageUrl = req.file.filename; // Store only filename
+      if (imageUrl !== category.image) {
+        updateData.image = imageUrl;
+        hasChanges = true;
+      }
+    }
+
     // Handle parentId update
     if (parentId !== undefined) {
       let parsedParentId;
@@ -404,9 +394,13 @@ const updateCategory = async (req, res) => {
         }
       }
       
-      // Only update if different from current
       if (parsedParentId !== category.parentId) {
-        // Prevent setting parent to self
+        // If changing from main category to subcategory, remove image
+        if (parsedParentId !== null && category.image) {
+          updateData.image = null;
+          hasChanges = true;
+        }
+
         if (parsedParentId === categoryId) {
           await transaction.rollback();
           return res.status(400).json({ 
@@ -415,7 +409,6 @@ const updateCategory = async (req, res) => {
           });
         }
         
-        // Prevent setting parent to one of its descendants (would create a cycle)
         if (parsedParentId !== null) {
           const descendants = await getDescendants(categoryId);
           if (descendants.includes(parsedParentId)) {
@@ -426,7 +419,6 @@ const updateCategory = async (req, res) => {
             });
           }
           
-          // Verify the new parent exists
           const parentExists = await Category.findByPk(parsedParentId, { transaction });
           if (!parentExists) {
             await transaction.rollback();
@@ -442,29 +434,26 @@ const updateCategory = async (req, res) => {
       }
     }
 
-    // If no actual changes were provided
     if (!hasChanges) {
       await transaction.rollback();
-      return res.status(200).json({ 
-        success: true, 
+      return res.status(200).json({
+        success: true,
         message: 'No changes detected - category is already up to date',
         category: {
           id: category.id,
           name: category.name,
           brandName: category.brandName,
+          image: category.image,
+          imageUrl: category.image ? generateImageUrl(category.image, req, 'categories') : null,
           parentId: category.parentId,
           isSubcategory: !!category.parentId,
         }
       });
     }
 
-    console.log(`Updating category ${categoryId} with:`, updateData);
-
-    // Update the category
     await category.update(updateData, { transaction });
     await transaction.commit();
 
-    // Fetch the updated category with associations for the response
     const updatedCategory = await Category.findByPk(category.id, {
       include: [
         {
@@ -476,8 +465,6 @@ const updateCategory = async (req, res) => {
       ]
     });
 
-    console.log(`Successfully updated category:`, updatedCategory.toJSON());
-
     res.json({
       success: true,
       message: 'Category updated successfully',
@@ -485,6 +472,8 @@ const updateCategory = async (req, res) => {
         id: updatedCategory.id,
         name: updatedCategory.name,
         brandName: updatedCategory.brandName,
+        image: updatedCategory.image,
+        imageUrl: updatedCategory.image ? generateImageUrl(updatedCategory.image, req, 'categories') : null,
         parentId: updatedCategory.parentId,
         parentName: updatedCategory.parent?.name || null,
         isSubcategory: !!updatedCategory.parentId,
@@ -493,15 +482,6 @@ const updateCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error updating category:', err);
-    
-    if (err.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Category name already exists at this level',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to update category',
@@ -510,12 +490,11 @@ const updateCategory = async (req, res) => {
   }
 };
 
-// Get a single category/subcategory by ID with enhanced details
+// Get a single category by ID
 const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate ID parameter
     const categoryId = parseInt(id, 10);
     if (isNaN(categoryId)) {
       return res.status(400).json({ 
@@ -530,15 +509,7 @@ const getCategoryById = async (req, res) => {
         {
           model: Product,
           as: 'products',
-          attributes: [
-            'id',
-            'name',
-            'mrpPrice',
-            'generalPrice',
-            'architectPrice',
-            'dealerPrice',
-            'isActive'
-          ],
+          attributes: ['id', 'name', 'mrpPrice', 'generalPrice', 'architectPrice', 'dealerPrice', 'isActive'],
           where: { isActive: true },
           required: false,
         },
@@ -568,6 +539,8 @@ const getCategoryById = async (req, res) => {
       id: category.id,
       name: category.name,
       brandName: category.brandName,
+      image: category.image,
+      imageUrl: category.image ? generateImageUrl(category.image, req, 'categories') : null,
       parentId: category.parentId,
       parentName: category.parent?.name || null,
       isSubcategory: !!category.parentId,
@@ -585,7 +558,9 @@ const getCategoryById = async (req, res) => {
       subCategories: category.subCategories?.map(s => ({
         id: s.id,
         name: s.name,
-        brandName: s.brandName
+        brandName: s.brandName,
+        image: null, // Subcategories don't have images
+        imageUrl: null
       })) || [],
     };
 
@@ -600,52 +575,54 @@ const getCategoryById = async (req, res) => {
   }
 };
 
-// Create a new main category with enhanced validation
+// Create a new main category WITH IMAGE
 const createCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { name, brandName } = req.body;
-    
-    // Enhanced validation
+
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Category name must be at least 2 characters long' 
+      return res.status(400).json({
+        success: false,
+        message: 'Category name must be at least 2 characters long'
       });
     }
-    
+
     const trimmedName = name.trim();
 
-    // Check for duplicate name (case-insensitive) at root level
     const existingCategory = await Category.findOne({
-      where: { 
+      where: {
         name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
         parentId: null
       },
       transaction
     });
-    
+
     if (existingCategory) {
       await transaction.rollback();
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Category name already exists at the root level' 
+      return res.status(409).json({
+        success: false,
+        message: 'Category name already exists at the root level'
       });
     }
 
-    // Create category
+    // Handle image upload for main categories
+    let imageFilename = null;
+    if (req.file) {
+      imageFilename = req.file.filename; // Store only filename
+    }
+
     const category = await Category.create({
       name: trimmedName,
       parentId: null,
       brandName: brandName || null,
+      image: imageFilename,
     }, { transaction });
 
     await transaction.commit();
 
-    console.log(`Created main category: ${trimmedName}`);
-    
     res.status(201).json({
       success: true,
       message: 'Category created successfully',
@@ -653,6 +630,8 @@ const createCategory = async (req, res) => {
         id: category.id,
         name: category.name,
         brandName: category.brandName,
+        image: category.image,
+        imageUrl: category.image ? generateImageUrl(category.image, req, 'categories') : null,
         parentId: null,
         isSubcategory: false,
         productCount: 0,
@@ -662,24 +641,15 @@ const createCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error creating category:', err);
-    
-    if (err.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Category name already exists',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
-      });
-    }
-    
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to create category',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
 
-// Delete category and its subcategories with proper transaction handling
+// Delete category
 const deleteCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -698,11 +668,8 @@ const deleteCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    // Check if category has any products
     const productCount = await Product.count({
-      where: {
-        categoryId: categoryId
-      },
+      where: { categoryId: categoryId },
       transaction
     });
 
@@ -710,25 +677,20 @@ const deleteCategory = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        message: `Cannot delete category. It has ${productCount} associated products. Please move or delete the products first.`,
+        message: `Cannot delete category. It has ${productCount} associated products.`,
         canForceDelete: true,
         activeProductsCount: productCount,
-        affectedCategoryIds: [categoryId]
       });
     }
 
-    // Get all descendant category IDs
     const descendantIds = await getDescendants(categoryId);
     const allIds = [categoryId, ...descendantIds];
 
-    // Delete all subcategories first
     if (descendantIds.length > 0) {
       await Category.destroy({ where: { id: { [Op.in]: descendantIds } }, transaction });
     }
 
-    // Delete main category
     await category.destroy({ transaction });
-
     await transaction.commit();
 
     res.json({
@@ -746,7 +708,7 @@ const deleteCategory = async (req, res) => {
   }
 };
 
-// Search categories by name
+// Search categories
 const searchCategories = async (req, res) => {
   try {
     const { q } = req.query;
@@ -758,11 +720,9 @@ const searchCategories = async (req, res) => {
       });
     }
     
-    const trimmedQuery = q.trim();
-    
     const categories = await Category.findAll({
       where: {
-        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${trimmedQuery.toLowerCase()}%`)
+        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${q.trim().toLowerCase()}%`)
       },
       include: [
         {
@@ -780,6 +740,8 @@ const searchCategories = async (req, res) => {
       id: cat.id,
       name: cat.name,
       brandName: cat.brandName,
+      image: cat.image,
+      imageUrl: cat.image ? generateImageUrl(cat.image, req, 'categories') : null,
       parentId: cat.parentId,
       parentName: cat.parent?.name || null,
       isSubcategory: !!cat.parentId,
@@ -789,7 +751,7 @@ const searchCategories = async (req, res) => {
       success: true,
       categories: results,
       totalResults: results.length,
-      query: trimmedQuery
+      query: q.trim()
     });
   } catch (err) {
     console.error('Error searching categories:', err);
@@ -801,7 +763,7 @@ const searchCategories = async (req, res) => {
   }
 };
 
-// ADDED: Check category deletion impact
+// Check category deletion impact
 const checkCategoryDeletion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -819,27 +781,22 @@ const checkCategoryDeletion = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    // Get all descendant categories
     const descendantIds = await getDescendants(categoryId);
     const allCategoryIds = [categoryId, ...descendantIds];
 
-    // Check for products in this category and all subcategories
     const affectedProducts = await Product.findAll({
       where: {
         categoryId: { [Op.in]: allCategoryIds },
         isActive: true
       },
       attributes: ['id', 'name', 'categoryId'],
-      limit: 100 // Limit for performance
+      limit: 100
     });
 
     const totalAffectedProducts = await Product.count({
-      where: {
-        categoryId: { [Op.in]: allCategoryIds }
-      }
+      where: { categoryId: { [Op.in]: allCategoryIds } }
     });
 
-    // Get subcategory details
     const affectedSubcategories = await Category.findAll({
       where: { id: { [Op.in]: descendantIds } },
       attributes: ['id', 'name', 'parentId']
@@ -861,8 +818,7 @@ const checkCategoryDeletion = async (req, res) => {
         affectedProducts: affectedProducts.map(p => ({
           id: p.id,
           name: p.name,
-          categoryId: p.categoryId,
-          subcategoryId: p.subcategoryId
+          categoryId: p.categoryId
         })),
         affectedSubcategories: affectedSubcategories.map(sub => ({
           id: sub.id,
@@ -872,11 +828,7 @@ const checkCategoryDeletion = async (req, res) => {
         affectedCategoryIds: allCategoryIds,
         suggestions: canDelete ? 
           ['Category can be safely deleted'] : 
-          [
-            'Move products to another category',
-            'Deactivate products first',
-            'Use force delete with product handling'
-          ]
+          ['Move products to another category', 'Deactivate products first', 'Use force delete']
       }
     });
   } catch (err) {
@@ -889,7 +841,7 @@ const checkCategoryDeletion = async (req, res) => {
   }
 };
 
-// ADDED: Force delete category with product handling options
+// Force delete category
 const forceDeleteCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
 
@@ -909,36 +861,22 @@ const forceDeleteCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found' });
     }
 
-    // Get all descendant category IDs
     const descendantIds = await getDescendants(categoryId);
     const allCategoryIds = [categoryId, ...descendantIds];
 
-    // Handle products based on action
     if (action === 'deactivate_products') {
       await Product.update(
         { isActive: false },
-        {
-          where: {
-            categoryId: { [Op.in]: allCategoryIds }
-          },
-          transaction
-        }
+        { where: { categoryId: { [Op.in]: allCategoryIds } }, transaction }
       );
     } else if (action === 'move_to_uncategorized') {
       await Product.update(
         { categoryId: null },
-        {
-          where: {
-            categoryId: { [Op.in]: allCategoryIds }
-          },
-          transaction
-        }
+        { where: { categoryId: { [Op.in]: allCategoryIds } }, transaction }
       );
     } else if (action === 'delete_products') {
       await Product.destroy({
-        where: {
-          categoryId: { [Op.in]: allCategoryIds }
-        },
+        where: { categoryId: { [Op.in]: allCategoryIds } },
         transaction
       });
     } else {
@@ -946,19 +884,16 @@ const forceDeleteCategory = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid action' });
     }
 
-    // Delete all subcategories first
     if (descendantIds.length > 0) {
       await Category.destroy({ where: { id: { [Op.in]: descendantIds } }, transaction });
     }
 
-    // Delete main category
     await category.destroy({ transaction });
-
     await transaction.commit();
 
     res.json({
       success: true,
-      message: `Category force deleted successfully with action: ${action}. ${descendantIds.length} subcategories also deleted.`,
+      message: `Category force deleted successfully with action: ${action}.`,
       data: {
         deletedIds: allCategoryIds,
         deletedCount: allCategoryIds.length,
@@ -981,6 +916,6 @@ module.exports = {
   updateCategory,
   deleteCategory,
   searchCategories,
-  checkCategoryDeletion, // ADDED this function
-  forceDeleteCategory, // ADDED this function
+  checkCategoryDeletion,
+  forceDeleteCategory,
 };
