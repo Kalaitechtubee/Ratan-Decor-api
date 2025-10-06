@@ -7,6 +7,7 @@ const {
   approveUser,
   getUserStats,
   updateUserRole,
+  getDashboardStats,
 } = require('./controller');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
 
@@ -19,5 +20,6 @@ router.get('/users', moduleAccess.requireAdmin, getAllUsers);
 router.put('/users/:userId/approve', moduleAccess.requireAdmin, approveUser);
 router.put('/users/:userId/role', moduleAccess.requireAdmin, updateUserRole);
 router.get('/stats', moduleAccess.requireAdmin, getUserStats);
+router.get('/dashboard', moduleAccess.requireAdmin, getDashboardStats);
 
 module.exports = router;
