@@ -1,16 +1,18 @@
 const { Category } = require('../models');
 
 const createCategoryWithSubs = async (name, subCategories = []) => {
-  // Validate unique category name
+  // Validate unique category name - only select existing columns
   const [parent] = await Category.findOrCreate({
     where: { name, parentId: null },
     defaults: { name, parentId: null },
+    attributes: ['id', 'name', 'parentId', 'brandName'], // Exclude 'image' column
   });
 
   for (const sub of subCategories) {
     await Category.findOrCreate({
       where: { name: sub, parentId: parent.id },
       defaults: { name: sub, parentId: parent.id },
+      attributes: ['id', 'name', 'parentId', 'brandName'], // Exclude 'image' column
     });
   }
 };
