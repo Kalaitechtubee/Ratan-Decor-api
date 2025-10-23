@@ -1,5 +1,4 @@
-
-// Ratan Decor API Server - Updated for SuperAdmin fix
+// Ratan Decor API Server - Updated for SuperAdmin fix and Rate Limiting Improvements
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -37,7 +36,8 @@ const contactRoutes = require('./contact/router');
 const { 
   sanitizeInput, 
   auditLogger, 
-  trackSuspiciousActivity 
+  trackSuspiciousActivity,
+  rateLimits // Import specific rate limiters
 } = require('./middleware/security');
 
 const app = express();
@@ -280,23 +280,30 @@ app.use('/uploads', express.static(path.join(__dirname, 'Uploads'), {
   }
 }));
 
-// Rate limiting with exceptions
-const generalRateLimit = rateLimit({ 
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
-  skip: (req) => {
-    return req.path === '/health' || 
-           req.path === '/api/health' || 
-           req.path.startsWith('/api-docs') ||
-           req.path.startsWith('/uploads');
-  },
-  message: {
-    success: false,
-    message: 'Too many requests, please try again later.'
-  }
-});
+// Apply specific rate limiters to routes (improved and granular)
+// Skip rate limiting for health checks, docs, and uploads across all
+const skipRateLimit = (req) => {
+  return req.path === '/health' || 
+         req.path === '/api/health' || 
+         req.path.startsWith('/api-docs') ||
+         req.path.startsWith('/uploads') ||
+         req.path.startsWith('/api/images');
+};
 
-app.use(generalRateLimit);
+// Auth routes - strict but reasonable limits
+app.use('/api/auth', rateLimits.auth, authRoutes);
+
+// Registration-specific (if separate, but assuming under auth)
+app.use('/api/auth/register', rateLimits.register);
+
+// OTP/Reset under auth, but can be more specific if needed
+app.use('/api/auth/otp', rateLimits.otp);
+
+// Admin routes - moderate limits
+app.use('/api/admin', rateLimits.admin, adminRoutes);
+
+// General API routes - balanced limits
+app.use('/api', rateLimits.general);
 
 // Swagger UI setup
 const swaggerUiOptions = {
@@ -398,9 +405,7 @@ app.get('/api/images/:type/:filename', (req, res) => {
   }
 });
 
-// API Routes with proper ordering
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
+// API Routes with proper ordering and rate limiting applied above
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/addresses', addressRoutes);
@@ -415,6 +420,13 @@ app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/seo', cors(corsOptions), seoRoutes);
 app.use('/api/video-call-enquiries', videoCallEnquiryRoutes);
 app.use('/api/contact', contactRoutes);
+
+// Request timeout middleware (30 seconds default, adjustable)
+app.use((req, res, next) => {
+  req.setTimeout(30000); // 30 seconds
+  res.setTimeout(30000);
+  next();
+});
 
 // Health check endpoints with Swagger documentation
 /**

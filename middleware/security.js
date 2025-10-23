@@ -1,51 +1,52 @@
-// middleware/security.js - Enhanced Security Measures
+// middleware/security.js - Enhanced Security Measures with Adjusted Rate Limits
 const rateLimit = require('express-rate-limit');
 
-// Rate limiting configurations
-const createRateLimiter = (windowMs, max, message) => {
+// Rate limiting configurations - Adjusted for less frequent triggers
+const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   return rateLimit({
     windowMs,
     max,
     message: { success: false, message },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: skipFn || undefined,
   });
 };
 
-// Different rate limits for different endpoints
+// Different rate limits for different endpoints - Increased limits for usability
 const rateLimits = {
-  // Authentication endpoints - stricter limits
+  // Authentication endpoints - increased to 10 attempts in 15 min
   auth: createRateLimiter(
     15 * 60 * 1000, // 15 minutes
-    5, // 5 attempts
+    10, // 10 attempts (increased from 5)
     'Too many authentication attempts. Please try again in 15 minutes.'
   ),
   
-  // Registration - prevent spam
+  // Registration - increased to 5 per hour
   register: createRateLimiter(
     60 * 60 * 1000, // 1 hour
-    3, // 3 registrations per hour
+    5, // 5 registrations per hour (increased from 3)
     'Too many registration attempts. Please try again in 1 hour.'
   ),
   
-  // OTP/Password reset - prevent abuse
+  // OTP/Password reset - increased to 5 in 5 min
   otp: createRateLimiter(
     5 * 60 * 1000, // 5 minutes
-    3, // 3 OTP requests
+    5, // 5 OTP requests (increased from 3)
     'Too many OTP requests. Please try again in 5 minutes.'
   ),
   
-  // General API - reasonable limits
+  // General API - increased to 200 requests in 15 min
   general: createRateLimiter(
     15 * 60 * 1000, // 15 minutes
-    100, // 100 requests
+    200, // 200 requests (increased from 100)
     'Too many requests. Please try again later.'
   ),
   
-  // Admin operations - moderate limits
+  // Admin operations - increased to 100 in 10 min
   admin: createRateLimiter(
     10 * 60 * 1000, // 10 minutes
-    50, // 50 requests
+    200, // 100 requests (increased from 50)
     'Too many admin operations. Please try again in 10 minutes.'
   )
 };
@@ -113,8 +114,8 @@ const enhanceLoginSecurity = (loginController) => {
         tracker.failedLogins++;
         tracker.lastFailedLogin = Date.now();
         
-        // Block IP after 5 failed attempts
-        if (tracker.failedLogins >= 5) {
+        // Block IP after 8 failed attempts (increased from 5 for leniency)
+        if (tracker.failedLogins >= 8) {
           tracker.blockedUntil = Date.now() + (30 * 60 * 1000); // 30 minutes
           console.warn(`IP ${ip} blocked for 30 minutes due to ${tracker.failedLogins} failed login attempts`);
         }
