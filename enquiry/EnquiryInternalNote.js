@@ -1,4 +1,4 @@
-// models/EnquiryInternalNote.js
+// enquiry/EnquiryInternalNote.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -18,6 +18,7 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: { model: 'users', key: 'id' },
+      onDelete: 'CASCADE',
     },
     note: {
       type: DataTypes.TEXT,
@@ -42,16 +43,25 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       allowNull: true,
       references: { model: 'users', key: 'id' },
+      onDelete: 'SET NULL',
     },
     productId: {
       type: DataTypes.INTEGER,
       allowNull: true,
       references: { model: 'products', key: 'id' },
+      onDelete: 'SET NULL',
     },
   }, {
     tableName: 'enquiry_internal_notes',
     timestamps: true,
     underscored: false,
+    indexes: [
+      { fields: ['enquiryId'] },
+      { fields: ['staffUserId'] },
+      { fields: ['createdAt'] },
+      { fields: ['isImportant'] },
+      { fields: ['followUpDate'] },
+    ],
   });
 
   return EnquiryInternalNote;

@@ -1,4 +1,4 @@
-// Updated models/index.js - Add EnquiryInternalNote
+// models/index.js - Complete with EnquiryInternalNote
 const Sequelize = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -8,14 +8,14 @@ const UserModel = require("./User");
 const ProductRatingModel = require("./ProductRating");
 const Category = require("../category/models");
 const Product = require("../product/models");
-const Enquiry = require("../enquiry/models");
+const Enquiry = require("../enquiry/models")(sequelize, Sequelize.DataTypes);
 const Address = require("../address/models");
 const ShippingAddress = require("../shipping-address/models");
 const Cart = require("../cart/models");
 const { Order, OrderItem } = require("../order/models");
 const VideoCallEnquiryModel = require("../VideoCallEnquiry/models");
 const VideoCallInternalNoteModel = require("../VideoCallEnquiry/internalNoteModels");
-const EnquiryInternalNoteModel = require("../enquiry/EnquiryInternalNote"); // NEW
+const EnquiryInternalNoteModel = require("../enquiry/EnquiryInternalNote");
 
 // Initialize models
 const UserType = UserTypeModel(sequelize, Sequelize.DataTypes);
@@ -23,7 +23,7 @@ const User = UserModel(sequelize, Sequelize.DataTypes);
 const ProductRating = ProductRatingModel(sequelize, Sequelize.DataTypes);
 const VideoCallEnquiry = VideoCallEnquiryModel(sequelize);
 const VideoCallInternalNote = VideoCallInternalNoteModel(sequelize);
-const EnquiryInternalNote = EnquiryInternalNoteModel(sequelize); // NEW
+const EnquiryInternalNote = EnquiryInternalNoteModel(sequelize);
 
 // --- Associations with CONSISTENT LOWERCASE ALIASES ---
 
@@ -45,24 +45,31 @@ VideoCallInternalNote.belongsTo(VideoCallEnquiry, { foreignKey: "enquiryId", as:
 User.hasMany(VideoCallInternalNote, { foreignKey: "staffUserId", as: "videoCallStaffNotes" });
 VideoCallInternalNote.belongsTo(User, { foreignKey: "staffUserId", as: "staffUser" });
 
-// NEW: EnquiryInternalNote relations
+User.hasMany(VideoCallInternalNote, { foreignKey: "userId", as: "videoCallNotes" });
+Product.hasMany(VideoCallInternalNote, { foreignKey: "productId", as: "videoCallNotes" });
+
+VideoCallInternalNote.belongsTo(User, { foreignKey: "userId", as: "user" });
+VideoCallInternalNote.belongsTo(Product, { foreignKey: "productId", as: "product" });
+
+// EnquiryInternalNote relations
 Enquiry.hasMany(EnquiryInternalNote, { foreignKey: "enquiryId", as: "internalNotes" });
 EnquiryInternalNote.belongsTo(Enquiry, { foreignKey: "enquiryId", as: "enquiry" });
 
 User.hasMany(EnquiryInternalNote, { foreignKey: "staffUserId", as: "enquiryStaffNotes" });
 EnquiryInternalNote.belongsTo(User, { foreignKey: "staffUserId", as: "staffUser" });
 
+User.hasMany(EnquiryInternalNote, { foreignKey: "userId", as: "enquiryNotes" });
+Product.hasMany(EnquiryInternalNote, { foreignKey: "productId", as: "enquiryNotes" });
+
+EnquiryInternalNote.belongsTo(User, { foreignKey: "userId", as: "user" });
+EnquiryInternalNote.belongsTo(Product, { foreignKey: "productId", as: "product" });
+
 // User & UserType associations
 User.belongsTo(UserType, { foreignKey: "userTypeId", as: "userType" });
 UserType.hasMany(User, { foreignKey: "userTypeId", as: "users" });
 
-// Category self-associations
-// Category.hasMany(Category, { as: "subCategories", foreignKey: "parentId" }); // Already defined in Category.associate
-// Category.belongsTo(Category, { as: "parent", foreignKey: "parentId" }); // Already defined in Category.associate
-
 // Product & Category associations
 Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
-// Category.hasMany(Product, { foreignKey: "categoryId", as: "products" }); // Already defined in Category.associate
 
 // User & Address associations
 User.hasMany(Address, { foreignKey: "userId", as: "addresses" });
@@ -116,7 +123,6 @@ User.hasMany(ProductRating, { foreignKey: "userId", as: "ratings" });
 ProductRating.belongsTo(Product, { foreignKey: "productId", as: "product" });
 Product.hasMany(ProductRating, { foreignKey: "productId", as: "ratings" });
 
-
 // Register all associations for models that define them
 const db = {
   UserType,
@@ -136,7 +142,7 @@ const db = {
 };
 
 Object.values(db).forEach(model => {
-  if (model.associate) {
+  if (model && model.associate) {
     model.associate(db);
   }
 });
@@ -159,5 +165,5 @@ module.exports = {
   ProductRating,
   VideoCallEnquiry,
   VideoCallInternalNote,
-  EnquiryInternalNote, // NEW
+  EnquiryInternalNote,
 };

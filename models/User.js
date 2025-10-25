@@ -73,13 +73,7 @@ module.exports = (sequelize, DataTypes) => {
     // User created by (self-referencing FK)
     createdBy: {
       type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: 'Users', // self-reference
-        key: 'id'
-      },
-      onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
+      allowNull: true
     },
 
     // Rejection reason (when status = Rejected)

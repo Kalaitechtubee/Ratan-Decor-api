@@ -18,7 +18,7 @@ const rateLimits = {
   // Authentication endpoints - increased to 10 attempts in 15 min
   auth: createRateLimiter(
     15 * 60 * 1000, // 15 minutes
-    10, // 10 attempts (increased from 5)
+    100, // 10 attempts (increased from 5)
     'Too many authentication attempts. Please try again in 15 minutes.'
   ),
   

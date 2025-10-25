@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       name: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
         validate: {
           notEmpty: true,
           len: [1, 50],
@@ -29,6 +28,15 @@ module.exports = (sequelize, DataTypes) => {
     {
       tableName: "UserTypes",
       timestamps: true,
+
+      // ✅ Add unique index with a fixed name
+      indexes: [
+        {
+          unique: true,
+          fields: ["name"],
+          name: "unique_user_type_name",
+        },
+      ],
     }
   );
 
