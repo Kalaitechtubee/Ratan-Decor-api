@@ -4,6 +4,8 @@ const router = express.Router();
 const {
   register,
   createStaffUser,
+  getAllStaffUsers,
+  getStaffUserById,
   login,
   checkStatus,
   resendApproval,
@@ -27,10 +29,24 @@ router.post('/reset-password', rateLimits.otp, resetPassword);
 router.post('/verify-otp', rateLimits.otp, verifyOTP);
 
 // Admin/Manager routes for creating staff
-router.post('/create-staff', 
-  authenticateToken, 
-  moduleAccess.requireManagerOrAdmin, 
+router.post('/create-staff',
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   createStaffUser
+);
+
+// Admin/Manager routes for getting all staff users
+router.get('/staff',
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
+  getAllStaffUsers
+);
+
+// Admin/Manager routes for getting staff user by ID
+router.get('/staff/:id',
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
+  getStaffUserById
 );
 
 // Protected user routes

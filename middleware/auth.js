@@ -34,7 +34,7 @@ const authenticateToken = async (req, res, next) => {
 
     // Check if user is approved (except for Admins and SuperAdmin)
     const userRoleLower = user.role.toLowerCase();
-    if (userRoleLower !== 'admin' && userRoleLower !== 'superadmin' && user.status !== 'Approved') {
+    if (userRoleLower !== 'admin' && userRoleLower !== 'superadmin' && userRoleLower !== 'manager' && userRoleLower !== 'sales' && userRoleLower !== 'support' && user.status !== 'Approved') {
       return res.status(403).json({
         success: false,
         message: user.status === 'Pending'

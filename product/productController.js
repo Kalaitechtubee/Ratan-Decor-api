@@ -30,13 +30,27 @@ const validateVisibleTo = (visibleTo) => {
   return true;
 };
 
-const getImageUrl = (filename, req) => {
+const getImageUrl = (filename, req, imageType = 'products') => {
   if (!filename || typeof filename !== 'string') return null;
+
+  // ✅ Already a full URL (external or CDN)
   if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
+
+  // ✅ Already a local uploads path
   if (filename.startsWith('/uploads/')) return filename;
-  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
-  return `${baseUrl}/uploads/products/${filename}`;
+
+  // ✅ Use BASE_URL from .env (works with or without port)
+  // Fallback: automatically build from request host (includes port)
+  const envBaseUrl = process.env.BASE_URL?.trim();
+  const baseUrl = envBaseUrl || `${req.protocol}://${req.get('host')}`;
+
+  // ✅ Build final URL dynamically based on imageType
+  return `${baseUrl}/uploads/${imageType}/${filename}`;
 };
+
+
+
+
 
 const processProductData = (product, req) => {
   const productData = product.toJSON ? product.toJSON() : product;

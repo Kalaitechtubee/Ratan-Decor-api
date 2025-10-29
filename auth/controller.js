@@ -20,33 +20,31 @@ const transporter = nodemailer.createTransport({
 
 // Role hierarchy and permissions
 const ROLE_HIERARCHY = {
-  'superadmin': 100,
-  'admin': 90,
-  'manager': 80,
-  'sales': 60,
-  'support': 50,
-  'dealer': 40,
-  'architect': 40,
+  'SuperAdmin': 100,
+  'Admin': 90,
+  'Manager': 80,
+  'Sales': 60,
+  'Support': 50,
+  'Dealer': 40,
+  'Architect': 40,
   'customer': 20
 };
 
 const REGISTRATION_RULES = {
   PUBLIC_ROLES: ['customer'],
-  BUSINESS_ROLES: ['architect', 'dealer'],
-  STAFF_ROLES: ['manager', 'sales', 'support', 'architect'],
-  ADMIN_ROLES: ['admin'],
-  SUPERADMIN_ROLES: ['superadmin']
+  BUSINESS_ROLES: ['Architect', 'Dealer'],
+  STAFF_ROLES: ['Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'],
+  ADMIN_ROLES: ['Admin'],
+  SUPERADMIN_ROLES: ['SuperAdmin']
 };
 
 // Check if creator can create target role
 const canCreateRole = (creatorRole, targetRole) => {
-  const creatorRoleLower = creatorRole.toLowerCase();
-  const targetRoleLower = targetRole.toLowerCase();
-  if (creatorRoleLower === 'superadmin' || creatorRoleLower === 'admin') {
-    return true; // Both superadmin and admin can assign any role
+  if (creatorRole === 'SuperAdmin' || creatorRole === 'Admin') {
+    return true; // Both SuperAdmin and Admin can assign any role
   }
-  if (creatorRoleLower === 'manager') {
-    return ['sales', 'support'].includes(targetRoleLower);
+  if (creatorRole === 'Manager') {
+    return ['Sales', 'Support'].includes(targetRole);
   }
   return false;
 };
@@ -113,7 +111,7 @@ const login = async (req, res) => {
           name: 'Super Administrator',
           email: SUPERADMIN_EMAIL,
           password: hashedPassword,
-          role: 'superadmin',
+          role: 'SuperAdmin',
           status: 'Approved',
           userTypeId: superAdminUserType.id,
           mobile: '0000000000',
@@ -409,9 +407,117 @@ const createStaffUser = async (req, res) => {
 
     req.body.createdBy = creator.id;
     return register(req, res);
-    
+
   } catch (error) {
     console.error('Create staff user error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get all staff users (Admin/Manager only)
+const getAllStaffUsers = async (req, res) => {
+  try {
+    const requester = req.user;
+
+    if (!['superadmin', 'admin', 'manager'].includes(requester.role.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only SuperAdmin, Admin, or Manager can view staff users'
+      });
+    }
+
+    const staffUsers = await User.findAll({
+      where: {
+        role: REGISTRATION_RULES.STAFF_ROLES
+      },
+      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
+      attributes: { exclude: ['password'] },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      users: staffUsers.map(user => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        mobile: user.mobile,
+        company: user.company,
+        userTypeId: user.userTypeId,
+        userTypeName: user.userType ? user.userType.name : null,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      })),
+      total: staffUsers.length
+    });
+
+  } catch (error) {
+    console.error('Get all staff users error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get staff user by ID (Admin/Manager only)
+const getStaffUserById = async (req, res) => {
+  try {
+    const requester = req.user;
+
+    if (!['superadmin', 'admin', 'manager'].includes(requester.role.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only SuperAdmin, Admin, or Manager can view staff user details'
+      });
+    }
+
+    const { id } = req.params;
+
+    const user = await User.findByPk(id, {
+      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if the user has a staff role
+    if (!REGISTRATION_RULES.STAFF_ROLES.includes(user.role.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        message: 'This endpoint is only for staff users'
+      });
+    }
+
+    // Return user details excluding sensitive information
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        mobile: user.mobile,
+        company: user.company,
+        userTypeId: user.userTypeId,
+        userTypeName: user.userType ? user.userType.name : null,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Get staff user by ID error:', error);
     res.status(500).json({
       success: false,
       message: error.message
@@ -558,6 +664,8 @@ const verifyOTP = async (req, res) => {
 module.exports = {
   register,
   createStaffUser,
+  getAllStaffUsers,
+  getStaffUserById,
   login,
   checkStatus,
   resendApproval,

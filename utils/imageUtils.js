@@ -2,20 +2,34 @@ const path = require('path');
 const fs = require('fs');
 
 const generateImageUrl = (filename, req, imageType = 'products') => {
-  if (!filename) return null;
-  
+  if (!filename || typeof filename !== 'string') return null;
+
+  // ✅ Already a full URL
   if (filename.startsWith('http://') || filename.startsWith('https://')) {
     return filename;
   }
-  
+
+  // ✅ Already includes /uploads/
   if (filename.startsWith('/uploads/')) {
     return filename;
   }
-  
-  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
+
+  // ✅ Use BASE_URL from .env (with or without port)
+  // If not defined, fallback to req (auto includes port)
+  const envBaseUrl = process.env.BASE_URL?.trim();
+  const baseUrl = envBaseUrl || `${req.protocol}://${req.get('host')}`;
+
+  // ✅ Construct the full image path
   const imagePath = `/uploads/${imageType}/${filename}`;
+
   return `${baseUrl}${imagePath}`;
 };
+
+
+
+
+
+
 
 const processSingleImage = (imageField, req, imageType = 'products') => {
   if (!imageField) return null;
@@ -160,7 +174,7 @@ const cleanImageArray = (imageArray, imageType = 'products') => {
 };
 
 const getFallbackImageUrl = (req, imageType = 'products') => {
-  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
+  const baseUrl = process.env.BASE_URL || 'http://localhost';
   return `${baseUrl}/uploads/defaults/no-image.png`;
 };
 

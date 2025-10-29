@@ -60,8 +60,7 @@ const seoConfig = [
   { pageName: 'faq', title: 'FAQ - Ratan Decor', description: 'Find answers to frequently asked questions.', keywords: 'faq, help, support' },
   { pageName: 'profile', title: 'Profile - Ratan Decor', description: 'Manage your account settings.', keywords: 'profile, account, user' },
   { pageName: 'OrderDetails', title: 'OrderDetails - Ratan Decor', description: 'Manage your account settings.', keywords: 'OrderDetails, account, user' },
-    { pageName: "VideoCall", title: "Video Call - Ratan Decor", description: "Connect with our experts via video call for personalized assistance.", keywords: "video call, support, consultation, home decor" },
-
+  { pageName: "VideoCall", title: "Video Call - Ratan Decor", description: "Connect with our experts via video call for personalized assistance.", keywords: "video call, support, consultation, home decor" },
 ];
 
 // Database migrations
@@ -188,6 +187,22 @@ const runDatabaseMigrations = async () => {
   }
 };
 
+// Helper function to detect search engine bots
+const isSearchEngineCrawler = (userAgent) => {
+  if (!userAgent) return false;
+  const crawlerPatterns = [
+    /googlebot/i,
+    /bingbot/i,
+    /slurp/i,
+    /duckduckbot/i,
+    /baiduspider/i,
+    /yandexbot/i,
+    /facebot/i,
+    /ia_archiver/i
+  ];
+  return crawlerPatterns.some(pattern => pattern.test(userAgent));
+};
+
 // Security configuration
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -209,7 +224,7 @@ app.use(helmet({
 // Trust proxy for proper IP detection
 app.set('trust proxy', 1);
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration - FIXED to allow search engine crawlers
 const corsOptions = {
   origin: (origin, callback) => {
     const allowedOrigins = [
@@ -220,16 +235,33 @@ const corsOptions = {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174',
+      'http://luxcycs.com',
+      'https://luxcycs.com',
+      'http://laidarchitecture.com',
+      'https://laidarchitecture.com',
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    if (!origin || allowedOrigins.includes(origin) || 
-        (process.env.NODE_ENV === 'development' && 
-         (origin.includes('localhost') || origin.includes('127.0.0.1')))) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (mobile apps, Postman, server-to-server, crawlers)
+    if (!origin) {
+      return callback(null, true);
     }
+    
+    // Allow configured origins
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Allow localhost/127.0.0.1 in development
+    if (process.env.NODE_ENV === 'development' && 
+        (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+      return callback(null, true);
+    }
+    
+    // For production, allow all origins but log them for monitoring
+    // This is SEO-friendly and allows crawlers to access your API
+    console.log('CORS request from origin:', origin);
+    callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'Pragma'],
@@ -239,6 +271,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Handle preflight requests globally
 app.options('*', cors(corsOptions));
 
 // Body parsing middleware
@@ -281,13 +315,23 @@ app.use('/uploads', express.static(path.join(__dirname, 'Uploads'), {
 }));
 
 // Apply specific rate limiters to routes (improved and granular)
-// Skip rate limiting for health checks, docs, and uploads across all
+// Skip rate limiting for health checks, docs, uploads, and search engine crawlers
 const skipRateLimit = (req) => {
+  const userAgent = req.get('User-Agent') || '';
   return req.path === '/health' || 
          req.path === '/api/health' || 
          req.path.startsWith('/api-docs') ||
          req.path.startsWith('/uploads') ||
-         req.path.startsWith('/api/images');
+         req.path.startsWith('/api/images') ||
+         isSearchEngineCrawler(userAgent);
+};
+
+// Create rate limiter with skip function
+const createRateLimiter = (options) => {
+  return rateLimit({
+    ...options,
+    skip: skipRateLimit
+  });
 };
 
 // Auth routes - strict but reasonable limits
@@ -514,7 +558,8 @@ app.use('/api/*', (req, res) => {
       '/api/orders',
       '/api/categories',
       '/api/users',
-      '/api/enquiries'
+      '/api/enquiries',
+      '/uploads',
     ]
   });
 });
@@ -528,7 +573,7 @@ app.use('*', (req, res) => {
   });
 });
 
-// Enhanced global error handler
+// Enhanced global error handler - FIXED to not throw CORS errors
 app.use((err, req, res, next) => {
   let statusCode = err.status || 500;
   let message = err.message || 'Internal Server Error';
@@ -551,15 +596,17 @@ app.use((err, req, res, next) => {
     message = 'Request entity too large';
   }
   
-  // Log error details
-  console.error('GLOBAL ERROR:', {
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent')
-  });
+  // Don't log CORS errors as they're now handled
+  if (message !== 'Not allowed by CORS') {
+    console.error('GLOBAL ERROR:', {
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+  }
   
   res.status(statusCode).json({ 
     success: false, 
@@ -583,7 +630,8 @@ const startServer = async () => {
     
     // Sync database
     console.log('🔄 Syncing database...');
-    await sequelize.sync({ alter: false }); 
+    await sequelize.sync();
+ 
     console.log('✅ Database synced successfully');
     
     // Run migrations
@@ -609,7 +657,7 @@ const startServer = async () => {
       const s = app.listen(PORT)
         .on('error', (err) => {
           if (err.code === 'EADDRINUSE') {
-            console.log(`⚠️  Port ${PORT} in use, trying ${PORT}...`);
+            console.log(`⚠️  Port ${PORT} in use, trying ${PORT + 1}...`);
             resolve(app.listen(PORT + 1));
           } else {
             reject(err);
@@ -625,6 +673,7 @@ const startServer = async () => {
           console.log('🔐 SuperAdmin Login:');
           console.log(`   Email: ${process.env.SUPERADMIN_EMAIL || 'superadmin@ratandecor.com'}`);
           console.log(`   Password: ${process.env.SUPERADMIN_PASSWORD || 'SuperAdmin@123'}`);
+          console.log('✅ CORS configured to allow search engine crawlers');
           resolve(s);
         });
     });

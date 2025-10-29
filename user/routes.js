@@ -3,6 +3,8 @@ const router = express.Router();
 
 const {
   getAllUsers,
+  getAllStaffUsers,
+  getStaffUserById,
   getUserById,
   createUser,
   updateUser,
@@ -41,10 +43,22 @@ router.get('/',
   getAllUsers
 );
 
+// 👥 Get all staff users (admin/manager only)
+router.get('/staff',
+  moduleAccess.requireAdmin,
+  getAllStaffUsers
+);
+
 // 👤 Get user by ID (self or admin/staff)
 router.get('/:id',
   requireOwnDataOrStaff,   // ✅ allows user to fetch own data OR staff/admin to fetch any
   getUserById
+);
+
+// 👥 Get staff user by ID (admin/manager only)
+router.get('/staff/:id',
+  moduleAccess.requireAdmin,
+  getStaffUserById
 );
 
 // ✏️ Update user (self or admin/staff)

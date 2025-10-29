@@ -5,7 +5,7 @@ const getImageUrl = (filename, req) => {
   if (!filename) return null;
   if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
   if (filename.startsWith('/uploads/')) return filename;
-  const baseUrl = req ? `${req.protocol}://${req.get('host')}` : '';
+  const baseUrl = req ? `${req.protocol}://${req.hostname}` : '';
   return `${baseUrl}/uploads/products/${filename}`;
 };
 

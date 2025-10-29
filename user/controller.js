@@ -64,6 +64,84 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+const getAllStaffUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, status, userTypeName } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    const staffRoles = ['admin', 'manager', 'sales', 'support', 'superadmin'];
+
+    const where = {
+      role: { [Op.in]: staffRoles }
+    };
+
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+      ];
+    }
+    if (status) {
+      where.status = status;
+    }
+
+    const include = [
+      {
+        model: UserType,
+        as: 'userType',
+        attributes: ['id', 'name'],
+        ...(userTypeName && {
+          where: { name: { [Op.like]: `%${userTypeName}%` } },
+        }),
+      },
+    ];
+
+    const { rows, count } = await User.findAndCountAll({
+      where,
+      attributes: { exclude: ['password'] },
+      include,
+      limit: limitNum,
+      offset,
+      order: [['createdAt', 'DESC']],
+    });
+
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(count / limitNum),
+        totalItems: count,
+        limit: limitNum,
+      },
+    });
+  } catch (error) {
+    console.error('Error in getAllStaffUsers:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const getStaffUserById = async (req, res) => {
+  try {
+    const staffRoles = ['admin', 'manager', 'sales', 'support', 'superadmin'];
+    const user = await User.findOne({
+      where: {
+        id: req.params.id,
+        role: { [Op.in]: staffRoles }
+      },
+      attributes: { exclude: ['password'] },
+      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
+    });
+    if (!user) return res.status(404).json({ success: false, message: 'Staff user not found' });
+    res.json({ success: true, data: user });
+  } catch (error) {
+    console.error('Error in getStaffUserById:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const getUserById = async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id, {
@@ -694,6 +772,8 @@ const getFullOrderHistory = async (req, res) => {
 
 module.exports = {
   getAllUsers,
+  getAllStaffUsers,
+  getStaffUserById,
   getUserById,
   createUser,
   updateUser,
