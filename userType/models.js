@@ -20,6 +20,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      icon: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        comment: 'Icon filename for user types',
+      },
       isActive: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

@@ -54,7 +54,7 @@ const getImageUrl = (filename, req, imageType = 'products') => {
 
 const processProductData = (product, req) => {
   const productData = product.toJSON ? product.toJSON() : product;
-  
+
   let allImageUrls = [];
   if (productData.image) {
     allImageUrls.push(getImageUrl(productData.image, req));
@@ -62,16 +62,17 @@ const processProductData = (product, req) => {
   if (productData.images && Array.isArray(productData.images)) {
     allImageUrls = [...allImageUrls, ...productData.images.map(img => getImageUrl(img, req))];
   }
-  
+
   productData.imageUrl = allImageUrls[0] || null;
   productData.imageUrls = allImageUrls;
-  
+
   if (!('brandName' in productData)) productData.brandName = null;
   if (!('designNumber' in productData)) productData.designNumber = null;
   if (!('size' in productData)) productData.size = null;
   if (!('thickness' in productData)) productData.thickness = null;
   if (!('gst' in productData)) productData.gst = null;
-  
+  if (!('unitType' in productData)) productData.unitType = null;
+
   return productData;
 };
 
@@ -277,7 +278,8 @@ const createProduct = async (req, res) => {
       productUsageTypeId,
       colors,
       gst,
-      brandName
+      brandName,
+      unitType
     } = req.body;
 
     let subcategoryId = null;
@@ -404,6 +406,7 @@ const createProduct = async (req, res) => {
       colors: parsedColors,
       gst: (gst && gst !== '' && gst !== 'null') ? parseFloat(gst) : null,
       brandName: brandName || null,
+      unitType: unitType || null,
       averageRating: 0.00,
       totalRatings: 0,
       isActive: true
@@ -611,7 +614,8 @@ const updateProduct = async (req, res) => {
     isActive,
     colors,
     gst,
-    brandName
+    brandName,
+    unitType
   } = req.body;
 
     let subcategoryId = null;
@@ -710,6 +714,7 @@ const updateProduct = async (req, res) => {
       colors: parsedColors !== undefined ? parsedColors : product.colors,
       gst: gst !== undefined ? parseFloat(gst) : product.gst,
       brandName: brandName !== undefined ? brandName : product.brandName,
+      unitType: unitType !== undefined ? unitType : product.unitType,
       image: null,
       images: [...keptImages, ...newImageFilenames]
     };
@@ -760,7 +765,8 @@ const updateProductAll = async (req, res) => {
       colors,
       gst,
       brandName,
-      isActive
+      isActive,
+      unitType
     } = req.body;
 
     // Safely extract subcategoryId from body or query (same as createProduct)

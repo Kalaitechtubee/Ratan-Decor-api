@@ -39,14 +39,14 @@ const rateLimits = {
   // General API - increased to 200 requests in 15 min
   general: createRateLimiter(
     15 * 60 * 1000, // 15 minutes
-    200, // 200 requests (increased from 100)
+    300, // 200 requests (increased from 100)
     'Too many requests. Please try again later.'
   ),
   
   // Admin operations - increased to 100 in 10 min
   admin: createRateLimiter(
     10 * 60 * 1000, // 10 minutes
-    200, // 100 requests (increased from 50)
+    300, // 100 requests (increased from 50)
     'Too many admin operations. Please try again in 10 minutes.'
   )
 };

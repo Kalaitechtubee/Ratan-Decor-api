@@ -1,5 +1,6 @@
 const { UserType, User, Category } = require('../models');
 const { Op, Sequelize } = require('sequelize');
+const { generateImageUrl } = require('../utils/imageUtils');
 
 const userTypeController = {
   // Get all active user types
@@ -8,12 +9,18 @@ const userTypeController = {
       const userTypes = await UserType.findAll({
         where: { isActive: true },
         order: [['name', 'ASC']],
-        attributes: ['id', 'name', 'description', 'isActive'],
+        attributes: ['id', 'name', 'description', 'isActive', 'icon'],
       });
+
+      // Process icon URLs
+      const processedUserTypes = userTypes.map(userType => ({
+        ...userType.toJSON(),
+        iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
+      }));
 
       res.json({
         success: true,
-        data: userTypes,
+        data: processedUserTypes,
       });
     } catch (error) {
       console.error('Error fetching user types:', error);
@@ -38,7 +45,7 @@ const userTypeController = {
 
       const userType = await UserType.findOne({
         where: { id: parseInt(id, 10), isActive: true },
-        attributes: ['id', 'name', 'description', 'isActive'],
+        attributes: ['id', 'name', 'description', 'isActive', 'icon'],
       });
 
       if (!userType) {
@@ -48,9 +55,15 @@ const userTypeController = {
         });
       }
 
+      // Process icon URL
+      const processedUserType = {
+        ...userType.toJSON(),
+        iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
+      };
+
       res.json({
         success: true,
-        data: userType,
+        data: processedUserType,
       });
     } catch (error) {
       console.error('Error fetching user type:', error);
@@ -92,17 +105,26 @@ const userTypeController = {
       const userType = await UserType.create({
         name: name.trim(),
         description: description?.trim() || null,
+        icon: req.file ? req.file.filename : null,
         isActive: true,
       });
+
+      // Process icon URL for response
+      const processedUserType = {
+        ...userType.toJSON(),
+        iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
+      };
 
       res.status(201).json({
         success: true,
         message: 'User type created successfully',
         data: {
-          id: userType.id,
-          name: userType.name,
-          description: userType.description,
-          isActive: userType.isActive,
+          id: processedUserType.id,
+          name: processedUserType.name,
+          description: processedUserType.description,
+          icon: processedUserType.icon,
+          iconUrl: processedUserType.iconUrl,
+          isActive: processedUserType.isActive,
         },
       });
     } catch (error) {
@@ -161,6 +183,7 @@ const userTypeController = {
       const updateData = {};
       if (name) updateData.name = name.trim();
       if (description !== undefined) updateData.description = description?.trim() || null;
+      if (req.file) updateData.icon = req.file.filename;
       if (isActive !== undefined) {
         updateData.isActive = isActive;
 
@@ -197,14 +220,27 @@ const userTypeController = {
 
       await userType.update(updateData);
 
+      // Fetch updated user type with icon
+      const updatedUserType = await UserType.findByPk(parseInt(id, 10), {
+        attributes: ['id', 'name', 'description', 'isActive', 'icon'],
+      });
+
+      // Process icon URL for response
+      const processedUserType = {
+        ...updatedUserType.toJSON(),
+        iconUrl: generateImageUrl(updatedUserType.icon, req, 'userTypes')
+      };
+
       res.json({
         success: true,
         message: 'User type updated successfully',
         data: {
-          id: userType.id,
-          name: userType.name,
-          description: userType.description,
-          isActive: userType.isActive,
+          id: processedUserType.id,
+          name: processedUserType.name,
+          description: processedUserType.description,
+          icon: processedUserType.icon,
+          iconUrl: processedUserType.iconUrl,
+          isActive: processedUserType.isActive,
         },
       });
     } catch (error) {

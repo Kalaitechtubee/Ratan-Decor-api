@@ -93,6 +93,11 @@ mrpPrice: {
     allowNull: true,
     defaultValue: 0,
   },
+  unitType: {
+    type: DataTypes.ENUM('Per Sheet', 'Per Square Feet'),
+    allowNull: true,
+    defaultValue: 'Per Sheet',
+  },
 }, {
   tableName: "products",
   timestamps: true,

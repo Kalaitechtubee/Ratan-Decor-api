@@ -630,8 +630,7 @@ const startServer = async () => {
     
     // Sync database
     console.log('🔄 Syncing database...');
-    await sequelize.sync();
- 
+    await sequelize.sync({ alter: true }); // safer option 
     console.log('✅ Database synced successfully');
     
     // Run migrations

@@ -3,6 +3,7 @@ const router = express.Router();
 const userTypeController = require('./controller');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
 const { sanitizeInput, auditLogger } = require('../middleware/security');
+const { uploadUserTypeIcon, handleUserTypeUploadError, testUserTypeUploadSetup } = require('../middleware/userTypeUpload');
 
 /* -------------------------------
    PUBLIC ROUTES
@@ -21,6 +22,8 @@ router.post('/',
   sanitizeInput,
   moduleAccess.requireManagerOrAdmin,
   auditLogger,
+  uploadUserTypeIcon,
+  handleUserTypeUploadError,
   userTypeController.createUserType
 );
 
@@ -30,6 +33,8 @@ router.put('/:id',
   sanitizeInput,
   moduleAccess.requireManagerOrAdmin,
   auditLogger,
+  uploadUserTypeIcon,
+  handleUserTypeUploadError,
   userTypeController.updateUserType
 );
 
