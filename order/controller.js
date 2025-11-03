@@ -431,11 +431,11 @@ const getOrders = async (req, res) => {
 
     const offset = (page - 1) * limit;
 
-    const userInclude = { 
-      model: User, 
-      as: 'user', 
-      attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'], 
-      where: customer ? { name: { [Op.iLike]: `%${customer}%` } } : undefined,
+    const userInclude = {
+      model: User,
+      as: 'user',
+      attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'],
+      where: customer ? sequelize.where(sequelize.fn('LOWER', sequelize.col('user.name')), { [Op.like]: `%${customer.toLowerCase()}%` }) : undefined,
       required: !!customer
     };
 

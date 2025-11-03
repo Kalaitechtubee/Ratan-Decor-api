@@ -9,14 +9,14 @@ module.exports = (sequelize, DataTypes) => {
       },
       userId: {
         type: DataTypes.INTEGER,
-        allowNull: true,
+        allowNull: true, // ✅ must be nullable
         references: { model: "users", key: "id" },
         onDelete: "SET NULL",
         onUpdate: "CASCADE",
       },
       productId: {
         type: DataTypes.INTEGER,
-        allowNull: true,
+        allowNull: true, // ✅ also make nullable
         references: { model: "products", key: "id" },
         onDelete: "SET NULL",
         onUpdate: "CASCADE",
@@ -68,14 +68,14 @@ module.exports = (sequelize, DataTypes) => {
       },
       userType: {
         type: DataTypes.INTEGER,
-        allowNull: true,
-        defaultValue: 1, // will point to "General"
-        references: { model: "UserTypes", key: "id" },
+        allowNull: true, // ✅ must be nullable for SET NULL
+        defaultValue: 1,
+        references: { model: "user_types", key: "id" },
         onUpdate: "CASCADE",
         onDelete: "SET NULL",
       },
       source: {
-        type: DataTypes.ENUM("Email", "WhatsApp","WebSite", "Phone", "VideoCall"),
+        type: DataTypes.ENUM("Email", "WhatsApp", "WebSite", "Phone", "VideoCall"),
         allowNull: false,
         defaultValue: "Email",
       },
@@ -93,7 +93,6 @@ module.exports = (sequelize, DataTypes) => {
       notes: { type: DataTypes.TEXT, allowNull: true },
       videoCallDate: { type: DataTypes.DATEONLY, allowNull: true },
       videoCallTime: { type: DataTypes.TIME, allowNull: true },
-
       pincode: {
         type: DataTypes.STRING,
         allowNull: true,

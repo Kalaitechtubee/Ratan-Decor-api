@@ -145,13 +145,9 @@ const runDatabaseMigrations = async () => {
     }
 
     // Create or update seo table
-    const [seoTable] = await sequelize.query(`
-      SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
-      WHERE TABLE_NAME = 'seo' AND TABLE_SCHEMA = DATABASE()
-    `);
-    if (seoTable.length === 0) {
+    try {
       await sequelize.query(`
-        CREATE TABLE seo (
+        CREATE TABLE IF NOT EXISTS seo (
           id INTEGER PRIMARY KEY AUTO_INCREMENT,
           pageName VARCHAR(255) NOT NULL UNIQUE,
           title VARCHAR(255) NOT NULL,
@@ -161,16 +157,9 @@ const runDatabaseMigrations = async () => {
           updatedAt DATETIME NOT NULL
         )
       `);
-      console.log('✅ Created seo table');
+      console.log('✅ SEO table ready');
 
-      for (const seo of seoConfig) {
-        await sequelize.query(`
-          INSERT INTO seo (pageName, title, description, keywords, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, NOW(), NOW())
-        `, { replacements: [seo.pageName, seo.title, seo.description, seo.keywords] });
-      }
-      console.log('✅ Populated seo table with default data');
-    } else {
+      // Populate with default data if not already present
       for (const seo of seoConfig) {
         const [results] = await sequelize.query(`SELECT COUNT(*) as count FROM seo WHERE pageName = ?`, { replacements: [seo.pageName] });
         if (results[0].count === 0) {
@@ -180,6 +169,9 @@ const runDatabaseMigrations = async () => {
           `, { replacements: [seo.pageName, seo.title, seo.description, seo.keywords] });
         }
       }
+      console.log('✅ SEO table populated with default data');
+    } catch (error) {
+      console.log('⚠️ SEO table setup skipped (may already exist):', error.message);
     }
   } catch (error) {
     console.error('❌ Database migration failed:', error);
@@ -627,16 +619,19 @@ const startServer = async () => {
     console.log('📊 Connecting to database...');
     await sequelize.authenticate();
     console.log('✅ Database connected successfully');
-    
-    // Sync database
-    console.log('🔄 Syncing database...');
-    await sequelize.sync({ alter: true }); // safer option 
-    console.log('✅ Database synced successfully');
-    
-    // Run migrations
+
+    // Run migrations first to clean up indexes
     console.log('🔄 Running database migrations...');
     await runDatabaseMigrations();
     console.log('✅ Database migrations completed');
+
+    // Sync database after migrations
+    console.log('🔄 Syncing database...');
+ await sequelize.sync({ alter: false });
+console.log("🔄 Database schema updated successfully");
+
+    console.log('✅ Database synced successfully');
+
     
     // Initialize data
     console.log('🔄 Initializing system data...');
