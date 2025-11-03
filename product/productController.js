@@ -598,25 +598,25 @@ const getProductById = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-  const {
-    name,
-    description,
-    specifications,
-    categoryId,
-    visibleTo,
-    mrpPrice,
-    generalPrice,
-    architectPrice,
-    dealerPrice,
-    designNumber,
-    size,
-    thickness,
-    isActive,
-    colors,
-    gst,
-    brandName,
-    unitType
-  } = req.body;
+    const {
+      name,
+      description,
+      specifications,
+      categoryId,
+      visibleTo,
+      mrpPrice,
+      generalPrice,
+      architectPrice,
+      dealerPrice,
+      designNumber,
+      size,
+      thickness,
+      isActive,
+      colors,
+      gst,
+      brandName,
+      unitType  // Make sure this is destructured
+    } = req.body;
 
     let subcategoryId = null;
     if (typeof req.body.subcategoryId !== 'undefined') {
@@ -674,6 +674,7 @@ const updateProduct = async (req, res) => {
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
 
+
     const removedImages = product.images ? product.images.filter(img => !keptImages.includes(img)) : [];
     removedImages.forEach(oldImage => {
       const oldImagePath = path.join(__dirname, '..', 'uploads', 'products', oldImage);
@@ -714,15 +715,16 @@ const updateProduct = async (req, res) => {
       colors: parsedColors !== undefined ? parsedColors : product.colors,
       gst: gst !== undefined ? parseFloat(gst) : product.gst,
       brandName: brandName !== undefined ? brandName : product.brandName,
-      unitType: unitType !== undefined ? unitType : product.unitType,
+      // FIX: Handle unitType properly - check for both undefined and empty string
+      unitType: (unitType !== undefined && unitType !== null && unitType !== '') 
+        ? unitType 
+        : product.unitType,
       image: null,
       images: [...keptImages, ...newImageFilenames]
     };
 
     await product.update(updateData);
-
-    // Re-fetch updated product with category and parent included
-    const updatedProduct = await Product.findByPk(product.id, {
+const updatedProduct = await Product.findByPk(product.id, {
       include: [
         {
           model: Category,
@@ -766,7 +768,7 @@ const updateProductAll = async (req, res) => {
       gst,
       brandName,
       isActive,
-      unitType
+      unitType  // Make sure this is destructured
     } = req.body;
 
     // Safely extract subcategoryId from body or query (same as createProduct)
@@ -856,7 +858,7 @@ const updateProductAll = async (req, res) => {
       finalCategoryId = categoryId;
     }
 
-    const updateData = {
+     const updateData = {
       name,
       description,
       specifications: parsedSpecifications,
@@ -874,6 +876,8 @@ const updateProductAll = async (req, res) => {
       gst: gst !== undefined ? parseFloat(gst) : null,
       brandName: brandName || null,
       isActive: isActive !== undefined ? isActive : true,
+      // FIX: Handle unitType properly with proper default
+      unitType: (unitType && unitType !== '') ? unitType : 'Per Sheet',
       image: null,
       images: [...keptImages, ...newImageFilenames]
     };
@@ -889,7 +893,6 @@ const updateProductAll = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
-
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
