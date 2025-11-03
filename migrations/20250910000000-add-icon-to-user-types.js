@@ -2,7 +2,7 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.addColumn('UserTypes', 'icon', {
+    await queryInterface.addColumn('user_types', 'icon', {
       type: Sequelize.STRING,
       allowNull: true,
       comment: 'Icon filename for user types',
@@ -10,6 +10,6 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.removeColumn('UserTypes', 'icon');
+    await queryInterface.removeColumn('user_types', 'icon');
   }
 };
