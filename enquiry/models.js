@@ -1,6 +1,9 @@
+// enquiry/models.js
+const { DataTypes } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
   const Enquiry = sequelize.define(
-    "Enquiry",
+    'Enquiry',
     {
       id: {
         type: DataTypes.INTEGER,
@@ -9,112 +12,105 @@ module.exports = (sequelize, DataTypes) => {
       },
       userId: {
         type: DataTypes.INTEGER,
-        allowNull: true, // ✅ must be nullable
-        references: { model: "users", key: "id" },
-        onDelete: "SET NULL",
-        onUpdate: "CASCADE",
+        allowNull: false,
+        references: {
+          model: 'users',
+          key: 'id',
+        },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
       },
       productId: {
         type: DataTypes.INTEGER,
-        allowNull: true, // ✅ also make nullable
-        references: { model: "products", key: "id" },
-        onDelete: "SET NULL",
-        onUpdate: "CASCADE",
+        allowNull: true,
+        references: {
+          model: 'products',
+          key: 'id',
+        },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
       },
       name: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-          notEmpty: { msg: "Name cannot be empty" },
-          len: { args: [2, 100], msg: "Name must be between 2 and 100 characters" },
+          notEmpty: true,
         },
       },
       email: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-          isEmail: { msg: "Please provide a valid email address" },
-          notEmpty: { msg: "Email cannot be empty" },
+          isEmail: true,
+          notEmpty: true,
         },
       },
-      phoneNo: {
+      phone: {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-          notEmpty: { msg: "Phone number cannot be empty" },
-          isPhoneNumber(value) {
-            const cleanPhone = value.replace(/[^\d]/g, "");
-            if (cleanPhone.length < 10 || cleanPhone.length > 15) {
-              throw new Error("Phone number must be between 10–15 digits");
-            }
-          },
+          notEmpty: true,
         },
-      },
-      companyName: { type: DataTypes.STRING, allowNull: true },
-      state: { type: DataTypes.STRING, allowNull: false },
-      city: { type: DataTypes.STRING, allowNull: false },
-      role: {
-        type: DataTypes.ENUM(
-          "Customer",
-          "Architect",
-          "Dealer",
-          "Admin",
-          "Manager",
-          "Sales",
-          "Support"
-        ),
-        allowNull: false,
-        defaultValue: "Customer",
       },
       userType: {
         type: DataTypes.INTEGER,
-        allowNull: true, // ✅ must be nullable for SET NULL
-        defaultValue: 1,
-        references: { model: "user_types", key: "id" },
-        onUpdate: "CASCADE",
-        onDelete: "SET NULL",
+        allowNull: true, // ✅ FIXED: Changed to true to allow SET NULL on foreign key
+        references: {
+          model: 'user_types',
+          key: 'id',
+        },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
       },
-      source: {
-        type: DataTypes.ENUM("Email", "WhatsApp", "WebSite", "Phone", "VideoCall"),
-        allowNull: false,
-        defaultValue: "Email",
+      message: {
+        type: DataTypes.TEXT,
+        allowNull: true,
       },
       status: {
-        type: DataTypes.ENUM(
-          "New",
-          "InProgress",
-          "Confirmed",
-          "Delivered",
-          "Rejected"
-        ),
+        type: DataTypes.ENUM('pending', 'in-progress', 'resolved', 'closed'),
+        defaultValue: 'pending',
         allowNull: false,
-        defaultValue: "New",
       },
-      notes: { type: DataTypes.TEXT, allowNull: true },
-      videoCallDate: { type: DataTypes.DATEONLY, allowNull: true },
-      videoCallTime: { type: DataTypes.TIME, allowNull: true },
-      pincode: {
-        type: DataTypes.STRING,
+      priority: {
+        type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
+        defaultValue: 'medium',
+        allowNull: false,
+      },
+      assignedTo: {
+        type: DataTypes.INTEGER,
         allowNull: true,
-        validate: {
-          isPincode(value) {
-            if (value && !/^\d{6}$/.test(value)) {
-              throw new Error("Pincode must be a 6-digit number");
-            }
-          },
+        references: {
+          model: 'users',
+          key: 'id',
         },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      },
+      notes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      resolutionDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      source: {
+        type: DataTypes.ENUM('website', 'phone', 'email', 'chat', 'social-media', 'other'),
+        defaultValue: 'website',
+        allowNull: false,
       },
     },
     {
-      tableName: "enquiries",
+      tableName: 'enquiries',
       timestamps: true,
       indexes: [
-        { fields: ["email"] },
-        { fields: ["phoneNo"] },
-        { fields: ["status"] },
-        { fields: ["state", "city"] },
-        { fields: ["createdAt"] },
-        { fields: ["pincode"] },
+        { fields: ['userId'] },
+        { fields: ['productId'] },
+        { fields: ['status'] },
+        { fields: ['priority'] },
+        { fields: ['assignedTo'] },
+        { fields: ['createdAt'] },
+        { fields: ['userType'] },
       ],
     }
   );
