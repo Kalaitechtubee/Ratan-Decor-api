@@ -1,8 +1,4 @@
-// middleware/index.js - Consolidated Middleware Module
-// Central export file for all middleware functions
-// Imports from specialized middleware files for better organization
 
-// Import authentication and authorization middleware
 const {
   authenticateToken,
   authMiddleware,
@@ -49,11 +45,8 @@ const {
   secureLogout
 } = require('./security');
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
 module.exports = {
-  // Authentication & Authorization
+
   authenticateToken,
   authMiddleware,
   authorizeRoles,
@@ -65,14 +58,13 @@ module.exports = {
   requireSales,
   requireSupport,
 
-  // Upload middleware
+
   uploadProductImages,
   uploadCategoryImage,
   uploadUserTypeIcon,
   handleUploadError,
   uploadFields,
 
-  // Security middleware
   rateLimits,
   trackSuspiciousActivity,
   enhanceLoginSecurity,
@@ -83,7 +75,7 @@ module.exports = {
   sessionSecurity,
   secureLogout,
 
-  // Directory paths and configs
+ 
   uploadDirs,
   uploadDir,
   productImagesDir,
@@ -91,7 +83,7 @@ module.exports = {
   userTypeIconsDir,
   uploadConfigs,
 
-  // Utility functions
+
   generateImageUrl,
   processUploadedFiles,
   deleteFile,

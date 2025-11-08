@@ -32,10 +32,10 @@ module.exports = (sequelize, DataTypes) => {
     },
     {
       tableName: 'user_types',
-      // keep original casing in model name but store table as snake_case to match migrations
+
       timestamps: true,
 
-      // ✅ Add unique index with a fixed name
+
       indexes: [
         {
           unique: true,

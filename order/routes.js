@@ -1,4 +1,4 @@
-// routes/orders.js
+
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
@@ -14,10 +14,9 @@ const {
 } = require('./controller');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 
-// Apply authentication to all routes
+
 router.use(authenticateToken);
 
-// Debug token endpoint (development only)
 router.post('/debug-token', (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -66,36 +65,32 @@ router.post('/debug-token', (req, res) => {
   }
 });
 
-// Get available addresses for order creation
+
 router.get('/addresses', getAvailableAddresses);
 
-// Create new order
+
 router.post('/', createOrder);
 
-// Get orders with role-based filtering
+
 router.get('/', (req, res, next) => {
-  // If user is not admin/manager/sales/User, filter by their userId
+
   if (!['admin', 'manager', 'sales', 'User'].includes(req.user.role)) {
     req.query.userId = req.user.id;
   }
   next();
 }, getOrders);
 
-// Get order statistics (admin/manager only)
 router.get('/stats', moduleAccess.requireSalesAccess, getOrderStats);
 
-// Get specific order by ID - FIXED: Remove the problematic middleware
-// The getOrderById controller already handles ownership checking correctly
+
 router.get('/:id', getOrderById);
 
-// Cancel order - FIXED: Remove the problematic middleware
-// The cancelOrder controller already handles ownership checking correctly
+
 router.put('/:id/cancel', cancelOrder);
 
-// Update order (admin/manager only)
 router.put('/:id', moduleAccess.requireSalesAccess, updateOrder);
 
-// Delete order (admin only)
+
 router.delete('/:id', moduleAccess.requireAdmin, deleteOrder);
 
 module.exports = router;

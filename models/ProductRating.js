@@ -1,4 +1,4 @@
-// models/ProductRating.js
+
 module.exports = (sequelize, DataTypes) => {
   const ProductRating = sequelize.define('ProductRating', {
     id: {

@@ -1,9 +1,8 @@
-// enquiry/controller.js
+
 const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require('jsonwebtoken');
 
-// Helper functions for user role and price computation
 const getReqUserRole = (req) => {
   if (req.user && req.user.role) {
     return req.user.role;
@@ -44,17 +43,17 @@ const enquiryController = {
         videoCallDate,
         videoCallTime,
         role,
-        pincode, // New field
-        productDesignNumber, // New field
+        pincode, 
+        productDesignNumber, 
       } = req.body;
 
-      // Get userId from token if not provided
+     
       let finalUserId = userId;
       if (!finalUserId && req.user) {
         finalUserId = req.user.id;
       }
 
-      // Validate required fields
+
       const requiredFields = ["name", "email", "phoneNo", "state", "city"];
       const missingFields = requiredFields.filter(
         (field) => !req.body[field]?.trim()
@@ -66,7 +65,6 @@ const enquiryController = {
         });
       }
 
-      // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         return res.status(400).json({
@@ -75,7 +73,7 @@ const enquiryController = {
         });
       }
 
-      // Validate phone number
+
       const cleanPhone = phoneNo.replace(/[^\d]/g, "");
       if (cleanPhone.length < 10 || cleanPhone.length > 15) {
         return res.status(400).json({
@@ -84,7 +82,7 @@ const enquiryController = {
         });
       }
 
-      // Validate productId if provided
+
       const parsedProductId = productId ? parseInt(productId, 10) : null;
       if (productId && isNaN(parsedProductId)) {
         return res.status(400).json({
@@ -93,7 +91,6 @@ const enquiryController = {
         });
       }
 
-      // Validate role
       const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support"];
       if (role && !validRoles.includes(role)) {
         return res.status(400).json({
@@ -102,7 +99,6 @@ const enquiryController = {
         });
       }
 
-      // Validate source
       const validSources = ["Email", "WhatsApp", "Phone", "VideoCall"];
       if (source && !validSources.includes(source)) {
         return res.status(400).json({
@@ -111,7 +107,7 @@ const enquiryController = {
         });
       }
 
-      // Validate pincode if provided
+
       const cleanPincode = pincode ? pincode.replace(/[^\d]/g, "") : null;
       if (pincode && (!cleanPincode || cleanPincode.length !== 6)) {
         return res.status(400).json({
@@ -136,8 +132,8 @@ const enquiryController = {
         videoCallTime: videoCallTime || null,
         status: "New",
         role: role || "Customer",
-        pincode: cleanPincode, // New field
-        productDesignNumber: productDesignNumber?.trim() || null, // New field
+        pincode: cleanPincode, 
+        productDesignNumber: productDesignNumber?.trim() || null, 
       });
 
       const enrichedEnquiry = await Enquiry.findByPk(enquiry.id, {
@@ -151,7 +147,7 @@ const enquiryController = {
           {
             model: Product,
             as: "product",
-            // Return all product details for the enquiry response
+
             attributes: { exclude: [] },
             required: false,
           },
@@ -164,20 +160,19 @@ const enquiryController = {
         ],
       });
 
-      // Replace userType ID with name from userTypeData
+    
       if (enrichedEnquiry && enrichedEnquiry.userTypeData) {
         enrichedEnquiry.userType = enrichedEnquiry.userTypeData.name;
       }
 
-      // Compute role-based price for product and remove all price fields except the role-based one
       if (enrichedEnquiry && enrichedEnquiry.product) {
         const userRole = getReqUserRole(req);
         const computedPrice = computePrice(enrichedEnquiry.product, userRole);
-        // Remove all price fields
+
         delete enrichedEnquiry.product.generalPrice;
         delete enrichedEnquiry.product.architectPrice;
         delete enrichedEnquiry.product.dealerPrice;
-        // Add only the role-based price
+
         enrichedEnquiry.product.price = computedPrice;
       }
 
@@ -212,7 +207,6 @@ const enquiryController = {
     }
   },
 
-  // Updated getAllEnquiries method to include internal notes (add this option to your existing method)
 async getAllEnquiries(req, res) {
   try {
     const {
@@ -226,7 +220,7 @@ async getAllEnquiries(req, res) {
       city,
       role,
       pincode,
-      includeNotes = false // Add this parameter
+      includeNotes = false
     } = req.query;
 
     const pageNum = parseInt(page);
@@ -278,7 +272,7 @@ async getAllEnquiries(req, res) {
       },
     ];
 
-    // Conditionally include internal notes
+   
     if (includeNotes === 'true') {
       include.push({
         model: EnquiryInternalNote,
@@ -298,17 +292,14 @@ async getAllEnquiries(req, res) {
       order: [["createdAt", "DESC"]],
     });
 
-    // Replace userType ID with name from userTypeData for each enquiry
     enquiries.rows.forEach(enquiry => {
       if (enquiry && enquiry.userTypeData) {
         enquiry.userType = enquiry.userTypeData.name;
       }
-      // Compute role-based price for product
       if (enquiry && enquiry.product) {
         const userRole = getReqUserRole(req);
         const computedPrice = computePrice(enquiry.product, userRole);
         enquiry.product.price = computedPrice;
-        // Remove individual price fields to show only role-based price
         delete enquiry.product.generalPrice;
         delete enquiry.product.architectPrice;
         delete enquiry.product.dealerPrice;
@@ -335,7 +326,6 @@ async getAllEnquiries(req, res) {
   }
 },
 
-// Updated getEnquiryById to include internal notes option
 async getEnquiryById(req, res) {
   try {
     const { id } = req.params;

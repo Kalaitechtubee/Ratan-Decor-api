@@ -1,4 +1,4 @@
-// routes/products.js - Fixed Product Management Routes
+
 const express = require('express');
 const router = express.Router();
 const {
@@ -23,39 +23,38 @@ router.get('/search', searchProductsByName);
 router.get('/:id', getProductById);
 router.get('/:productId/ratings', getProductRatings);
 
-// Product management (Admin, Manager, Support only)
-// FIXED: Added upload middleware BEFORE authentication
+
 router.post('/',
-  uploadFields,           // Parse multipart data FIRST
-  handleUploadError,      // Handle upload errors
-  authenticateToken,      // Then authenticate
-  moduleAccess.requireSupportAccess,  // Then authorize
-  createProduct           // Finally create product
+  uploadFields,           
+  handleUploadError,     
+  authenticateToken,      
+  moduleAccess.requireSupportAccess,  
+  createProduct           
 );
 
 router.patch('/:id',
-  uploadFields,           // Parse multipart data FIRST
-  handleUploadError,      // Handle upload errors
-  authenticateToken,      // Then authenticate
-  moduleAccess.requireSupportAccess,  // Then authorize
-  updateProduct           // Finally update product
+  uploadFields,           
+  handleUploadError,      
+  authenticateToken,     
+  moduleAccess.requireSupportAccess, 
+  updateProduct          
 );
 
 router.put('/:id',
-  uploadFields,           // Parse multipart data FIRST
-  handleUploadError,      // Handle upload errors
-  authenticateToken,      // Then authenticate
-  moduleAccess.requireSupportAccess,  // Then authorize
-  updateProductAll        // Finally update product (harmonized with updateProduct)
+  uploadFields,          
+  handleUploadError,     
+  authenticateToken,      
+  moduleAccess.requireSupportAccess, 
+  updateProductAll        
 );
 
 router.delete('/:id',
   authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // Only Admin/Manager can delete
+  moduleAccess.requireManagerOrAdmin, 
   deleteProduct
 );
 
-// User rating (any authenticated user)
+
 router.post('/:productId/rate',
   authenticateToken,
   addProductRating

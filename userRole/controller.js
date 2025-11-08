@@ -1,9 +1,9 @@
-// controllers/userRoleController.js
+
 const { User, UserType } = require('../models');
 const { fn, col, Op } = require('sequelize');
 
 const userRoleController = {
-  // ✅ Get all roles
+
   async getAllRoles(req, res) {
     try {
       const roles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support'];
@@ -16,7 +16,7 @@ const userRoleController = {
     }
   },
 
-  // ✅ Get users with filters (role, status, search, pagination)
+
   async getUsersByRole(req, res) {
     try {
       const { role, status, page = 1, limit = 10, search } = req.query;
@@ -68,7 +68,6 @@ const userRoleController = {
     }
   },
 
-  // ✅ Update user role/status/userType
   async updateUserRole(req, res) {
     try {
       const { id } = req.params;
@@ -111,7 +110,6 @@ const userRoleController = {
     }
   },
 
-  // ✅ Role stats (role → status → count)
   async getRoleStats(req, res) {
     try {
       const stats = await User.findAll({
@@ -136,7 +134,6 @@ const userRoleController = {
   },
   
 
-  // ✅ Update user status (only Pending → Approved/Rejected)
   async updateUserStatus(req, res) {
     try {
       const { id } = req.params;

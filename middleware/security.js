@@ -1,7 +1,7 @@
-// middleware/security.js - Enhanced Security Measures with Adjusted Rate Limits
+
 const rateLimit = require('express-rate-limit');
 
-// Rate limiting configurations - Adjusted for less frequent triggers
+
 const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   return rateLimit({
     windowMs,
@@ -13,9 +13,9 @@ const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   });
 };
 
-// Different rate limits for different endpoints - Increased limits for usability
+
 const rateLimits = {
-  // Authentication endpoints - increased to 10 attempts in 15 min
+
   auth: createRateLimiter(
     15 * 60 * 1000, // 15 minutes
     100, // 10 attempts (increased from 5)
@@ -51,7 +51,7 @@ const rateLimits = {
   )
 };
 
-// IP-based request tracking for suspicious activity
+
 const suspiciousActivityTracker = new Map();
 
 const trackSuspiciousActivity = (req, res, next) => {
@@ -68,7 +68,7 @@ const trackSuspiciousActivity = (req, res, next) => {
   
   const tracker = suspiciousActivityTracker.get(ip);
   
-  // Check if IP is currently blocked
+
   if (tracker.blockedUntil > now) {
     return res.status(429).json({
       success: false,
@@ -77,7 +77,7 @@ const trackSuspiciousActivity = (req, res, next) => {
     });
   }
   
-  // Clean up old entries (older than 1 hour)
+
   if (now - tracker.lastFailedLogin > 60 * 60 * 1000) {
     tracker.failedLogins = 0;
   }
@@ -86,53 +86,51 @@ const trackSuspiciousActivity = (req, res, next) => {
   next();
 };
 
-// Enhanced login security wrapper
+
 const enhanceLoginSecurity = (loginController) => {
   return async (req, res) => {
     const ip = req.ip || req.connection.remoteAddress;
     const tracker = req.securityTracker;
-    
-    // Store original res.status and res.json to intercept responses
+
     const originalStatus = res.status;
     const originalJson = res.json;
     
     let statusCode = 200;
     let responseData = null;
     
-    // Override res.status to capture status code
+
     res.status = function(code) {
       statusCode = code;
       return originalStatus.call(this, code);
     };
     
-    // Override res.json to capture response and handle security
+  
     res.json = function(data) {
       responseData = data;
       
-      // If login failed, track it
+  
       if (statusCode === 401 || statusCode === 403) {
         tracker.failedLogins++;
         tracker.lastFailedLogin = Date.now();
-        
-        // Block IP after 8 failed attempts (increased from 5 for leniency)
+   
         if (tracker.failedLogins >= 8) {
           tracker.blockedUntil = Date.now() + (30 * 60 * 1000); // 30 minutes
           console.warn(`IP ${ip} blocked for 30 minutes due to ${tracker.failedLogins} failed login attempts`);
         }
       } else if (statusCode === 200) {
-        // Reset on successful login
+
         tracker.failedLogins = 0;
       }
       
       return originalJson.call(this, responseData);
     };
     
-    // Call the original login controller
+
     return loginController(req, res);
   };
 };
 
-// Password policy validation
+
 const validatePasswordPolicy = (password) => {
   const minLength = 8;
   const hasUpperCase = /[A-Z]/.test(password);
@@ -164,12 +162,12 @@ const validatePasswordPolicy = (password) => {
   };
 };
 
-// Input sanitization middleware
+
 const sanitizeInput = (req, res, next) => {
   const sanitize = (obj) => {
     for (let key in obj) {
       if (typeof obj[key] === 'string') {
-        // Remove potential XSS attempts
+
         obj[key] = obj[key]
           .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
           .replace(/javascript:/gi, '')
@@ -188,7 +186,7 @@ const sanitizeInput = (req, res, next) => {
   next();
 };
 
-// Utility function to sanitize input objects
+
 const sanitizeInputObject = (obj) => {
   const sanitize = (input) => {
     if (typeof input === 'string') {
@@ -210,7 +208,7 @@ const sanitizeInputObject = (obj) => {
   return sanitize(obj);
 };
 
-// Request logging for audit trails
+
 const auditLogger = (req, res, next) => {
   const start = Date.now();
   
@@ -229,7 +227,7 @@ const auditLogger = (req, res, next) => {
       contentLength: res.get('Content-Length') || 0
     };
     
-    // Log security-relevant events
+
     if (req.originalUrl.includes('/login') || 
         req.originalUrl.includes('/register') ||
         req.originalUrl.includes('/admin') ||
@@ -241,27 +239,25 @@ const auditLogger = (req, res, next) => {
   next();
 };
 
-// Session management enhancements
 const sessionSecurity = {
-  // Token blacklist (in production, use Redis)
+ 
   blacklistedTokens: new Set(),
   
-  // Add token to blacklist on logout
+
   blacklistToken: (token) => {
-    sessionSecurity.blacklistedTokens.add(token);
-    // Clean up old tokens periodically
+
     if (sessionSecurity.blacklistedTokens.size > 10000) {
       sessionSecurity.blacklistedTokens.clear();
     }
   },
   
-  // Check if token is blacklisted
+ 
   isTokenBlacklisted: (token) => {
     return sessionSecurity.blacklistedTokens.has(token);
   }
 };
 
-// Enhanced logout with token blacklisting
+
 const secureLogout = (req, res) => {
   if (req.token) {
     sessionSecurity.blacklistToken(req.token);

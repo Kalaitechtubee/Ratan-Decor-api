@@ -8,7 +8,6 @@ const {
   getFallbackImageUrl,
 } = require('../utils/imageUtils');
 
-// Normalize payment method
 const normalizePaymentMethod = (method) => {
   const m = (method || '').toString().toLowerCase();
   if (m === 'gateway') return 'Gateway';
@@ -18,7 +17,6 @@ const normalizePaymentMethod = (method) => {
   return method;
 };
 
-// Validate address data
 const validateAddressData = (addressData) => {
   const requiredFields = ['name', 'phone', 'address', 'city', 'state', 'country', 'pincode'];
   return requiredFields.every(field => 
@@ -26,24 +24,23 @@ const validateAddressData = (addressData) => {
   );
 };
 
-// Prepare order address
+
 const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddressData) => {
   let orderAddress = null;
   
   if (addressType === 'new' && newAddressData) {
-    // Map the fields correctly for ShippingAddress model
+  
     const addressData = {
       name: newAddressData.name,
       phone: newAddressData.phone,
-      address: newAddressData.address || newAddressData.street, // Handle both field names
+      address: newAddressData.address || newAddressData.street,
       city: newAddressData.city,
       state: newAddressData.state,
       country: newAddressData.country,
-      pincode: newAddressData.pincode || newAddressData.postalCode, // Handle both field names
+      pincode: newAddressData.pincode || newAddressData.postalCode, 
       addressType: newAddressData.addressType || newAddressData.type || 'Home'
     };
 
-    // Validate required fields
     const requiredFields = ['name', 'phone', 'address', 'city', 'state', 'country', 'pincode'];
     const missingFields = requiredFields.filter(field =>
       !addressData[field] || typeof addressData[field] !== 'string' || addressData[field].trim() === ''
@@ -53,7 +50,7 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       throw new Error(`Missing required address fields: ${missingFields.join(', ')}`);
     }
     
-    // Create new address using the ShippingAddress model
+
     const { ShippingAddress } = require('../models');
 
     const newAddress = await ShippingAddress.create({
@@ -67,17 +64,17 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       addressData: {
         name: newAddress.name,
         phone: newAddress.phone,
-        address: newAddress.address, // Use correct field name
+        address: newAddress.address, 
         city: newAddress.city,
         state: newAddress.state,
         country: newAddress.country,
-        pincode: newAddress.pincode, // Use correct field name
+        pincode: newAddress.pincode, 
         addressType: newAddress.addressType,
         isDefault: false
       }
     };
   } else if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
-    // Use ShippingAddress model for orders
+
     const { ShippingAddress } = require('../models');
 
     const shippingAddress = await ShippingAddress.findOne({
@@ -97,17 +94,17 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       addressData: {
         name: shippingAddress.name || 'N/A',
         phone: shippingAddress.phone || 'N/A',
-        address: shippingAddress.address, // Use correct field name
+        address: shippingAddress.address,
         city: shippingAddress.city,
         state: shippingAddress.state,
         country: shippingAddress.country,
-        pincode: shippingAddress.pincode, // Use correct field name
-        addressType: shippingAddress.addressType, // Use correct field name
+        pincode: shippingAddress.pincode, 
+        addressType: shippingAddress.addressType, 
         isDefault: false
       }
     };
   } else {
-    // Fallback to user profile address
+  
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });

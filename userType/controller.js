@@ -1,321 +1,10 @@
-// // controllers/userTypeController.js
-// const { UserType, User, Category } = require('../models');
-// const { Op, Sequelize } = require('sequelize');
-// const { generateImageUrl } = require('../middleware/upload');
 
-// const userTypeController = {
-//   // Get all active user types
-//   async getAllUserTypes(req, res) {
-//     try {
-//       const userTypes = await UserType.findAll({
-//         where: { isActive: true },
-//         order: [['name', 'ASC']],
-//         attributes: ['id', 'name', 'description', 'isActive', 'icon']
-//       });
-
-//       const processedUserTypes = userTypes.map(userType => ({
-//         ...userType.toJSON(),
-//         iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
-//       }));
-
-//       res.json({
-//         success: true,
-//         data: processedUserTypes
-//       });
-//     } catch (error) {
-//       console.error('Error fetching user types:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to fetch user types',
-//         error: error.message
-//       });
-//     }
-//   },
-
-//   // Get user type by ID
-//   async getUserTypeById(req, res) {
-//     try {
-//       const { id } = req.params;
-      
-//       if (!Number.isInteger(parseInt(id, 10))) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Invalid user type ID'
-//         });
-//       }
-
-//       const userType = await UserType.findOne({
-//         where: { id: parseInt(id, 10), isActive: true },
-//         attributes: ['id', 'name', 'description', 'isActive', 'icon']
-//       });
-
-//       if (!userType) {
-//         return res.status(404).json({
-//           success: false,
-//           message: 'User type not found or inactive'
-//         });
-//       }
-
-//       const processedUserType = {
-//         ...userType.toJSON(),
-//         iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
-//       };
-
-//       res.json({
-//         success: true,
-//         data: processedUserType
-//       });
-//     } catch (error) {
-//       console.error('Error fetching user type:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to fetch user type',
-//         error: error.message
-//       });
-//     }
-//   },
-
-//   // Create new user type
-//   async createUserType(req, res) {
-//     try {
-//       const { name, description } = req.body;
-
-//       if (!name || name.trim() === '') {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'User type name is required'
-//         });
-//       }
-
-//       // Check if user type already exists (case-insensitive)
-//       const existingUserType = await UserType.findOne({
-//         where: Sequelize.where(
-//           Sequelize.fn('LOWER', Sequelize.col('name')),
-//           '=',
-//           name.trim().toLowerCase()
-//         )
-//       });
-
-//       if (existingUserType) {
-//         return res.status(409).json({
-//           success: false,
-//           message: 'User type name already exists'
-//         });
-//       }
-
-//       const userType = await UserType.create({
-//         name: name.trim(),
-//         description: description?.trim() || null,
-//         icon: req.file ? req.file.filename : null,
-//         isActive: true
-//       });
-
-//       const processedUserType = {
-//         ...userType.toJSON(),
-//         iconUrl: generateImageUrl(userType.icon, req, 'userTypes')
-//       };
-
-//       res.status(201).json({
-//         success: true,
-//         message: 'User type created successfully',
-//         data: processedUserType
-//       });
-//     } catch (error) {
-//       console.error('Error creating user type:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to create user type',
-//         error: error.message
-//       });
-//     }
-//   },
-
-//   // Update user type
-//   async updateUserType(req, res) {
-//     try {
-//       const { id } = req.params;
-//       const { name, description, isActive } = req.body;
-
-//       if (!Number.isInteger(parseInt(id, 10))) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Invalid user type ID'
-//         });
-//       }
-
-//       const userType = await UserType.findByPk(parseInt(id, 10));
-      
-//       if (!userType) {
-//         return res.status(404).json({
-//           success: false,
-//           message: 'User type not found'
-//         });
-//       }
-
-//       // Check if name is being changed and already exists
-//       if (name && name.trim() !== userType.name) {
-//         const existingUserType = await UserType.findOne({
-//           where: {
-//             [Op.and]: [
-//               Sequelize.where(
-//                 Sequelize.fn('LOWER', Sequelize.col('name')),
-//                 '=',
-//                 name.trim().toLowerCase()
-//               ),
-//               { id: { [Op.ne]: parseInt(id, 10) } }
-//             ]
-//           }
-//         });
-
-//         if (existingUserType) {
-//           return res.status(409).json({
-//             success: false,
-//             message: 'User type name already exists'
-//           });
-//         }
-//       }
-
-//       // Prepare update data
-//       const updateData = {};
-//       if (name) updateData.name = name.trim();
-//       if (description !== undefined) updateData.description = description?.trim() || null;
-//       if (req.file) updateData.icon = req.file.filename;
-      
-//       if (isActive !== undefined) {
-//         // Check for associated users before deactivating
-//         if (isActive === false) {
-//           const userCount = await User.count({ where: { userTypeId: id } });
-          
-//           if (userCount > 0) {
-//             return res.status(400).json({
-//               success: false,
-//               message: `Cannot deactivate user type. ${userCount} user(s) are currently using it.`
-//             });
-//           }
-
-//           // Check categories if relationship exists
-//           try {
-//             const categoryCount = await Category.count({ where: { userTypeId: id } });
-            
-//             if (categoryCount > 0) {
-//               return res.status(400).json({
-//                 success: false,
-//                 message: `Cannot deactivate user type. ${categoryCount} category(ies) are associated with it.`
-//               });
-//             }
-//           } catch (categoryError) {
-//             console.warn('Category check skipped - userTypeId column may not exist');
-//           }
-//         }
-//         updateData.isActive = isActive;
-//       }
-
-//       await userType.update(updateData);
-
-//       // Fetch updated user type
-//       const updatedUserType = await UserType.findByPk(parseInt(id, 10), {
-//         attributes: ['id', 'name', 'description', 'isActive', 'icon']
-//       });
-
-//       const processedUserType = {
-//         ...updatedUserType.toJSON(),
-//         iconUrl: generateImageUrl(updatedUserType.icon, req, 'userTypes')
-//       };
-
-//       res.json({
-//         success: true,
-//         message: 'User type updated successfully',
-//         data: processedUserType
-//       });
-//     } catch (error) {
-//       console.error('Error updating user type:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to update user type',
-//         error: error.message
-//       });
-//     }
-//   },
-
-//   // Soft delete user type with auto reassignment
-//   async deleteUserType(req, res) {
-//     try {
-//       const { id } = req.params;
-//       const fallbackTypeId = 1; // Default userTypeId (e.g., Customer)
-
-//       if (!Number.isInteger(parseInt(id, 10))) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Invalid user type ID'
-//         });
-//       }
-
-//       const userType = await UserType.findByPk(parseInt(id, 10));
-      
-//       if (!userType) {
-//         return res.status(404).json({
-//           success: false,
-//           message: 'User type not found'
-//         });
-//       }
-
-//       // Prevent deleting the fallback type itself
-//       if (parseInt(id, 10) === fallbackTypeId) {
-//         return res.status(400).json({
-//           success: false,
-//           message: 'Cannot delete the default user type'
-//         });
-//       }
-
-//       // Reassign users to fallback user type
-//       const [reassignedUsers] = await User.update(
-//         { userTypeId: fallbackTypeId },
-//         { where: { userTypeId: id } }
-//       );
-
-//       // Reassign categories if relationship exists
-//       let reassignedCategories = 0;
-//       try {
-//         const [count] = await Category.update(
-//           { userTypeId: fallbackTypeId },
-//           { where: { userTypeId: id } }
-//         );
-//         reassignedCategories = count;
-//       } catch (categoryError) {
-//         console.warn('Category reassignment skipped:', categoryError.message);
-//       }
-
-//       // Soft delete by setting isActive to false
-//       await userType.update({ isActive: false });
-
-//       res.json({
-//         success: true,
-//         message: `User type deleted successfully. ${reassignedUsers} user(s) reassigned to default type.`,
-//         data: {
-//           reassignedUsers,
-//           reassignedCategories
-//         }
-//       });
-//     } catch (error) {
-//       console.error('Error deleting user type:', error);
-//       res.status(500).json({
-//         success: false,
-//         message: 'Failed to delete user type',
-//         error: error.message
-//       });
-//     }
-//   }
-// };
-
-// module.exports = userTypeController;
-
-// userType/controller.js
 const { UserType, User, Category } = require('../models');
 const { Op, Sequelize } = require('sequelize');
-const { generateImageUrl } = require('../middleware/upload'); // ✅ Updated path
+const { generateImageUrl } = require('../middleware/upload'); 
 
 const userTypeController = {
-  // Get all active user types
+
   async getAllUserTypes(req, res) {
     try {
       const userTypes = await UserType.findAll({
@@ -343,7 +32,7 @@ const userTypeController = {
     }
   },
 
-  // Get user type by ID
+
   async getUserTypeById(req, res) {
     try {
       const { id } = req.params;
@@ -386,7 +75,6 @@ const userTypeController = {
     }
   },
 
-  // Create new user type
   async createUserType(req, res) {
     try {
       const { name, description } = req.body;
@@ -441,7 +129,7 @@ const userTypeController = {
     }
   },
 
-  // Update user type
+
   async updateUserType(req, res) {
     try {
       const { id } = req.params;
@@ -486,14 +174,14 @@ const userTypeController = {
         }
       }
 
-      // Prepare update data
+    
       const updateData = {};
       if (name) updateData.name = name.trim();
       if (description !== undefined) updateData.description = description?.trim() || null;
       if (req.file) updateData.icon = req.file.filename;
       
       if (isActive !== undefined) {
-        // Check for associated users before deactivating
+   
         if (isActive === false) {
           const userCount = await User.count({ where: { userTypeId: id } });
           
@@ -504,7 +192,7 @@ const userTypeController = {
             });
           }
 
-          // Check categories if relationship exists
+
           try {
             const categoryCount = await Category.count({ where: { userTypeId: id } });
             
@@ -523,7 +211,7 @@ const userTypeController = {
 
       await userType.update(updateData);
 
-      // Fetch updated user type
+
       const updatedUserType = await UserType.findByPk(parseInt(id, 10), {
         attributes: ['id', 'name', 'description', 'isActive', 'icon']
       });
@@ -548,11 +236,11 @@ const userTypeController = {
     }
   },
 
-  // Soft delete user type with auto reassignment
+  
   async deleteUserType(req, res) {
     try {
       const { id } = req.params;
-      const fallbackTypeId = 1; // Default userTypeId (e.g., Customer)
+      const fallbackTypeId = 1; 
 
       if (!Number.isInteger(parseInt(id, 10))) {
         return res.status(400).json({
@@ -570,7 +258,7 @@ const userTypeController = {
         });
       }
 
-      // Prevent deleting the fallback type itself
+      
       if (parseInt(id, 10) === fallbackTypeId) {
         return res.status(400).json({
           success: false,
@@ -578,13 +266,13 @@ const userTypeController = {
         });
       }
 
-      // Reassign users to fallback user type
+      
       const [reassignedUsers] = await User.update(
         { userTypeId: fallbackTypeId },
         { where: { userTypeId: id } }
       );
 
-      // Reassign categories if relationship exists
+    
       let reassignedCategories = 0;
       try {
         const [count] = await Category.update(
@@ -596,7 +284,7 @@ const userTypeController = {
         console.warn('Category reassignment skipped:', categoryError.message);
       }
 
-      // Soft delete by setting isActive to false
+     
       await userType.update({ isActive: false });
 
       res.json({

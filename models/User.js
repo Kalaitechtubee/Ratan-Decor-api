@@ -1,14 +1,14 @@
-// models/User.js
+
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
-    // Full name
+
     name: {
       type: DataTypes.STRING,
       allowNull: false,
       validate: { notEmpty: true, len: [1, 255] }
     },
 
-    // Email (unique)
+
     email: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -16,14 +16,14 @@ module.exports = (sequelize, DataTypes) => {
       validate: { isEmail: true, notEmpty: true }
     },
 
-    // Hashed password
+
     password: {
       type: DataTypes.STRING,
       allowNull: false,
       validate: { notEmpty: true }
     },
 
-    // Role
+
     role: {
       type: DataTypes.ENUM(
         'customer',
@@ -40,14 +40,14 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 'General'
     },
 
-    // Status
+
     status: {
       type: DataTypes.ENUM('Pending', 'Approved', 'Rejected'),
       allowNull: false,
       defaultValue: 'Pending'
     },
 
-    // Contact & company details
+
     mobile: { type: DataTypes.STRING, allowNull: true },
     address: { type: DataTypes.STRING, allowNull: true },
     country: { type: DataTypes.STRING, allowNull: true },
@@ -56,7 +56,7 @@ module.exports = (sequelize, DataTypes) => {
     pincode: { type: DataTypes.STRING, allowNull: true },
     company: { type: DataTypes.STRING, allowNull: true },
 
-    // FK to UserType
+
     userTypeId: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -68,33 +68,29 @@ module.exports = (sequelize, DataTypes) => {
       onUpdate: 'CASCADE'
     },
 
-    // NEW FIELDS --------------------------------------
-
-    // User created by (self-referencing FK)
     createdBy: {
       type: DataTypes.INTEGER,
       allowNull: true
     },
 
-    // Rejection reason (when status = Rejected)
+   
     rejectionReason: {
       type: DataTypes.TEXT,
       allowNull: true
     },
 
-    // Track last login
     lastLoginAt: {
       type: DataTypes.DATE,
       allowNull: true
     },
 
-    // Login attempt count
+    
     loginAttempts: {
       type: DataTypes.INTEGER,
       defaultValue: 0
     },
 
-    // Account lock timestamp
+
     lockedUntil: {
       type: DataTypes.DATE,
       allowNull: true

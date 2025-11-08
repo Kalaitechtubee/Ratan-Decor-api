@@ -1,14 +1,9 @@
-// middleware/upload.js - Consolidated Upload Middleware
-// Handles file uploads for products, categories, and user types
-// Clean, organized structure with proper error handling
+
 
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// ============================================================================
-// DIRECTORY SETUP
-// ============================================================================
 const uploadDir = path.join(__dirname, '../uploads');
 const uploadDirs = {
   products: path.join(uploadDir, 'products'),
@@ -17,7 +12,6 @@ const uploadDirs = {
   defaults: path.join(uploadDir, 'defaults')
 };
 
-// Ensure all directories exist with proper permissions
 Object.entries(uploadDirs).forEach(([name, dir]) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
@@ -27,9 +21,6 @@ Object.entries(uploadDirs).forEach(([name, dir]) => {
   }
 });
 
-// ============================================================================
-// UPLOAD CONFIGURATIONS
-// ============================================================================
 const uploadConfigs = {
   products: {
     path: uploadDirs.products,
@@ -54,9 +45,6 @@ const uploadConfigs = {
   }
 };
 
-// ============================================================================
-// MULTER STORAGE FACTORY
-// ============================================================================
 const createStorage = (type) => {
   const config = uploadConfigs[type];
 
@@ -76,9 +64,7 @@ const createStorage = (type) => {
   });
 };
 
-// ============================================================================
-// FILE FILTER FACTORY
-// ============================================================================
+
 const createFileFilter = (type) => {
   const config = uploadConfigs[type];
 
@@ -95,9 +81,6 @@ const createFileFilter = (type) => {
   };
 };
 
-// ============================================================================
-// MULTER INSTANCES
-// ============================================================================
 const uploaders = {
   products: multer({
     storage: createStorage('products'),
@@ -125,11 +108,8 @@ const uploaders = {
   })
 };
 
-// ============================================================================
-// UPLOAD MIDDLEWARE FUNCTIONS
-// ============================================================================
 
-// Product upload (multiple images: 1 main + 10 additional)
+
 const uploadProductImages = (req, res, next) => {
   if (!req.headers['content-type']?.includes('multipart/form-data')) {
     return next();
@@ -153,7 +133,7 @@ const uploadProductImages = (req, res, next) => {
   });
 };
 
-// Category upload (single image)
+
 const uploadCategoryImage = (req, res, next) => {
   if (!req.headers['content-type']?.includes('multipart/form-data')) {
     return next();
@@ -174,7 +154,7 @@ const uploadCategoryImage = (req, res, next) => {
   });
 };
 
-// User Type upload (single icon)
+
 const uploadUserTypeIcon = (req, res, next) => {
   if (!req.headers['content-type']?.includes('multipart/form-data')) {
     return next();
@@ -195,9 +175,6 @@ const uploadUserTypeIcon = (req, res, next) => {
   });
 };
 
-// ============================================================================
-// ERROR HANDLER
-// ============================================================================
 const handleUploadError = (error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     const errorResponses = {
@@ -250,9 +227,7 @@ const handleUploadError = (error, req, res, next) => {
   next(error);
 };
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+
 
 /**
  * Generate full URL for uploaded image
