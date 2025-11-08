@@ -15,7 +15,6 @@ const {
 } = require('./productController');
 const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
 const { uploadFields, handleUploadError } = require('../middleware/upload');
-const { validateImage } = require('../middleware/imageValidation');
 
 // Public routes (no auth needed)
 router.get('/', getProducts);
@@ -26,42 +25,39 @@ router.get('/:productId/ratings', getProductRatings);
 
 // Product management (Admin, Manager, Support only)
 // FIXED: Added upload middleware BEFORE authentication
-router.post('/', 
+router.post('/',
   uploadFields,           // Parse multipart data FIRST
   handleUploadError,      // Handle upload errors
-  validateImage,          // Validate images
   authenticateToken,      // Then authenticate
   moduleAccess.requireSupportAccess,  // Then authorize
   createProduct           // Finally create product
 );
 
-router.patch('/:id', 
+router.patch('/:id',
   uploadFields,           // Parse multipart data FIRST
   handleUploadError,      // Handle upload errors
-  validateImage,          // Validate images  
   authenticateToken,      // Then authenticate
   moduleAccess.requireSupportAccess,  // Then authorize
   updateProduct           // Finally update product
 );
 
-router.put('/:id', 
+router.put('/:id',
   uploadFields,           // Parse multipart data FIRST
   handleUploadError,      // Handle upload errors
-  validateImage,          // Validate images
   authenticateToken,      // Then authenticate
   moduleAccess.requireSupportAccess,  // Then authorize
-  updateProductAll        // Finally update product
+  updateProductAll        // Finally update product (harmonized with updateProduct)
 );
 
-router.delete('/:id', 
-  authenticateToken, 
+router.delete('/:id',
+  authenticateToken,
   moduleAccess.requireManagerOrAdmin, // Only Admin/Manager can delete
   deleteProduct
 );
 
 // User rating (any authenticated user)
-router.post('/:productId/rate', 
-  authenticateToken, 
+router.post('/:productId/rate',
+  authenticateToken,
   addProductRating
 );
 

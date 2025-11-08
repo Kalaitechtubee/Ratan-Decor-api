@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createAddress, getAddresses, getAddressById, updateAddress, deleteAddress } = require('./controller');
-const { authMiddleware } = require('../middleware');
+const { authMiddleware } = require('../middleware/auth');
 
 // Get all addresses for logged-in user
 router.get('/', authMiddleware, getAddresses);

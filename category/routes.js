@@ -1,9 +1,10 @@
+
 const express = require('express');
 const router = express.Router();
 const categoryController = require('./controller');
 const { body, param, query, validationResult } = require('express-validator');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const { uploadCategoryImage, handleCategoryUploadError } = require('../middleware/categoryUpload');
+const { uploadCategoryImage, handleUploadError } = require('../middleware/upload');
 
 // Validation middleware
 const validate = (req, res, next) => {
@@ -21,7 +22,6 @@ const validate = (req, res, next) => {
 // ===============================
 // Public Routes
 // ===============================
-
 // Get all categories as a tree structure
 router.get('/', categoryController.getCategoryTree);
 
@@ -62,13 +62,13 @@ router.get(
 // ===============================
 // Protected Routes (Admin/Manager only)
 // ===============================
-
 // Create a new main category (WITH IMAGE UPLOAD)
 router.post(
   '/',
   authMiddleware,
   requireRole(['admin', 'manager', 'superadmin']),
-  uploadCategoryImage, // Allow image upload for main categories
+  uploadCategoryImage, // Parse multipart FIRST
+  handleUploadError, // Handle upload errors IMMEDIATELY
   [
     body('name')
       .trim()
@@ -98,7 +98,7 @@ router.post(
       .trim()
       .isLength({ min: 2 })
       .withMessage('Subcategory name must be at least 2 characters long')
-      .matches(/^[a-zA-Z0-9\s\-_&.()]+$/)
+      .matches(/^[a-zA-Z0-9\s\-_&.()()]+$/)
       .withMessage('Subcategory name contains invalid characters'),
     body('brandName')
       .optional()
@@ -115,7 +115,8 @@ router.put(
   '/:id',
   authMiddleware,
   requireRole(['admin', 'manager', 'superadmin']),
-  uploadCategoryImage, // Middleware allows upload, but controller validates
+  uploadCategoryImage, // Parse multipart FIRST
+  handleUploadError, // Handle upload errors
   [
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('name')
@@ -184,9 +185,12 @@ router.delete(
 // ===============================
 // Error handling middleware
 // ===============================
+// FIXED: Upload error handler before general errors
+router.use(handleUploadError);
+
 router.use((error, req, res, next) => {
   console.error('Category route error:', error);
-  
+ 
   if (error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -194,22 +198,19 @@ router.use((error, req, res, next) => {
       errors: error.errors
     });
   }
-  
+ 
   if (error.name === 'CastError') {
     return res.status(400).json({
       success: false,
       message: 'Invalid ID format'
     });
   }
-  
+ 
   res.status(500).json({
     success: false,
     message: 'Internal server error',
     error: process.env.NODE_ENV === 'development' ? error.message : undefined
   });
 });
-
-// Category upload error handler
-router.use(handleCategoryUploadError);
 
 module.exports = router;

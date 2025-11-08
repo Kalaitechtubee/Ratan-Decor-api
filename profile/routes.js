@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { getProfile, updateProfile } = require('./controller');
-const { authMiddleware } = require('../middleware');
+const { authMiddleware } = require('../middleware/auth');
 
 // Get current user's profile
 router.get('/', authMiddleware, getProfile);

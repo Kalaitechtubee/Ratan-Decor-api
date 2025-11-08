@@ -1,245 +1,388 @@
-// middleware/upload.js - Improved with better error handling and debugging
+// middleware/upload.js - Consolidated Upload Middleware
+// Handles file uploads for products, categories, and user types
+// Clean, organized structure with proper error handling
+
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Create uploads directory if it doesn't exist
+// ============================================================================
+// DIRECTORY SETUP
+// ============================================================================
 const uploadDir = path.join(__dirname, '../uploads');
-const productImagesDir = path.join(uploadDir, 'products');
+const uploadDirs = {
+  products: path.join(uploadDir, 'products'),
+  categories: path.join(uploadDir, 'categories'),
+  userTypes: path.join(uploadDir, 'userTypes'),
+  defaults: path.join(uploadDir, 'defaults')
+};
 
-// Ensure directories exist
-[uploadDir, productImagesDir].forEach(dir => {
+// Ensure all directories exist with proper permissions
+Object.entries(uploadDirs).forEach(([name, dir]) => {
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-    console.log(`Created directory: ${dir}`);
-  }
-});
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    console.log(`Saving file to: ${productImagesDir}`);
-    cb(null, productImagesDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    const filename = 'product-' + uniqueSuffix + ext;
-    console.log(`Generated filename: ${filename} for original: ${file.originalname}`);
-    cb(null, filename);
-  }
-});
-
-// File filter function with detailed logging
-const fileFilter = (req, file, cb) => {
-  console.log(`Processing file: ${file.originalname}, mimetype: ${file.mimetype}`);
-  
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  if (allowedTypes.includes(file.mimetype)) {
-    console.log(`File ${file.originalname} accepted`);
-    cb(null, true);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+    console.log(`✅ Created directory: ${name} at ${dir}`);
   } else {
-    console.log(`File ${file.originalname} rejected - invalid type: ${file.mimetype}`);
-    cb(new Error(`Invalid file type: ${file.mimetype}. Only JPEG, JPG, PNG, and WebP images are allowed!`), false);
+    console.log(`📁 Directory exists: ${name} at ${dir}`);
+  }
+});
+
+// ============================================================================
+// UPLOAD CONFIGURATIONS
+// ============================================================================
+const uploadConfigs = {
+  products: {
+    path: uploadDirs.products,
+    prefix: 'product',
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+    maxSize: 10 * 1024 * 1024, // 10MB
+    maxFiles: 11
+  },
+  categories: {
+    path: uploadDirs.categories,
+    prefix: 'category',
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+    maxSize: 5 * 1024 * 1024, // 5MB
+    maxFiles: 1
+  },
+  userTypes: {
+    path: uploadDirs.userTypes,
+    prefix: 'userType',
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'],
+    maxSize: 2 * 1024 * 1024, // 2MB
+    maxFiles: 1
   }
 };
 
-// Configure multer with detailed logging
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit per file
-    files: 11 // Maximum 11 files (1 main image + 10 additional images)
-  },
-  onError: function(err, next) {
-    console.error('Multer error:', err);
-    next(err);
-  }
-});
+// ============================================================================
+// MULTER STORAGE FACTORY
+// ============================================================================
+const createStorage = (type) => {
+  const config = uploadConfigs[type];
 
-// Create upload middleware with detailed logging
-const uploadFields = (req, res, next) => {
-  console.log('=== UPLOAD MIDDLEWARE DEBUG ===');
-  console.log('Request URL:', req.url);
-  console.log('Request Method:', req.method);
-  console.log('Content-Type:', req.headers['content-type']);
-  console.log('Content-Length:', req.headers['content-length']);
-  
-  // Check if it's multipart request
-  if (!req.headers['content-type'] || !req.headers['content-type'].includes('multipart/form-data')) {
-    console.log('Not a multipart request, skipping file upload processing');
+  return multer.diskStorage({
+    destination: (req, file, cb) => {
+      if (!fs.existsSync(config.path)) {
+        fs.mkdirSync(config.path, { recursive: true, mode: 0o755 });
+      }
+      cb(null, config.path);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname).toLowerCase();
+      const filename = `${config.prefix}-${uniqueSuffix}${ext}`;
+      cb(null, filename);
+    }
+  });
+};
+
+// ============================================================================
+// FILE FILTER FACTORY
+// ============================================================================
+const createFileFilter = (type) => {
+  const config = uploadConfigs[type];
+
+  return (req, file, cb) => {
+    if (config.allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      const error = new Error(
+        `Invalid file type: ${file.mimetype}. Allowed types: ${config.allowedTypes.join(', ')}`
+      );
+      error.code = 'INVALID_FILE_TYPE';
+      cb(error, false);
+    }
+  };
+};
+
+// ============================================================================
+// MULTER INSTANCES
+// ============================================================================
+const uploaders = {
+  products: multer({
+    storage: createStorage('products'),
+    fileFilter: createFileFilter('products'),
+    limits: {
+      fileSize: uploadConfigs.products.maxSize,
+      files: uploadConfigs.products.maxFiles
+    }
+  }),
+  categories: multer({
+    storage: createStorage('categories'),
+    fileFilter: createFileFilter('categories'),
+    limits: {
+      fileSize: uploadConfigs.categories.maxSize,
+      files: uploadConfigs.categories.maxFiles
+    }
+  }),
+  userTypes: multer({
+    storage: createStorage('userTypes'),
+    fileFilter: createFileFilter('userTypes'),
+    limits: {
+      fileSize: uploadConfigs.userTypes.maxSize,
+      files: uploadConfigs.userTypes.maxFiles
+    }
+  })
+};
+
+// ============================================================================
+// UPLOAD MIDDLEWARE FUNCTIONS
+// ============================================================================
+
+// Product upload (multiple images: 1 main + 10 additional)
+const uploadProductImages = (req, res, next) => {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) {
     return next();
   }
 
-  const uploadHandler = upload.fields([
+  uploaders.products.fields([
     { name: 'image', maxCount: 1 },
     { name: 'images', maxCount: 10 }
-  ]);
-
-  uploadHandler(req, res, function(err) {
+  ])(req, res, (err) => {
     if (err) {
-      console.error('Upload error:', err);
-      return next(err);
-    }
-
-    console.log('Upload processing completed');
-    console.log('Files processed:', req.files ? Object.keys(req.files) : 'none');
-    console.log('Body keys after upload:', Object.keys(req.body || {}));
-    
-    // Log file details
-    if (req.files) {
-      for (const [fieldName, files] of Object.entries(req.files)) {
-        console.log(`Field ${fieldName}: ${files.length} files`);
-        files.forEach((file, index) => {
-          console.log(`  File ${index}: ${file.filename} (${file.originalname})`);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'File size too large. Maximum 10MB per file.',
+          error: 'FILE_TOO_LARGE'
         });
       }
+      return next(err);
     }
-
-    // Log body content (first 500 chars of each field)
-    if (req.body) {
-      for (const [key, value] of Object.entries(req.body)) {
-        const displayValue = typeof value === 'string' && value.length > 500 
-          ? value.substring(0, 500) + '...' 
-          : value;
-        console.log(`Body field ${key}:`, displayValue);
-      }
-    }
-
     next();
   });
 };
 
-// Enhanced error handling middleware
-const handleUploadError = (error, req, res, next) => {
-  console.error('=== UPLOAD ERROR HANDLER ===');
-  console.error('Error:', error);
-  console.error('Error type:', error.constructor.name);
-  
-  if (error instanceof multer.MulterError) {
-    console.error('Multer error details:', {
-      code: error.code,
-      field: error.field,
-      message: error.message
-    });
-
-    switch (error.code) {
-      case 'LIMIT_FILE_SIZE':
-        return res.status(400).json({ 
-          message: 'File too large. Maximum size is 10MB per file.',
-          error: 'FILE_TOO_LARGE',
-          maxSize: '10MB'
-        });
-      
-      case 'LIMIT_FILE_COUNT':
-        return res.status(400).json({ 
-          message: 'Too many files. Maximum is 11 files total (1 main image + 10 additional images).',
-          error: 'TOO_MANY_FILES',
-          maxFiles: 11
-        });
-      
-      case 'LIMIT_UNEXPECTED_FILE':
-        return res.status(400).json({ 
-          message: `Unexpected file field: ${error.field}. Expected fields are 'image' and 'images'.`,
-          error: 'UNEXPECTED_FIELD',
-          expectedFields: ['image', 'images']
-        });
-      
-      case 'LIMIT_PART_COUNT':
-        return res.status(400).json({ 
-          message: 'Too many parts in multipart form.',
-          error: 'TOO_MANY_PARTS'
-        });
-      
-      case 'LIMIT_FIELD_KEY':
-        return res.status(400).json({ 
-          message: 'Field name too long.',
-          error: 'FIELD_NAME_TOO_LONG'
-        });
-      
-      case 'LIMIT_FIELD_VALUE':
-        return res.status(400).json({ 
-          message: 'Field value too long.',
-          error: 'FIELD_VALUE_TOO_LONG'
-        });
-      
-      case 'LIMIT_FIELD_COUNT':
-        return res.status(400).json({ 
-          message: 'Too many fields in form.',
-          error: 'TOO_MANY_FIELDS'
-        });
-      
-      default:
-        return res.status(400).json({ 
-          message: `Upload error: ${error.message}`,
-          error: 'UPLOAD_ERROR',
-          code: error.code
-        });
-    }
+// Category upload (single image)
+const uploadCategoryImage = (req, res, next) => {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
   }
-  
-  // Handle custom file filter errors
-  if (error.message && error.message.includes('Invalid file type')) {
-    return res.status(400).json({ 
+
+  uploaders.categories.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'File size too large. Maximum 5MB.',
+          error: 'FILE_TOO_LARGE'
+        });
+      }
+      return next(err);
+    }
+    next();
+  });
+};
+
+// User Type upload (single icon)
+const uploadUserTypeIcon = (req, res, next) => {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
+  }
+
+  uploaders.userTypes.single('icon')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'File size too large. Maximum 2MB.',
+          error: 'FILE_TOO_LARGE'
+        });
+      }
+      return next(err);
+    }
+    next();
+  });
+};
+
+// ============================================================================
+// ERROR HANDLER
+// ============================================================================
+const handleUploadError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    const errorResponses = {
+      LIMIT_FILE_SIZE: {
+        success: false,
+        message: 'File too large',
+        error: 'FILE_TOO_LARGE',
+        maxSize: '10MB for products, 5MB for categories, 2MB for user types'
+      },
+      LIMIT_FILE_COUNT: {
+        success: false,
+        message: 'Too many files',
+        error: 'TOO_MANY_FILES',
+        maxFiles: '1 main image + 10 additional images for products'
+      },
+      LIMIT_UNEXPECTED_FILE: {
+        success: false,
+        message: `Unexpected file field: ${error.field}`,
+        error: 'UNEXPECTED_FIELD',
+        expectedFields: 'image, images (for products); image (for categories); icon (for user types)'
+      }
+    };
+
+    const response = errorResponses[error.code] || {
+      success: false,
+      message: `Upload error: ${error.message}`,
+      error: 'UPLOAD_ERROR'
+    };
+
+    return res.status(400).json(response);
+  }
+
+  if (error.message?.includes('Invalid file type') || error.code === 'INVALID_FILE_TYPE') {
+    return res.status(400).json({
+      success: false,
       message: error.message,
       error: 'INVALID_FILE_TYPE',
-      allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+      allowedTypes: 'JPEG, JPG, PNG, WEBP (SVG for user types only)'
     });
   }
-  
-  // Handle other errors
+
   if (error.message) {
-    return res.status(400).json({ 
+    return res.status(400).json({
+      success: false,
       message: error.message,
       error: 'GENERAL_UPLOAD_ERROR'
     });
   }
-  
-  // Pass other errors to the next error handler
+
   next(error);
 };
 
-// Test middleware to verify directories
-const testUploadSetup = (req, res, next) => {
-  const issues = [];
-  
-  if (!fs.existsSync(uploadDir)) {
-    issues.push(`Upload directory does not exist: ${uploadDir}`);
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Generate full URL for uploaded image
+ * @param {string} filename - The filename stored in database
+ * @param {object} req - Express request object
+ * @param {string} imageType - Type of image (products, categories, userTypes)
+ * @returns {string|null} Full URL to the image
+ */
+const generateImageUrl = (filename, req, imageType = 'products') => {
+  if (!filename || typeof filename !== 'string') return null;
+
+  if (filename.startsWith('http://') || filename.startsWith('https://')) {
+    return filename;
   }
-  
-  if (!fs.existsSync(productImagesDir)) {
-    issues.push(`Product images directory does not exist: ${productImagesDir}`);
+
+  if (filename.startsWith('/uploads/')) {
+    const baseUrl = process.env.BASE_URL?.trim() || `${req.protocol}://${req.get('host')}`;
+    return `${baseUrl}${filename}`;
   }
-  
-  try {
-    // Test write permissions
-    const testFile = path.join(productImagesDir, 'test-write-permission.txt');
-    fs.writeFileSync(testFile, 'test');
-    fs.unlinkSync(testFile);
-  } catch (err) {
-    issues.push(`No write permission to product images directory: ${err.message}`);
-  }
-  
-  if (issues.length > 0) {
-    console.error('Upload setup issues:', issues);
-    return res.status(500).json({
-      message: 'Upload system configuration error',
-      issues: issues
-    });
-  }
-  
-  next();
+
+  const baseUrl = process.env.BASE_URL?.trim() || `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl}/uploads/${imageType}/${filename}`;
 };
 
+/**
+ * Process uploaded files from multer
+ * @param {object} files - req.files object from multer
+ * @returns {object} Processed file data with filenames
+ */
+const processUploadedFiles = (files) => {
+  const result = { image: null, images: [] };
+
+  if (files) {
+    if (files.image?.[0]) {
+      result.image = files.image[0].filename;
+    }
+    if (files.images?.length) {
+      result.images = files.images.map(f => f.filename);
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Delete file from filesystem
+ * @param {string} filename - Filename to delete (can be full URL or just filename)
+ * @param {string} type - Directory type (products, categories, userTypes)
+ */
+const deleteFile = (filename, type = 'products') => {
+  if (!filename) return false;
+
+  try {
+    let actualFilename = filename;
+    if (filename.includes('/uploads/')) {
+      actualFilename = filename.split('/uploads/')[1].split('/').pop();
+    }
+
+    const filePath = path.join(uploadDirs[type], actualFilename);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    return false;
+  }
+};
+
+/**
+ * Delete multiple files
+ * @param {array} filenames - Array of filenames to delete
+ * @param {string} type - Directory type
+ */
+const deleteFiles = (filenames, type = 'products') => {
+  if (!Array.isArray(filenames)) return;
+
+  filenames.forEach(filename => deleteFile(filename, type));
+};
+
+/**
+ * Check if file exists
+ * @param {string} filename - Filename to check
+ * @param {string} type - Directory type
+ * @returns {boolean} True if file exists
+ */
+const fileExists = (filename, type = 'products') => {
+  if (!filename) return false;
+
+  try {
+    let actualFilename = filename;
+    if (filename.includes('/uploads/')) {
+      actualFilename = filename.split('/uploads/')[1].split('/').pop();
+    }
+
+    const filePath = path.join(uploadDirs[type], actualFilename);
+    return fs.existsSync(filePath);
+  } catch (error) {
+    return false;
+  }
+};
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
 module.exports = {
-  uploadFields,
+  // Middleware
+  uploadProductImages,
+  uploadCategoryImage,
+  uploadUserTypeIcon,
   handleUploadError,
-  productImagesDir,
-  testUploadSetup,
-  // Export individual upload handlers for flexibility
-  uploadSingle: upload.single.bind(upload),
-  uploadArray: upload.array.bind(upload),
-  uploadAny: upload.any.bind(upload)
+
+  // Utilities
+  generateImageUrl,
+  processUploadedFiles,
+  deleteFile,
+  deleteFiles,
+  fileExists,
+
+  // Directory paths
+  uploadDirs,
+  uploadDir,
+
+  // Configs
+  uploadConfigs,
+
+  // Legacy aliases for backward compatibility
+  uploadFields: uploadProductImages,
+  productImagesDir: uploadDirs.products,
+  categoryImagesDir: uploadDirs.categories,
+  userTypeIconsDir: uploadDirs.userTypes
 };
