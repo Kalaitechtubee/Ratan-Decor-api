@@ -524,27 +524,47 @@ const getOrders = async (req, res) => {
       orderData.deliveryAddress = deliveryAddress;
 
       if (orderData.orderItems) {
+        const fallbackImageUrl = getFallbackImageUrl(req);
         orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
           if (item.product) {
             const processedProduct = processOrderProductData(item.product, req, req.user.role);
             
+            // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
+            const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
+            const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0 
+              ? processedProduct.imageUrls 
+              : [fallbackImageUrl];
+            
             itemData.product = {
               id: item.product.id,
               name: item.product.name,
-              imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
-              imageUrls: processedProduct.imageUrls || [],
+              imageUrl: imageUrl,
+              imageUrls: imageUrls,
               currentPrice: calculateUserPrice(item.product, req.user.role),
               orderPrice: parseFloat(item.price),
               priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
               isActive: item.product.isActive,
-              colors: processedProduct.colors || [],
-              specifications: processedProduct.specifications || {},
+              colors: processedProduct?.colors || [],
+              specifications: processedProduct?.specifications || {},
               category: item.product.category ? {
                 id: item.product.category.id,
                 name: item.product.category.name,
                 parentId: item.product.category.parentId
               } : null
+            };
+          } else {
+            // Handle case when product is missing
+            itemData.product = {
+              id: item.productId,
+              name: 'Unknown Product',
+              imageUrl: fallbackImageUrl,
+              imageUrls: [fallbackImageUrl],
+              currentPrice: parseFloat(item.price),
+              orderPrice: parseFloat(item.price),
+              priceChange: 0,
+              isActive: false,
+              category: null
             };
           }
           return itemData;
@@ -729,21 +749,29 @@ const getOrderById = async (req, res) => {
 
     orderData.orderItems = (orderData.orderItems || []).map(item => {
       const itemData = { ...item };
+      const fallbackImageUrl = getFallbackImageUrl(req);
+      
       if (item.product) {
         const processedProduct = processOrderProductData(item.product, req, req.user.role);
+        
+        // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
+        const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
+        const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0 
+          ? processedProduct.imageUrls 
+          : [fallbackImageUrl];
         
         itemData.product = {
           id: item.product.id,
           name: item.product.name,
           description: item.product.description || null,
-          imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
-          imageUrls: processedProduct.imageUrls || [],
+          imageUrl: imageUrl,
+          imageUrls: imageUrls,
           currentPrice: calculateUserPrice(item.product, req.user.role),
           orderPrice: parseFloat(item.price),
           priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
           isActive: item.product.isActive,
-          colors: processedProduct.colors || [],
-          specifications: processedProduct.specifications || [],
+          colors: processedProduct?.colors || [],
+          specifications: processedProduct?.specifications || {},
           // Removed features and dimensions references
           category: item.product.category ? {
             id: item.product.category.id,
@@ -755,8 +783,8 @@ const getOrderById = async (req, res) => {
         itemData.product = {
           id: item.productId,
           name: 'Unknown Product',
-          imageUrl: getFallbackImageUrl(req),
-          imageUrls: [],
+          imageUrl: fallbackImageUrl,
+          imageUrls: [fallbackImageUrl],
           currentPrice: parseFloat(item.price),
           orderPrice: parseFloat(item.price),
           priceChange: 0,

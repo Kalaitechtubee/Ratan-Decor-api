@@ -4,33 +4,24 @@ const fs = require('fs');
 const generateImageUrl = (filename, req, imageType = 'products') => {
   if (!filename || typeof filename !== 'string') return null;
 
-  // ✅ Already a full URL
+
   if (filename.startsWith('http://') || filename.startsWith('https://')) {
     return filename;
   }
 
-  // ✅ Already includes /uploads/
+
   if (filename.startsWith('/uploads/')) {
     return filename;
   }
 
-  // ✅ Use BASE_URL from .env (with or without port)
-  // If not defined, fallback to req (auto includes port)
   const envBaseUrl = process.env.BASE_URL?.trim();
   const baseUrl = envBaseUrl || `${req.protocol}://${req.get('host')}`;
 
-  // ✅ Construct the full image path
+
   const imagePath = `/uploads/${imageType}/${filename}`;
 
   return `${baseUrl}${imagePath}`;
 };
-
-
-
-
-
-
-
 const processSingleImage = (imageField, req, imageType = 'products') => {
   if (!imageField) return null;
   
@@ -174,7 +165,9 @@ const cleanImageArray = (imageArray, imageType = 'products') => {
 };
 
 const getFallbackImageUrl = (req, imageType = 'products') => {
-  const baseUrl = process.env.BASE_URL || 'http://localhost';
+  // Use BASE_URL from .env or build from request
+  const envBaseUrl = process.env.BASE_URL?.trim();
+  const baseUrl = envBaseUrl || (req ? `${req.protocol}://${req.get('host')}` : 'http://localhost:3000');
   return `${baseUrl}/uploads/defaults/no-image.png`;
 };
 
@@ -201,14 +194,21 @@ const processOrderProductData = (product, req, userRole = 'customer') => {
   if (!product) return null;
   
   const processedProduct = processProductData(product, req);
+  const fallbackImageUrl = getFallbackImageUrl(req);
+  
+  // Ensure we always have imageUrl and imageUrls, even if processedProduct is null or has no images
+  const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
+  const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0 
+    ? processedProduct.imageUrls 
+    : [fallbackImageUrl];
   
   return {
     id: product.id,
     name: product.name,
     description: product.description || null,
-    imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
-    imageUrls: processedProduct.imageUrls || [],
-    displayImage: processedProduct.imageUrl || getFallbackImageUrl(req),
+    imageUrl: imageUrl,
+    imageUrls: imageUrls,
+    displayImage: imageUrl,
     currentPrice: calculateUserPrice(product, userRole),
     generalPrice: parseFloat(product.generalPrice || 0),
     dealerPrice: parseFloat(product.dealerPrice || 0),
@@ -219,10 +219,10 @@ const processOrderProductData = (product, req, userRole = 'customer') => {
       name: product.category.name,
       parentId: product.category.parentId
     } : null,
-    colors: processedProduct.colors || [],
-    specifications: processedProduct.specifications || [],
-    features: processedProduct.features || [],
-    dimensions: processedProduct.dimensions || []
+    colors: processedProduct?.colors || [],
+    specifications: processedProduct?.specifications || {},
+    features: processedProduct?.features || [],
+    dimensions: processedProduct?.dimensions || {}
   };
 };
 

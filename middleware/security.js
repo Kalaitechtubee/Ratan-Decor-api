@@ -240,32 +240,63 @@ const auditLogger = (req, res, next) => {
 };
 
 const sessionSecurity = {
- 
   blacklistedTokens: new Set(),
-  
+  blacklistedRefreshTokens: new Set(),
 
   blacklistToken: (token) => {
-
+    if (!token) return;
+    sessionSecurity.blacklistedTokens.add(token);
     if (sessionSecurity.blacklistedTokens.size > 10000) {
       sessionSecurity.blacklistedTokens.clear();
     }
   },
-  
- 
+
+  blacklistRefreshToken: (token) => {
+    if (!token) return;
+    sessionSecurity.blacklistedRefreshTokens.add(token);
+    if (sessionSecurity.blacklistedRefreshTokens.size > 10000) {
+      sessionSecurity.blacklistedRefreshTokens.clear();
+    }
+  },
+
   isTokenBlacklisted: (token) => {
+    if (!token) return false;
     return sessionSecurity.blacklistedTokens.has(token);
+  },
+
+  isRefreshBlacklisted: (token) => {
+    if (!token) return false;
+    return sessionSecurity.blacklistedRefreshTokens.has(token);
   }
 };
 
 
 const secureLogout = (req, res) => {
-  if (req.token) {
-    sessionSecurity.blacklistToken(req.token);
+  try {
+    // Blacklist access token if present
+    if (req.token) {
+      sessionSecurity.blacklistToken(req.token);
+    }
+
+    // Blacklist refresh token from cookie and clear cookie
+    const refreshToken = req.cookies?.refreshToken;
+    if (refreshToken) {
+      sessionSecurity.blacklistRefreshToken(refreshToken);
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'Strict'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Logout successful. Token invalidated.'
+    });
+  } catch (err) {
+    console.error('Logout error:', err);
+    return res.status(500).json({ success: false, message: 'Logout failed' });
   }
-  res.json({ 
-    success: true, 
-    message: 'Logout successful. Token invalidated.' 
-  });
 };
 
 module.exports = {

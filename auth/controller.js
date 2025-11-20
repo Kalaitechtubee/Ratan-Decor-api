@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { User, ShippingAddress, UserType } = require('../models');
+const { generateAccessToken, generateRefreshToken } = require('../services/jwt.service');
 
 // OTP store (use Redis in production)
 const otpStore = new Map();
@@ -148,29 +149,52 @@ const login = async (req, res) => {
       }
     }
 
-    // Generate JWT
-    const token = jwt.sign(
-      {
-        id: user.id,
-        role: user.role,
-        status: user.status,
-        email: user.email,
-        userTypeId: user.userTypeId
-      },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '7d' }
-    );
+    // Check user approval status
+    if (user.role !== 'SuperAdmin' && user.role !== 'Admin' && user.status !== 'Approved') {
+      return res.status(403).json({
+        success: false,
+        message: user.status === 'Pending'
+          ? "Account pending approval. Please wait for admin approval."
+          : "Account has been rejected. Contact support for assistance.",
+        status: user.status
+      });
+    }
 
-    // Unified Response for all statuses
+    // Generate tokens using jwt.service
+    const accessToken = generateAccessToken({
+      id: user.id,
+      role: user.role,
+      status: user.status,
+      email: user.email,
+      userTypeId: user.userTypeId
+    });
+
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      role: user.role,
+      status: user.status,
+      email: user.email,
+      userTypeId: user.userTypeId
+    });
+
+    // Set refresh token in httpOnly cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    // Response with access token
     return res.json({
       success: true,
-      token,
+      accessToken,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
-        status: user.status, // Pending / Rejected / Approved
+        status: user.status,
         company: user.company || 'Ratan Decor',
         mobile: user.mobile,
         userTypeId: user.userTypeId,

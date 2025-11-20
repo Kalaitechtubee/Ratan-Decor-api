@@ -6,11 +6,13 @@ const {
   requireRole,
   moduleAccess,
   requireOwnDataOrStaff,
-  requireAdmin,
-  requireManager,
-  requireSales,
-  requireSupport
 } = require('./auth');
+
+// Create convenience middleware from moduleAccess
+const requireAdmin = moduleAccess.requireAdmin;
+const requireManagerOrAdmin = moduleAccess.requireManagerOrAdmin;
+const requireSalesAccess = moduleAccess.requireSalesAccess;
+const requireSupportAccess = moduleAccess.requireSupportAccess;
 
 // Import upload middleware
 const {
@@ -54,10 +56,9 @@ module.exports = {
   moduleAccess,
   requireOwnDataOrStaff,
   requireAdmin,
-  requireManager,
-  requireSales,
-  requireSupport,
-
+  requireManagerOrAdmin,
+  requireSalesAccess,
+  requireSupportAccess,
 
   uploadProductImages,
   uploadCategoryImage,

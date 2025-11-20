@@ -72,9 +72,12 @@ router.get('/addresses', getAvailableAddresses);
 router.post('/', createOrder);
 
 
+// Get orders - Staff can see all, others only see their own
 router.get('/', (req, res, next) => {
-
-  if (!['admin', 'manager', 'sales', 'User'].includes(req.user.role)) {
+  // Check if user has staff access
+  const staffRoles = ['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'];
+  if (!staffRoles.includes(req.user.role)) {
+    // Non-staff users can only see their own orders
     req.query.userId = req.user.id;
   }
   next();

@@ -28,6 +28,27 @@ router.post('/forgot-password', rateLimits.otp, forgotPassword);
 router.post('/reset-password', rateLimits.otp, resetPassword);
 router.post('/verify-otp', rateLimits.otp, verifyOTP);
 
+// Token refresh endpoint - can be called with refresh token
+// The authenticateToken middleware handles refresh internally
+router.post('/refresh', authenticateToken, (req, res) => {
+  // If we reached here, authenticateToken already refreshed the token
+  return res.json({
+    success: true,
+    accessToken: req.token,
+    message: 'Token refreshed successfully'
+  });
+});
+
+// Alternative refresh endpoint for compatibility
+router.post('/refresh-token', authenticateToken, (req, res) => {
+  // If we reached here, authenticateToken already refreshed the token
+  return res.json({
+    success: true,
+    accessToken: req.token,
+    message: 'Token refreshed successfully'
+  });
+});
+
 // Admin/Manager routes for creating staff
 router.post('/create-staff',
   authenticateToken,

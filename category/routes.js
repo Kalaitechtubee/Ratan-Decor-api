@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const categoryController = require('./controller');
 const { body, param, query, validationResult } = require('express-validator');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
 const { uploadCategoryImage, handleUploadError } = require('../middleware/upload');
 
 // Validation middleware
@@ -65,8 +65,8 @@ router.get(
 // Create a new main category (WITH IMAGE UPLOAD)
 router.post(
   '/',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   uploadCategoryImage, // Parse multipart FIRST
   handleUploadError, // Handle upload errors IMMEDIATELY
   [
@@ -89,8 +89,8 @@ router.post(
 // Create a new subcategory (NO IMAGE UPLOAD - middleware not applied)
 router.post(
   '/subcategory/:parentId',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   // NOTE: uploadCategoryImage NOT applied here - subcategories cannot have images
   [
     param('parentId').isInt({ min: 1 }).withMessage('Parent ID must be a positive integer'),
@@ -113,8 +113,8 @@ router.post(
 // Update a category (WITH IMAGE UPLOAD - but controller checks if main category)
 router.put(
   '/:id',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   uploadCategoryImage, // Parse multipart FIRST
   handleUploadError, // Handle upload errors
   [
@@ -150,8 +150,8 @@ router.put(
 // Check category deletion impact
 router.get(
   '/:id/deletion-check',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   [param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')],
   validate,
   categoryController.checkCategoryDeletion
@@ -160,8 +160,8 @@ router.get(
 // Force delete category with product handling options
 router.delete(
   '/:id/force',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   [
     param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer'),
     body('action')
@@ -175,8 +175,8 @@ router.delete(
 // Delete a category and all its subcategories
 router.delete(
   '/:id',
-  authMiddleware,
-  requireRole(['admin', 'manager', 'superadmin']),
+  authenticateToken,
+  moduleAccess.requireManagerOrAdmin,
   [param('id').isInt({ min: 1 }).withMessage('Category ID must be a positive integer')],
   validate,
   categoryController.deleteCategory
