@@ -47,7 +47,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       phone: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         validate: {
           notEmpty: true,
         },
@@ -67,8 +67,8 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       status: {
-        type: DataTypes.ENUM('pending', 'in-progress', 'resolved', 'closed'),
-        defaultValue: 'pending',
+        type: DataTypes.ENUM('New', 'InProgress', 'Confirmed', 'Delivered', 'Rejected'),
+        defaultValue: 'New',
         allowNull: false,
       },
       priority: {

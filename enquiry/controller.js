@@ -43,8 +43,8 @@ const enquiryController = {
         videoCallDate,
         videoCallTime,
         role,
-        pincode, 
-        productDesignNumber, 
+        pincode,
+        productDesignNumber,
       } = req.body;
 
      
@@ -121,7 +121,7 @@ const enquiryController = {
         productId: parsedProductId,
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        phoneNo: cleanPhone,
+        phone: cleanPhone,
         companyName: companyName?.trim() || null,
         state: state.trim(),
         city: city.trim(),
@@ -132,8 +132,8 @@ const enquiryController = {
         videoCallTime: videoCallTime || null,
         status: "New",
         role: role || "Customer",
-        pincode: cleanPincode, 
-        productDesignNumber: productDesignNumber?.trim() || null, 
+        pincode: cleanPincode,
+        productDesignNumber: productDesignNumber?.trim() || null,
       });
 
       const enrichedEnquiry = await Enquiry.findByPk(enquiry.id, {
@@ -515,7 +515,7 @@ async getEnquiryById(req, res) {
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (email !== undefined) updateData.email = email.trim().toLowerCase();
-      if (phoneNo !== undefined) updateData.phoneNo = phoneNo.replace(/[^\d]/g, "");
+      if (phoneNo !== undefined) updateData.phone = phoneNo.replace(/[^\d]/g, "");
       if (companyName !== undefined) updateData.companyName = companyName?.trim() || null;
       if (state !== undefined) updateData.state = state.trim();
       if (city !== undefined) updateData.city = city.trim();
