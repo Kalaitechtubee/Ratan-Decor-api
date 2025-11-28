@@ -117,7 +117,7 @@ const corsOptions = {
     "Cache-Control",
     "Pragma"
   ],
-  exposedHeaders: ["X-Total-Count", "Authorization"],
+  exposedHeaders: ["X-Total-Count", "Authorization", "X-New-Access-Token"],
   credentials: true,
   optionsSuccessStatus: 200,
   maxAge: 86400 // 24 hours
