@@ -255,7 +255,7 @@ async getAllEnquiries(req, res) {
       {
         model: User,
         as: "user",
-        attributes: ["id", "name", "email", "role"],
+        attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
         required: false,
       },
       {
@@ -342,7 +342,7 @@ async getEnquiryById(req, res) {
       {
         model: User,
         as: "user",
-        attributes: ["id", "name", "email", "role"],
+        attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
         required: false
       },
       {

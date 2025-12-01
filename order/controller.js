@@ -431,7 +431,7 @@ const getOrders = async (req, res) => {
     const userInclude = {
       model: User,
       as: 'user',
-      attributes: ['id', 'name', 'email', 'role', 'mobile', 'address', 'city', 'state', 'country', 'pincode'],
+      attributes: ['id', 'name', 'email', 'role', 'state', 'city', 'pincode', 'address', 'country', 'mobile'],
       where: customer ? sequelize.where(sequelize.fn('LOWER', sequelize.col('user.name')), { [Op.like]: `%${customer.toLowerCase()}%` }) : undefined,
       required: !!customer
     };
