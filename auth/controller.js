@@ -178,10 +178,13 @@ const login = async (req, res) => {
     });
 
     // Set refresh token in httpOnly cookie
+    // Allow cross-site API calls from the frontend to include the refresh token
+    // Refresh token cookie must be sent cross-site for SPA fetch with credentials.
+    // Chrome requires SameSite=None + Secure (Secure is allowed on localhost).
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Lax',
+      secure: true,
+      sameSite: 'None',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
