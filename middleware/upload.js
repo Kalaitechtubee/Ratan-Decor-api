@@ -9,6 +9,7 @@ const uploadDirs = {
   products: path.join(uploadDir, 'products'),
   categories: path.join(uploadDir, 'categories'),
   userTypes: path.join(uploadDir, 'userTypes'),
+  sliders: path.join(uploadDir, 'sliders'),
   defaults: path.join(uploadDir, 'defaults')
 };
 
@@ -42,6 +43,13 @@ const uploadConfigs = {
     allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'],
     maxSize: 2 * 1024 * 1024, // 2MB
     maxFiles: 1
+  },
+  sliders: {
+    path: uploadDirs.sliders,
+    prefix: 'slider',
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+    maxSize: 10 * 1024 * 1024, // 10MB
+    maxFiles: 5
   }
 };
 
@@ -105,6 +113,14 @@ const uploaders = {
       fileSize: uploadConfigs.userTypes.maxSize,
       files: uploadConfigs.userTypes.maxFiles
     }
+  }),
+  sliders: multer({
+    storage: createStorage('sliders'),
+    fileFilter: createFileFilter('sliders'),
+    limits: {
+      fileSize: uploadConfigs.sliders.maxSize,
+      files: uploadConfigs.sliders.maxFiles
+    }
   })
 };
 
@@ -167,6 +183,35 @@ const uploadUserTypeIcon = (req, res, next) => {
           success: false,
           message: 'File size too large. Maximum 2MB.',
           error: 'FILE_TOO_LARGE'
+        });
+      }
+      return next(err);
+    }
+    next();
+  });
+};
+
+const uploadSliderImages = (req, res, next) => {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
+  }
+
+  uploaders.sliders.fields([
+    { name: 'images', maxCount: 5 }
+  ])(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'File size too large. Maximum 10MB per file.',
+          error: 'FILE_TOO_LARGE'
+        });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({
+          success: false,
+          message: 'Too many files. Maximum 5 images allowed.',
+          error: 'TOO_MANY_FILES'
         });
       }
       return next(err);
@@ -339,6 +384,7 @@ module.exports = {
   uploadProductImages,
   uploadCategoryImage,
   uploadUserTypeIcon,
+  uploadSliderImages,
   handleUploadError,
 
   // Utilities
@@ -359,5 +405,6 @@ module.exports = {
   uploadFields: uploadProductImages,
   productImagesDir: uploadDirs.products,
   categoryImagesDir: uploadDirs.categories,
-  userTypeIconsDir: uploadDirs.userTypes
+  userTypeIconsDir: uploadDirs.userTypes,
+  sliderImagesDir: uploadDirs.sliders
 };

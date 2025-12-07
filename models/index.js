@@ -15,6 +15,7 @@ const { Order, OrderItem } = require("../order/models");
 const VideoCallEnquiryModel = require("../VideoCallEnquiry/models");
 const VideoCallInternalNoteModel = require("../VideoCallEnquiry/internalNoteModels");
 const EnquiryInternalNoteModel = require("../enquiry/EnquiryInternalNote");
+const Slider = require("../slider/models");
 
 const UserType = UserTypeModel(sequelize, Sequelize.DataTypes);
 const User = UserModel(sequelize, Sequelize.DataTypes);
@@ -127,7 +128,8 @@ const db = {
   OrderItem,
   VideoCallEnquiry,
   VideoCallInternalNote,
-  EnquiryInternalNote
+  EnquiryInternalNote,
+  Slider
 };
 
 Object.values(db).forEach(model => {
@@ -155,4 +157,5 @@ module.exports = {
   VideoCallEnquiry,
   VideoCallInternalNote,
   EnquiryInternalNote,
+  Slider,
 };

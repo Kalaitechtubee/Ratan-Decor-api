@@ -27,6 +27,7 @@ const enquiryRoutes = require('./enquiry/routes');
 const seoRoutes = require('./seo/routes');
 const videoCallEnquiryRoutes = require('./VideoCallEnquiry/routes');
 const contactRoutes = require('./contact/router');
+const sliderRoutes = require('./slider/routes');
 
 // Security middleware
 const {
@@ -40,7 +41,7 @@ const app = express();
 
 
 const uploadsPath = path.join(__dirname, 'uploads');
-const uploadSubdirs = ['products', 'categories', 'userTypes', 'defaults'];
+const uploadSubdirs = ['products', 'categories', 'userTypes', 'sliders', 'defaults'];
 
 console.log('📁 Verifying uploads directory structure...');
 console.log('📂 Absolute uploads path:', uploadsPath);
@@ -224,7 +225,7 @@ app.get('/api/images/:type/:filename', (req, res) => {
 
     console.log(`📥 API image request: ${type}/${filename}`);
 
-    const allowedTypes = ['products', 'categories', 'userTypes', 'defaults'];
+    const allowedTypes = ['products', 'categories', 'userTypes', 'sliders', 'defaults'];
     if (!allowedTypes.includes(type)) {
       console.log(`❌ Invalid type: ${type}`);
       return res.status(400).json({
@@ -401,6 +402,7 @@ app.use('/api/enquiries', enquiryRoutes);
 app.use('/api/seo', cors(corsOptions), seoRoutes);
 app.use('/api/video-call-enquiries', videoCallEnquiryRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/sliders', sliderRoutes);
 
 
 app.use((req, res, next) => {
