@@ -28,15 +28,29 @@ const ROLE_HIERARCHY = {
   'Support': 50,
   'Dealer': 40,
   'Architect': 40,
+  'General': 30,
   'customer': 20
 };
 
+// Canonical role map (case-insensitive input -> stored value)
+const ROLE_CANONICAL = {
+  superadmin: 'SuperAdmin',
+  admin: 'Admin',
+  manager: 'Manager',
+  sales: 'Sales',
+  support: 'Support',
+  dealer: 'Dealer',
+  architect: 'Architect',
+  general: 'General',
+  customer: 'customer'
+};
+
 const REGISTRATION_RULES = {
-  PUBLIC_ROLES: ['customer'],
-  BUSINESS_ROLES: ['Architect', 'Dealer'],
-  STAFF_ROLES: ['Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'],
-  ADMIN_ROLES: ['Admin'],
-  SUPERADMIN_ROLES: ['SuperAdmin']
+  PUBLIC_ROLES: ['customer', 'general'],
+  BUSINESS_ROLES: ['architect', 'dealer'],
+  STAFF_ROLES: ['admin', 'manager', 'sales', 'support', 'superadmin'],
+  ADMIN_ROLES: ['admin'],
+  SUPERADMIN_ROLES: ['superadmin']
 };
 
 // Check if creator can create target role
@@ -257,20 +271,33 @@ const register = async (req, res) => {
       });
     }
 
-    const requestedRole = role || 'customer';
+    // Normalize role to canonical value (case-insensitive)
+    const roleInput = (role || 'customer').toString().trim();
+    const roleKey = roleInput.toLowerCase();
+    const requestedRole = ROLE_CANONICAL[roleKey];
+
+    if (!requestedRole) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role: ${roleInput}`
+      });
+    }
+
     let initialStatus = 'Approved';
     let requiresApproval = false;
     let canCreate = false;
 
     // Role-based registration logic
-    if (REGISTRATION_RULES.PUBLIC_ROLES.includes(requestedRole)) {
+    const requestedRoleLower = requestedRole.toLowerCase();
+
+    if (REGISTRATION_RULES.PUBLIC_ROLES.includes(requestedRoleLower)) {
       canCreate = true;
       initialStatus = 'Approved';
-    } else if (REGISTRATION_RULES.BUSINESS_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.BUSINESS_ROLES.includes(requestedRoleLower)) {
       canCreate = true;
       initialStatus = 'Pending';
       requiresApproval = true;
-    } else if (REGISTRATION_RULES.STAFF_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.STAFF_ROLES.includes(requestedRoleLower)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
@@ -279,7 +306,7 @@ const register = async (req, res) => {
       }
       canCreate = true;
       initialStatus = 'Approved';
-    } else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRoleLower)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
@@ -288,7 +315,7 @@ const register = async (req, res) => {
       }
       canCreate = true;
       initialStatus = 'Approved';
-    } else if (REGISTRATION_RULES.SUPERADMIN_ROLES.includes(requestedRole)) {
+    } else if (REGISTRATION_RULES.SUPERADMIN_ROLES.includes(requestedRoleLower)) {
       if (!createdBy) {
         return res.status(403).json({
           success: false,
