@@ -34,6 +34,7 @@ const getAllUsers = async (req, res) => {
       ];
     }
     if (role) {
+      // Respect explicit role filter; keep as lowercase to match stored values
       where.role = role.toLowerCase();
     }
     if (status) {
@@ -48,7 +49,8 @@ const getAllUsers = async (req, res) => {
       where.role = { [Op.in]: STAFF_ROLES };
     } else if (includeStaff === 'true') {
       // no role restriction
-    } else {
+    } else if (!role) {
+      // Only apply default client filter when no explicit role filter provided
       where.role = { [Op.in]: CLIENT_ROLES };
     }
 
