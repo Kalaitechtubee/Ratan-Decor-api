@@ -7,9 +7,21 @@ const {
   getFallbackImageUrl,
 } = require('../utils/imageUtils');
 
+const STAFF_ROLES = ['superadmin', 'admin', 'manager', 'sales', 'support'];
+const CLIENT_ROLES = ['customer', 'architect', 'dealer'];
+
 const getAllUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, role, status, userTypeName } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      role,
+      status,
+      userTypeName,
+      staffOnly,
+      includeStaff,
+    } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
     const offset = (pageNum - 1) * limitNum;
@@ -22,10 +34,22 @@ const getAllUsers = async (req, res) => {
       ];
     }
     if (role) {
-      where.role = role;
+      where.role = role.toLowerCase();
     }
     if (status) {
       where.status = status;
+    }
+
+    // Default behaviour: return only client roles for /api/users
+    // - staffOnly=true -> only staff roles
+    // - includeStaff=true -> include everyone (no role restriction)
+    // - otherwise -> clients only
+    if (staffOnly === 'true') {
+      where.role = { [Op.in]: STAFF_ROLES };
+    } else if (includeStaff === 'true') {
+      // no role restriction
+    } else {
+      where.role = { [Op.in]: CLIENT_ROLES };
     }
 
     const include = [
@@ -66,16 +90,22 @@ const getAllUsers = async (req, res) => {
 
 const getAllStaffUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status, userTypeName } = req.query;
+    const { page = 1, limit = 10, search, status, userTypeName, role } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
     const offset = (pageNum - 1) * limitNum;
 
-    const staffRoles = ['admin', 'manager', 'sales', 'support', 'superadmin'];
-
     const where = {
-      role: { [Op.in]: staffRoles }
+      role: { [Op.in]: STAFF_ROLES }
     };
+
+    if (role) {
+      const roleLower = role.toLowerCase();
+      if (!STAFF_ROLES.includes(roleLower)) {
+        return res.status(400).json({ success: false, message: 'Invalid staff role filter' });
+      }
+      where.role = roleLower;
+    }
 
     if (search) {
       where[Op.or] = [
@@ -125,11 +155,10 @@ const getAllStaffUsers = async (req, res) => {
 
 const getStaffUserById = async (req, res) => {
   try {
-    const staffRoles = ['admin', 'manager', 'sales', 'support', 'superadmin'];
     const user = await User.findOne({
       where: {
         id: req.params.id,
-        role: { [Op.in]: staffRoles }
+        role: { [Op.in]: STAFF_ROLES }
       },
       attributes: { exclude: ['password'] },
       include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
