@@ -44,12 +44,15 @@ const getApprovalMessage = (status) => {
 
 const authenticateToken = async (req, res, next) => {
   try {
-
+    // Read access token from cookie (preferred) or Authorization header (backward compat)
+    const accessTokenFromCookie = req.cookies.accessToken;
     const authHeader = req.header("Authorization");
-    const accessToken = authHeader && authHeader.startsWith("Bearer ")
+    const accessTokenFromHeader = authHeader && authHeader.startsWith("Bearer ")
       ? authHeader.replace("Bearer ", "")
       : null;
-
+    
+    // Prefer cookie over header, but allow header for backward compatibility
+    const accessToken = accessTokenFromCookie || accessTokenFromHeader;
 
     const refreshToken = req.cookies.refreshToken;
 
@@ -98,10 +101,18 @@ const authenticateToken = async (req, res, next) => {
           userTypeId: user.userTypeId
         });
 
+        // Set new access token in httpOnly cookie
+        res.cookie('accessToken', newAccessToken, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'None',
+          maxAge: 15 * 60 * 1000 // 15 minutes
+        });
 
         req.user = buildUserInfo(user);
         req.token = newAccessToken;
 
+        // Keep header for backward compatibility during migration
         res.setHeader('X-New-Access-Token', newAccessToken);
         
 
@@ -184,11 +195,18 @@ const authenticateToken = async (req, res, next) => {
             userTypeId: user.userTypeId
           });
 
+          // Set new access token in httpOnly cookie
+          res.cookie('accessToken', newAccessToken, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'None',
+            maxAge: 15 * 60 * 1000 // 15 minutes
+          });
 
           req.user = buildUserInfo(user);
           req.token = newAccessToken;
 
-   
+          // Keep header for backward compatibility during migration
           res.setHeader('X-New-Access-Token', newAccessToken);
 
           return next();

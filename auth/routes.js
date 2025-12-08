@@ -29,22 +29,23 @@ router.post('/reset-password', rateLimits.otp, resetPassword);
 router.post('/verify-otp', rateLimits.otp, verifyOTP);
 
 // Token refresh endpoint - can be called with refresh token
-// The authenticateToken middleware handles refresh internally
+// The authenticateToken middleware handles refresh internally and sets cookie
 router.post('/refresh', authenticateToken, (req, res) => {
-  // If we reached here, authenticateToken already refreshed the token
+  // If we reached here, authenticateToken already refreshed the token and set it in cookie
+  // Return success (token is in cookie, not in response body for security)
   return res.json({
     success: true,
-    accessToken: req.token,
+    accessToken: req.token, // TODO: Remove after frontend migration
     message: 'Token refreshed successfully'
   });
 });
 
 // Alternative refresh endpoint for compatibility
 router.post('/refresh-token', authenticateToken, (req, res) => {
-  // If we reached here, authenticateToken already refreshed the token
+  // If we reached here, authenticateToken already refreshed the token and set it in cookie
   return res.json({
     success: true,
-    accessToken: req.token,
+    accessToken: req.token, // TODO: Remove after frontend migration
     message: 'Token refreshed successfully'
   });
 });

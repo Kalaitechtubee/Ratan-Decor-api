@@ -274,24 +274,34 @@ const sessionSecurity = {
 const secureLogout = (req, res) => {
   try {
     // Blacklist access token if present
-    if (req.token) {
-      sessionSecurity.blacklistToken(req.token);
+    const accessToken = req.token || req.cookies?.accessToken;
+    if (accessToken) {
+      sessionSecurity.blacklistToken(accessToken);
     }
 
-    // Blacklist refresh token from cookie and clear cookie
+    // Blacklist refresh token from cookie
     const refreshToken = req.cookies?.refreshToken;
     if (refreshToken) {
       sessionSecurity.blacklistRefreshToken(refreshToken);
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'Strict'
-      });
     }
+
+    // Clear access token cookie with exact settings used when setting
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None'
+    });
+
+    // Clear refresh token cookie with exact settings used when setting
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None'
+    });
 
     return res.json({
       success: true,
-      message: 'Logout successful. Token invalidated.'
+      message: 'Logout successful. Tokens invalidated and cookies cleared.'
     });
   } catch (err) {
     console.error('Logout error:', err);

@@ -188,10 +188,19 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
-    // Response with access token
+    // Set access token in httpOnly cookie (secure, not accessible to JavaScript)
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'None',
+      maxAge: 15 * 60 * 1000 // 15 minutes (matches token expiration)
+    });
+
+    // Response without access token (now in secure cookie)
+    // Keep accessToken in response for backward compatibility during migration
     return res.json({
       success: true,
-      accessToken,
+      accessToken, // TODO: Remove after frontend migration
       user: {
         id: user.id,
         name: user.name,

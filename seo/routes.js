@@ -8,8 +8,8 @@ const { authMiddleware, authorizeRoles } = require("../middleware");
 // ==========================
 router.get("/", seoController.getAllSeo);               // Get all page SEO details
 router.get("/pagenames", seoController.getAllPageNames); // Get all page names
-router.get("/:id", seoController.getSeoById);           
-router.get("/page/:pageName", seoController.getSeoByPageName);
+router.get("/page/:pageName", seoController.getSeoByPageName); // Specific route must come before generic /:id
+router.get("/:id", seoController.getSeoById);
 
 // ==========================
 // Protected Routes (Admin/Manager Only)
