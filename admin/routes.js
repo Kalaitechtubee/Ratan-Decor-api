@@ -10,6 +10,7 @@ const {
   getDashboardStats,
 } = require('./controller');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
+const { secureLogout } = require('../middleware/security');
 
 // All admin routes require authentication
 router.use(authenticateToken);
@@ -21,5 +22,8 @@ router.put('/users/:userId/approve', moduleAccess.requireAdmin, approveUser);
 router.put('/users/:userId/role', moduleAccess.requireAdmin, updateUserRole);
 router.get('/stats', moduleAccess.requireAdmin, getUserStats);
 router.get('/dashboard', moduleAccess.requireAdmin, getDashboardStats);
+
+// Admin logout route
+router.post('/logout', secureLogout);
 
 module.exports = router;
