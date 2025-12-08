@@ -59,4 +59,4 @@ const Slider = sequelize.define(
 );
 
 module.exports = Slider;
-
+// kalai
