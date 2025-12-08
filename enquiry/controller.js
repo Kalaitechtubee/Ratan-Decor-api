@@ -125,13 +125,13 @@ const enquiryController = {
         companyName: companyName?.trim() || null,
         state: state.trim(),
         city: city.trim(),
-        userType: userType || "General",
+      userType: userType || null,
         source: source || "Email",
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,
         videoCallTime: videoCallTime || null,
         status: "New",
-        role: role || "Customer",
+        role: role || req.user?.role || "Customer",
         pincode: cleanPincode,
         productDesignNumber: productDesignNumber?.trim() || null,
       });
@@ -160,26 +160,33 @@ const enquiryController = {
         ],
       });
 
-    
-      if (enrichedEnquiry && enrichedEnquiry.userTypeData) {
-        enrichedEnquiry.userType = enrichedEnquiry.userTypeData.name;
+      // Extract user data separately
+      const userData = enrichedEnquiry?.user || null;
+
+      // Prepare enquiry data without nested user
+      const enquiryData = { ...enrichedEnquiry.toJSON() };
+      delete enquiryData.user;
+
+      if (enquiryData && enquiryData.userTypeData) {
+        enquiryData.userType = enquiryData.userTypeData.name;
       }
 
-      if (enrichedEnquiry && enrichedEnquiry.product) {
+      if (enquiryData && enquiryData.product) {
         const userRole = getReqUserRole(req);
-        const computedPrice = computePrice(enrichedEnquiry.product, userRole);
+        const computedPrice = computePrice(enquiryData.product, userRole);
 
-        delete enrichedEnquiry.product.generalPrice;
-        delete enrichedEnquiry.product.architectPrice;
-        delete enrichedEnquiry.product.dealerPrice;
+        delete enquiryData.product.generalPrice;
+        delete enquiryData.product.architectPrice;
+        delete enquiryData.product.dealerPrice;
 
-        enrichedEnquiry.product.price = computedPrice;
+        enquiryData.product.price = computedPrice;
       }
 
       res.status(201).json({
         success: true,
         message: "Enquiry created successfully",
-        data: enrichedEnquiry,
+        data: enquiryData,
+        user: userData,
       });
     } catch (error) {
       console.error("Create enquiry error:", error);

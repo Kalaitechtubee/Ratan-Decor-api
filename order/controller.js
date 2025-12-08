@@ -412,7 +412,7 @@ const getOrders = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    const where = ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id };
+    const where = req.query.userId ? { userId: req.query.userId } : {};
 
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -584,7 +584,7 @@ const getOrders = async (req, res) => {
     };
 
     const statusStats = await Order.findAll({
-      where: ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id },
+      where: req.query.userId ? { userId: req.query.userId } : {},
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -602,7 +602,7 @@ const getOrders = async (req, res) => {
     });
 
     const paymentStats = await Order.findAll({
-      where: ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id },
+      where: req.query.userId ? { userId: req.query.userId } : {},
       attributes: [
         'paymentStatus',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],

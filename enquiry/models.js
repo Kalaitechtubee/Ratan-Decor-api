@@ -52,6 +52,18 @@ module.exports = (sequelize, DataTypes) => {
           notEmpty: true,
         },
       },
+      companyName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      state: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      city: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       userType: {
         type: DataTypes.INTEGER,
         allowNull: true, // ✅ FIXED: Changed to true to allow SET NULL on foreign key
@@ -98,6 +110,30 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM('website', 'phone', 'email', 'chat', 'social-media', 'other'),
         defaultValue: 'website',
         allowNull: false,
+      },
+      videoCallDate: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      videoCallTime: {
+        type: DataTypes.TIME,
+        allowNull: true,
+      },
+      role: {
+        type: DataTypes.ENUM('Customer', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support'),
+        defaultValue: 'Customer',
+        allowNull: false,
+      },
+      pincode: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        validate: {
+          len: [0, 6],
+        },
+      },
+      productDesignNumber: {
+        type: DataTypes.STRING,
+        allowNull: true,
       },
     },
     {
