@@ -191,22 +191,26 @@ const login = async (req, res) => {
       userTypeId: user.userTypeId
     });
 
+    // Use non-secure cookies on local/dev to allow http://localhost
+    const cookieSecure = process.env.NODE_ENV === 'production';
+    const sameSite = cookieSecure ? 'None' : 'Lax';
+
     // Set refresh token in httpOnly cookie
     // Allow cross-site API calls from the frontend to include the refresh token
     // Refresh token cookie must be sent cross-site for SPA fetch with credentials.
     // Chrome requires SameSite=None + Secure (Secure is allowed on localhost).
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'None',
+      secure: cookieSecure,
+      sameSite,
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Set access token in httpOnly cookie (secure, not accessible to JavaScript)
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: 'None',
+      secure: cookieSecure,
+      sameSite,
       maxAge: 15 * 60 * 1000 // 15 minutes (matches token expiration)
     });
 
@@ -398,12 +402,40 @@ const register = async (req, res) => {
       }
     }
 
-    // Generate JWT token after registration
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '90d' } // 90 days like you wanted
-    );
+    // Generate tokens after registration (align with login)
+    const accessToken = generateAccessToken({
+      id: user.id,
+      role: user.role,
+      status: user.status,
+      email: user.email,
+      userTypeId: user.userTypeId
+    });
+
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      role: user.role,
+      status: user.status,
+      email: user.email,
+      userTypeId: user.userTypeId
+    });
+
+    // Use non-secure cookies on local/dev to allow http://localhost
+    const cookieSecure = process.env.NODE_ENV === 'production';
+    const sameSite = cookieSecure ? 'None' : 'Lax';
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite,
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite,
+      maxAge: 15 * 60 * 1000 // 15 minutes
+    });
 
     res.status(201).json({
       success: true,
@@ -417,7 +449,8 @@ const register = async (req, res) => {
         role: user.role,
         status: initialStatus,
         requiresApproval,
-        token
+        accessToken,
+        refreshToken
       }
     });
 

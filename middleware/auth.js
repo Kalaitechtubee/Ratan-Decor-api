@@ -44,6 +44,10 @@ const getApprovalMessage = (status) => {
 
 const authenticateToken = async (req, res, next) => {
   try {
+    // Cookie options depend on environment (localhost cannot use Secure + None)
+    const cookieSecure = process.env.NODE_ENV === 'production';
+    const sameSite = cookieSecure ? 'None' : 'Lax';
+
     // Read access token from cookie (preferred) or Authorization header (backward compat)
     const accessTokenFromCookie = req.cookies.accessToken;
     const authHeader = req.header("Authorization");
@@ -104,8 +108,8 @@ const authenticateToken = async (req, res, next) => {
         // Set new access token in httpOnly cookie
         res.cookie('accessToken', newAccessToken, {
           httpOnly: true,
-          secure: true,
-          sameSite: 'None',
+          secure: cookieSecure,
+          sameSite,
           maxAge: 15 * 60 * 1000 // 15 minutes
         });
 
@@ -198,8 +202,8 @@ const authenticateToken = async (req, res, next) => {
           // Set new access token in httpOnly cookie
           res.cookie('accessToken', newAccessToken, {
             httpOnly: true,
-            secure: true,
-            sameSite: 'None',
+            secure: cookieSecure,
+            sameSite,
             maxAge: 15 * 60 * 1000 // 15 minutes
           });
 
