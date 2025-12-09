@@ -24,6 +24,6 @@ router.get('/stats', moduleAccess.requireAdmin, getUserStats);
 router.get('/dashboard', moduleAccess.requireAdmin, getDashboardStats);
 
 // Admin logout route
-router.post('/logout', secureLogout);
+router.post('/logout',authenticateToken, secureLogout);
 
 module.exports = router;

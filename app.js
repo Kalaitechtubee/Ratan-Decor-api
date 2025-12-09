@@ -86,7 +86,6 @@ app.set('trust proxy', 1);
 // ============================================================================
 const corsOptions = {
   origin: function(origin, callback) {
-
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
@@ -97,16 +96,25 @@ const corsOptions = {
       process.env.FRONTEND_URL || 'http://localhost:3000'
     ];
     
-
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else if (process.env.NODE_ENV !== 'production') {
-
-      callback(null, true);
-    } else {
-
-      callback(new Error('CORS policy: origin not allowed'));
+    // For requests without origin (e.g., Postman, server-to-server)
+    if (!origin) {
+      return callback(null, true);
     }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // In development, allow localhost with any port for easier testing
+    if (process.env.NODE_ENV !== 'production' && origin.match(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/)) {
+      return callback(null, true);
+    }
+    
+    // Reject all other origins
+    const error = new Error('Not allowed by CORS');
+    error.status = 403;
+    callback(error);
   },
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
   allowedHeaders: [
@@ -114,18 +122,21 @@ const corsOptions = {
     "X-Requested-With",
     "Content-Type",
     "Accept",
-    "Authorization",
+    "Authorization",  // Keep for backward compatibility during migration
     "Cache-Control",
     "Pragma"
   ],
-  exposedHeaders: ["X-Total-Count", "Authorization", "X-New-Access-Token"],
-  credentials: true,
+  exposedHeaders: [
+    "X-Total-Count",
+    "X-New-Access-Token"  // For token refresh notification
+  ],
+  credentials: true,  // CRITICAL: Allows cookies to be sent
   optionsSuccessStatus: 200,
-  maxAge: 86400 // 24 hours
+  maxAge: 86400 // 24 hours - cache preflight requests
 };
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
 
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight for all routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());

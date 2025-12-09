@@ -1,4 +1,4 @@
-// routes/enquiries.js - Enquiries Management Routes
+// routes/enquiries.js - Updated without express-validator
 const express = require("express");
 const router = express.Router();
 const enquiryController = require("../enquiry/controller");
@@ -7,13 +7,14 @@ const {
   moduleAccess,
   requireOwnDataOrStaff,
 } = require("../middleware/auth");
-const { sanitizeInput, auditLogger } = require("../middleware/security");
+const { sanitizeInput, auditLogger, rateLimits } = require("../middleware/security");
 
 // ===============================
 // Global middlewares for this router
 // ===============================
 router.use(authenticateToken); // All routes require authentication
 router.use(sanitizeInput);     // Sanitize request input
+router.use(rateLimits.general); // Global rate limiting
 
 // ===============================
 // Enquiry Routes
@@ -22,21 +23,23 @@ router.use(sanitizeInput);     // Sanitize request input
 // Create enquiry (any authenticated user)
 router.post("/create", auditLogger, enquiryController.createEnquiry);
 
-// Get all enquiries (Admin, Manager, Sales only)
+// Get all enquiries (Admin, Manager, Sales only - SuperAdmin/Admin included)
 router.get(
   "/all",
   moduleAccess.requireSalesAccess,
+  auditLogger,
   enquiryController.getAllEnquiries
 );
 
-// Get specific enquiry (own data OR staff roles)
+// Get specific enquiry (own data OR staff roles - SuperAdmin/Admin bypass)
 router.get(
   "/:id",
   requireOwnDataOrStaff,
+  auditLogger,
   enquiryController.getEnquiryById
 );
 
-// Update enquiry (Admin, Manager, Sales only)
+// Update enquiry (Admin, Manager, Sales only - SuperAdmin/Admin included)
 router.put(
   "/:id",
   moduleAccess.requireSalesAccess,
@@ -44,7 +47,7 @@ router.put(
   enquiryController.updateEnquiry
 );
 
-// Update enquiry status (Admin, Manager, Sales only)
+// Update enquiry status (Admin, Manager, Sales only - SuperAdmin/Admin included)
 router.put(
   "/:id/status",
   moduleAccess.requireSalesAccess,
@@ -52,7 +55,7 @@ router.put(
   enquiryController.updateEnquiryStatus
 );
 
-// Delete enquiry (Admin, Manager, Sales only)
+// Delete enquiry (Admin, Manager, Sales only - SuperAdmin/Admin included)
 router.delete(
   "/:id",
   moduleAccess.requireSalesAccess,
@@ -61,7 +64,7 @@ router.delete(
 );
 
 // ===============================
-// Internal Notes (Sales team feature)
+// Internal Notes (Sales team feature - SuperAdmin/Admin included)
 // ===============================
 router.post(
   "/:id/internal-notes",
@@ -73,6 +76,7 @@ router.post(
 router.get(
   "/:id/internal-notes",
   moduleAccess.requireSalesAccess,
+  auditLogger,
   enquiryController.getInternalNotes
 );
 
@@ -91,12 +95,36 @@ router.delete(
 );
 
 // ===============================
-// Follow-up Dashboard (Sales team feature)
+// Follow-up Dashboard (Sales team feature - SuperAdmin/Admin included)
 // ===============================
 router.get(
   "/dashboard/follow-ups",
   moduleAccess.requireSalesAccess,
+  auditLogger,
   enquiryController.getFollowUpDashboard
 );
+
+// Global error handling for this router
+router.use((error, req, res, next) => {
+  console.error('Enquiry route error:', error);
+  if (error.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: error.errors
+    });
+  }
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid ID format'
+    });
+  }
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
 
 module.exports = router;

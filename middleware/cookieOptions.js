@@ -1,14 +1,14 @@
-// Centralized cookie option helper to ensure consistent settings for set/clear
-const getCookieOptions = (maxAge) => {
+// cookieOptions.js
+const getCookieOptions = (maxAge = null) => {
   const isProduction = process.env.NODE_ENV === 'production';
+
   return {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? 'None' : 'Lax',
-    ...(maxAge ? { maxAge } : {}),
     path: '/',
+    ...(maxAge ? { maxAge } : {})
   };
 };
 
 module.exports = { getCookieOptions };
-

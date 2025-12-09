@@ -1,21 +1,45 @@
+// routes/seo.js - Updated without express-validator
 const express = require("express");
 const router = express.Router();
 const seoController = require("./controllers");
 const { authMiddleware, authorizeRoles } = require("../middleware");
+const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
+
+// ===============================
+// Global middlewares
+// ===============================
+router.use(sanitizeInput);
+router.use(rateLimits.general);
 
 // ==========================
 // Public Routes
 // ==========================
-router.get("/", seoController.getAllSeo);               // Get all page SEO details
-router.get("/pagenames", seoController.getAllPageNames); // Get all page names
-router.get("/page/:pageName", seoController.getSeoByPageName); // Specific route must come before generic /:id
-router.get("/:id", seoController.getSeoById);
+router.get("/", auditLogger, seoController.getAllSeo);               
+router.get("/pagenames", auditLogger, seoController.getAllPageNames); 
+router.get("/page/:pageName", auditLogger, seoController.getSeoByPageName); 
+router.get("/:id", auditLogger, seoController.getSeoById);
 
 // ==========================
-// Protected Routes (Admin/Manager Only)
-// ==========================
-router.post("/", authMiddleware, authorizeRoles(["Admin", "Manager", "SuperAdmin"]), seoController.createSeo);
-router.put("/:id", authMiddleware, authorizeRoles(["Admin", "Manager", "SuperAdmin"]), seoController.updateSeo);
-router.delete("/:id", authMiddleware, authorizeRoles(["Admin", "Manager", "SuperAdmin"]), seoController.deleteSeo);
+// Protected Routes (Admin/Manager/SuperAdmin Only)
+router.post("/", 
+  authMiddleware, 
+  authorizeRoles(["Admin", "Manager", "SuperAdmin"]), // Explicit SuperAdmin
+  auditLogger,
+  seoController.createSeo
+);
+
+router.put("/:id", 
+  authMiddleware, 
+  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
+  auditLogger,
+  seoController.updateSeo
+);
+
+router.delete("/:id", 
+  authMiddleware, 
+  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
+  auditLogger,
+  seoController.deleteSeo
+);
 
 module.exports = router;

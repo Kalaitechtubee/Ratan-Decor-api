@@ -1,8 +1,7 @@
-
 const rateLimit = require('express-rate-limit');
-
-
 const { getCookieOptions } = require('./cookieOptions');
+
+/* ------------------ RATE LIMIT HELPERS ------------------ */
 
 const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   return rateLimit({
@@ -15,51 +14,47 @@ const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   });
 };
 
-
 const rateLimits = {
-
   auth: createRateLimiter(
-    15 * 60 * 1000, // 15 minutes
-    100, // 10 attempts (increased from 5)
+    15 * 60 * 1000,
+    100,
     'Too many authentication attempts. Please try again in 15 minutes.'
   ),
-  
-  // Registration - increased to 5 per hour
+
   register: createRateLimiter(
-    60 * 60 * 1000, // 1 hour
-    5, // 5 registrations per hour (increased from 3)
+    60 * 60 * 1000,
+    5,
     'Too many registration attempts. Please try again in 1 hour.'
   ),
-  
-  // OTP/Password reset - increased to 5 in 5 min
+
   otp: createRateLimiter(
-    5 * 60 * 1000, // 5 minutes
-    5, // 5 OTP requests (increased from 3)
+    5 * 60 * 1000,
+    5,
     'Too many OTP requests. Please try again in 5 minutes.'
   ),
-  
-  // General API - increased to 200 requests in 15 min
+
   general: createRateLimiter(
-    15 * 60 * 1000, // 15 minutes
-    300, // 200 requests (increased from 100)
+    15 * 60 * 1000,
+    300,
     'Too many requests. Please try again later.'
   ),
-  
-  // Admin operations - increased to 100 in 10 min
+
   admin: createRateLimiter(
-    10 * 60 * 1000, // 10 minutes
-    300, // 100 requests (increased from 50)
+    10 * 60 * 1000,
+    300,
     'Too many admin operations. Please try again in 10 minutes.'
   )
 };
 
+
+/* ------------------ SUSPICIOUS LOGIN TRACKING ------------------ */
 
 const suspiciousActivityTracker = new Map();
 
 const trackSuspiciousActivity = (req, res, next) => {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
-  
+
   if (!suspiciousActivityTracker.has(ip)) {
     suspiciousActivityTracker.set(ip, {
       failedLogins: 0,
@@ -67,9 +62,8 @@ const trackSuspiciousActivity = (req, res, next) => {
       blockedUntil: 0
     });
   }
-  
+
   const tracker = suspiciousActivityTracker.get(ip);
-  
 
   if (tracker.blockedUntil > now) {
     return res.status(429).json({
@@ -78,16 +72,17 @@ const trackSuspiciousActivity = (req, res, next) => {
       blockedUntil: new Date(tracker.blockedUntil).toISOString()
     });
   }
-  
 
   if (now - tracker.lastFailedLogin > 60 * 60 * 1000) {
     tracker.failedLogins = 0;
   }
-  
+
   req.securityTracker = tracker;
   next();
 };
 
+
+/* ------------------ ENHANCED LOGIN SECURITY ------------------ */
 
 const enhanceLoginSecurity = (loginController) => {
   return async (req, res) => {
@@ -96,68 +91,50 @@ const enhanceLoginSecurity = (loginController) => {
 
     const originalStatus = res.status;
     const originalJson = res.json;
-    
+
     let statusCode = 200;
     let responseData = null;
-    
 
-    res.status = function(code) {
+    res.status = function (code) {
       statusCode = code;
       return originalStatus.call(this, code);
     };
-    
-  
-    res.json = function(data) {
+
+    res.json = function (data) {
       responseData = data;
-      
-  
+
       if (statusCode === 401 || statusCode === 403) {
         tracker.failedLogins++;
         tracker.lastFailedLogin = Date.now();
-   
+
         if (tracker.failedLogins >= 8) {
-          tracker.blockedUntil = Date.now() + (30 * 60 * 1000); // 30 minutes
-          console.warn(`IP ${ip} blocked for 30 minutes due to ${tracker.failedLogins} failed login attempts`);
+          tracker.blockedUntil = Date.now() + (30 * 60 * 1000);
+          console.warn(`IP ${ip} blocked for 30 minutes due to repeated failures`);
         }
       } else if (statusCode === 200) {
-
         tracker.failedLogins = 0;
       }
-      
+
       return originalJson.call(this, responseData);
     };
-    
 
     return loginController(req, res);
   };
 };
 
 
+/* ------------------ PASSWORD POLICY VALIDATION ------------------ */
+
 const validatePasswordPolicy = (password) => {
-  const minLength = 8;
-  const hasUpperCase = /[A-Z]/.test(password);
-  const hasLowerCase = /[a-z]/.test(password);
-  const hasNumbers = /\d/.test(password);
-  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-  
   const errors = [];
-  
-  if (password.length < minLength) {
-    errors.push(`Password must be at least ${minLength} characters long`);
-  }
-  if (!hasUpperCase) {
-    errors.push('Password must contain at least one uppercase letter');
-  }
-  if (!hasLowerCase) {
-    errors.push('Password must contain at least one lowercase letter');
-  }
-  if (!hasNumbers) {
-    errors.push('Password must contain at least one number');
-  }
-  if (!hasSpecialChar) {
+
+  if (password.length < 8) errors.push('Password must be at least 8 characters long');
+  if (!/[A-Z]/.test(password)) errors.push('Password must contain at least one uppercase letter');
+  if (!/[a-z]/.test(password)) errors.push('Password must contain at least one lowercase letter');
+  if (!/\d/.test(password)) errors.push('Password must contain at least one number');
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password))
     errors.push('Password must contain at least one special character');
-  }
-  
+
   return {
     isValid: errors.length === 0,
     errors
@@ -165,15 +142,16 @@ const validatePasswordPolicy = (password) => {
 };
 
 
+/* ------------------ INPUT SANITIZER ------------------ */
+
 const sanitizeInput = (req, res, next) => {
   const sanitize = (obj) => {
     for (let key in obj) {
       if (typeof obj[key] === 'string') {
-
         obj[key] = obj[key]
-          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+          .replace(/<script.*?>.*?<\/script>/gi, '')
           .replace(/javascript:/gi, '')
-          .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+          .replace(/on\w+="[^"]*"/gi, '')
           .trim();
       } else if (typeof obj[key] === 'object' && obj[key] !== null) {
         sanitize(obj[key]);
@@ -188,14 +166,13 @@ const sanitizeInput = (req, res, next) => {
   next();
 };
 
-
 const sanitizeInputObject = (obj) => {
   const sanitize = (input) => {
     if (typeof input === 'string') {
       return input
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<script.*?>.*?<\/script>/gi, '')
         .replace(/javascript:/gi, '')
-        .replace(/on\w+\s*=\s*"[^"]*"/gi, '')
+        .replace(/on\w+="[^"]*"/gi, '')
         .trim();
     } else if (typeof input === 'object' && input !== null) {
       const sanitized = {};
@@ -211,84 +188,76 @@ const sanitizeInputObject = (obj) => {
 };
 
 
+/* ------------------ AUDIT LOGGER ------------------ */
+
 const auditLogger = (req, res, next) => {
   const start = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - start;
+
     const logData = {
       timestamp: new Date().toISOString(),
       method: req.method,
       url: req.originalUrl,
-      ip: req.ip || req.connection.remoteAddress,
+      ip: req.ip,
       userAgent: req.get('User-Agent'),
       userId: req.user?.id || 'anonymous',
-      userRole: req.user?.role || 'none',
+      role: req.user?.role || 'none',
       statusCode: res.statusCode,
       duration: `${duration}ms`,
-      contentLength: res.get('Content-Length') || 0
     };
-    
 
-    if (req.originalUrl.includes('/login') || 
-        req.originalUrl.includes('/register') ||
-        req.originalUrl.includes('/admin') ||
-        res.statusCode >= 400) {
+    if (
+      req.originalUrl.includes('/login') ||
+      req.originalUrl.includes('/register') ||
+      req.originalUrl.includes('/admin') ||
+      res.statusCode >= 400
+    ) {
       console.log('AUDIT:', JSON.stringify(logData));
     }
   });
-  
+
   next();
 };
+
+
+/* ------------------ TOKEN SECURITY ------------------ */
 
 const sessionSecurity = {
   blacklistedTokens: new Set(),
   blacklistedRefreshTokens: new Set(),
 
-  blacklistToken: (token) => {
-    if (!token) return;
-    sessionSecurity.blacklistedTokens.add(token);
-    if (sessionSecurity.blacklistedTokens.size > 10000) {
-      sessionSecurity.blacklistedTokens.clear();
-    }
+  blacklistToken(token) {
+    if (token) this.blacklistedTokens.add(token);
   },
 
-  blacklistRefreshToken: (token) => {
-    if (!token) return;
-    sessionSecurity.blacklistedRefreshTokens.add(token);
-    if (sessionSecurity.blacklistedRefreshTokens.size > 10000) {
-      sessionSecurity.blacklistedRefreshTokens.clear();
-    }
+  blacklistRefreshToken(token) {
+    if (token) this.blacklistedRefreshTokens.add(token);
   },
 
-  isTokenBlacklisted: (token) => {
-    if (!token) return false;
-    return sessionSecurity.blacklistedTokens.has(token);
+  isTokenBlacklisted(token) {
+    return this.blacklistedTokens.has(token);
   },
 
-  isRefreshBlacklisted: (token) => {
-    if (!token) return false;
-    return sessionSecurity.blacklistedRefreshTokens.has(token);
+  isRefreshBlacklisted(token) {
+    return this.blacklistedRefreshTokens.has(token);
   }
 };
 
 
+/* ------------------ SECURE LOGOUT (FULLY FIXED) ------------------ */
+
 const secureLogout = (req, res) => {
   try {
-    // Blacklist access token if present
     const accessToken = req.token || req.cookies?.accessToken;
-    if (accessToken) {
-      sessionSecurity.blacklistToken(accessToken);
-    }
-
-    // Blacklist refresh token from cookie
     const refreshToken = req.cookies?.refreshToken;
-    if (refreshToken) {
-      sessionSecurity.blacklistRefreshToken(refreshToken);
-    }
 
-    // Clear cookies using the same options as when setting
+    if (accessToken) sessionSecurity.blacklistToken(accessToken);
+    if (refreshToken) sessionSecurity.blacklistRefreshToken(refreshToken);
+
     const clearOptions = getCookieOptions();
+
     res.clearCookie('accessToken', clearOptions);
     res.clearCookie('refreshToken', clearOptions);
 
@@ -298,9 +267,15 @@ const secureLogout = (req, res) => {
     });
   } catch (err) {
     console.error('Logout error:', err);
-    return res.status(500).json({ success: false, message: 'Logout failed' });
+    return res.status(500).json({
+      success: false,
+      message: 'Logout failed'
+    });
   }
 };
+
+
+/* ------------------ EXPORTS ------------------ */
 
 module.exports = {
   rateLimits,
