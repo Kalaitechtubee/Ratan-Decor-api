@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { User, ShippingAddress, UserType } = require('../models');
 const { generateAccessToken, generateRefreshToken } = require('../services/jwt.service');
+const { getCookieOptions } = require('../middleware/cookieOptions');
 
 // OTP store (use Redis in production)
 const otpStore = new Map();
@@ -191,28 +192,9 @@ const login = async (req, res) => {
       userTypeId: user.userTypeId
     });
 
-    // Use non-secure cookies on local/dev to allow http://localhost
-    const cookieSecure = process.env.NODE_ENV === 'production';
-    const sameSite = cookieSecure ? 'None' : 'Lax';
-
-    // Set refresh token in httpOnly cookie
-    // Allow cross-site API calls from the frontend to include the refresh token
-    // Refresh token cookie must be sent cross-site for SPA fetch with credentials.
-    // Chrome requires SameSite=None + Secure (Secure is allowed on localhost).
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite,
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    // Set access token in httpOnly cookie (secure, not accessible to JavaScript)
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite,
-      maxAge: 15 * 60 * 1000 // 15 minutes (matches token expiration)
-    });
+    // Set tokens in httpOnly cookies with consistent options
+    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000)); // 15 minutes
 
     // Response without access token (now in secure cookie)
     // Keep accessToken in response for backward compatibility during migration
@@ -419,23 +401,9 @@ const register = async (req, res) => {
       userTypeId: user.userTypeId
     });
 
-    // Use non-secure cookies on local/dev to allow http://localhost
-    const cookieSecure = process.env.NODE_ENV === 'production';
-    const sameSite = cookieSecure ? 'None' : 'Lax';
-
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite,
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite,
-      maxAge: 15 * 60 * 1000 // 15 minutes
-    });
+    // Set tokens in httpOnly cookies with consistent options
+    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
 
     res.status(201).json({
       success: true,

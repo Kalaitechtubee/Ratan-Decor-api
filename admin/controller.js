@@ -279,6 +279,26 @@ const updateUserRole = async (req, res) => {
 // Get comprehensive dashboard statistics
 const getDashboardStats = async (req, res) => {
   try {
+    const period = req.query.period || null;
+    const now = new Date();
+    const periodStart = (() => {
+      if (!period) return null;
+      switch (period) {
+        case '7days':
+          return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        case '30days':
+          return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        case '3months':
+          return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        case '6months':
+          return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+        case '1year':
+          return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        default:
+          return null;
+      }
+    })();
+
     // User statistics
     const userStats = await User.findAll({
       attributes: [
@@ -299,12 +319,14 @@ const getDashboardStats = async (req, res) => {
     const totalUsers = await User.count();
 
     // Enquiry statistics
+    const enquiryWhere = periodStart ? { createdAt: { [Op.gte]: periodStart } } : {};
     const enquiryStats = await Enquiry.findAll({
       attributes: [
         'status',
         [fn('COUNT', col('id')), 'count'],
       ],
       group: ['status'],
+      where: enquiryWhere,
     });
 
     const formattedEnquiryStats = {};
@@ -331,6 +353,7 @@ const getDashboardStats = async (req, res) => {
     });
 
     // Order statistics
+    const orderWhere = periodStart ? { orderDate: { [Op.gte]: periodStart } } : {};
     const orderStats = await Order.findAll({
       attributes: [
         'status',
@@ -339,6 +362,7 @@ const getDashboardStats = async (req, res) => {
         [fn('SUM', col('total')), 'totalAmount'],
       ],
       group: ['status', 'paymentStatus'],
+      where: orderWhere,
     });
 
     const formattedOrderStats = {};
@@ -382,6 +406,7 @@ const getDashboardStats = async (req, res) => {
           required: false,
         },
       ],
+      where: orderWhere,
     });
 
     // Product statistics

@@ -61,7 +61,7 @@ const deleteAddress = async (req, res) => {
 module.exports = { 
   createAddress, 
   getAddresses, 
-  getAddressById,   // 👈 add this
+  getAddressById,  
   updateAddress, 
   deleteAddress 
 };

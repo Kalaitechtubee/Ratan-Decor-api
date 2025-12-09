@@ -1,7 +1,7 @@
-const jwt = require('jsonwebtoken');
 const { User, UserType } = require('../models');
 const { generateAccessToken, verifyAccessToken, verifyRefreshToken } = require('../services/jwt.service');
 const { sessionSecurity } = require('../middleware/security');
+const { getCookieOptions } = require('./cookieOptions');
 
 
 const fetchUserWithType = async (userId) => {
@@ -44,51 +44,44 @@ const getApprovalMessage = (status) => {
 
 const authenticateToken = async (req, res, next) => {
   try {
-    // Cookie options depend on environment (localhost cannot use Secure + None)
-    const cookieSecure = process.env.NODE_ENV === 'production';
-    const sameSite = cookieSecure ? 'None' : 'Lax';
-
-    // Read access token from cookie (preferred) or Authorization header (backward compat)
-    const accessTokenFromCookie = req.cookies.accessToken;
-    const authHeader = req.header("Authorization");
-    const accessTokenFromHeader = authHeader && authHeader.startsWith("Bearer ")
-      ? authHeader.replace("Bearer ", "")
-      : null;
-    
-    // Prefer cookie over header, but allow header for backward compatibility
-    const accessToken = accessTokenFromCookie || accessTokenFromHeader;
-
+    const accessToken = req.cookies.accessToken;
     const refreshToken = req.cookies.refreshToken;
 
-    // ========== CASE 1: No access token ==========
-    if (!accessToken) {
+    const setAccessCookie = (token) => {
+      res.cookie('accessToken', token, getCookieOptions(15 * 60 * 1000));
+      // Header kept for backward compatibility during migration
+      res.setHeader('X-New-Access-Token', token);
+    };
 
-      if (!refreshToken) {
-        return res.status(401).json({
-          success: false,
-          message: "Access denied. No tokens provided.",
-        });
-      }
+    const respond401 = (message) => res.status(401).json({ success: false, message });
 
-        try {
-
-          if (sessionSecurity.isRefreshBlacklisted(refreshToken)) {
-            return res.status(401).json({
-              success: false,
-              message: 'Invalid refresh token'
-            });
-          }
-
-          const decodedRefresh = verifyRefreshToken(refreshToken);
-        const user = await fetchUserWithType(decodedRefresh.id);
-
-        if (!user) {
-          return res.status(401).json({
+    // Try access token first
+    if (accessToken && !sessionSecurity.isTokenBlacklisted(accessToken)) {
+      try {
+        const decoded = verifyAccessToken(accessToken);
+        const user = await fetchUserWithType(decoded.id);
+        if (!user) return respond401("User not found");
+        if (!isUserApproved(user)) {
+          return res.status(403).json({
             success: false,
-            message: "User not found"
+            message: getApprovalMessage(user.status),
+            status: user.status,
           });
         }
+        req.user = buildUserInfo(user);
+        req.token = accessToken;
+        return next();
+      } catch (err) {
+        // fall through to refresh
+      }
+    }
 
+    // Access token missing/invalid/expired -> try refresh token
+    if (refreshToken && !sessionSecurity.isRefreshBlacklisted(refreshToken)) {
+      try {
+        const decodedRefresh = verifyRefreshToken(refreshToken);
+        const user = await fetchUserWithType(decodedRefresh.id);
+        if (!user) return respond401("User not found");
         if (!isUserApproved(user)) {
           return res.status(403).json({
             success: false,
@@ -102,139 +95,24 @@ const authenticateToken = async (req, res, next) => {
           role: user.role,
           status: user.status,
           email: user.email,
-          userTypeId: user.userTypeId
+          userTypeId: user.userTypeId,
         });
 
-        // Set new access token in httpOnly cookie
-        res.cookie('accessToken', newAccessToken, {
-          httpOnly: true,
-          secure: cookieSecure,
-          sameSite,
-          maxAge: 15 * 60 * 1000 // 15 minutes
-        });
-
+        setAccessCookie(newAccessToken);
         req.user = buildUserInfo(user);
         req.token = newAccessToken;
-
-        // Keep header for backward compatibility during migration
-        res.setHeader('X-New-Access-Token', newAccessToken);
-        
-
         return next();
-
-      } catch (refreshError) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid refresh token"
-        });
+      } catch (err) {
+        return respond401("Invalid refresh token");
       }
     }
 
-    try {
-
-      if (sessionSecurity.isTokenBlacklisted(accessToken)) {
-        return res.status(401).json({ success: false, message: 'Invalid access token' });
-      }
-
-      const decoded = verifyAccessToken(accessToken);
-      const user = await fetchUserWithType(decoded.id);
-
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-
-
-      if (!isUserApproved(user)) {
-        return res.status(403).json({
-          success: false,
-          message: getApprovalMessage(user.status),
-          status: user.status,
-        });
-      }
-
-   
-      req.user = buildUserInfo(user);
-      req.token = accessToken;
-      return next();
-
-    } catch (accessError) {
-
-      if (refreshToken) {
-        try {
-          if (sessionSecurity.isRefreshBlacklisted(refreshToken)) {
-            return res.status(401).json({
-              success: false,
-              message: 'Invalid refresh token'
-            });
-          }
-
-          const decodedRefresh = verifyRefreshToken(refreshToken);
-          const user = await fetchUserWithType(decodedRefresh.id);
-
-          if (!user) {
-            return res.status(401).json({
-              success: false,
-              message: "User not found"
-            });
-          }
-
-
-          if (!isUserApproved(user)) {
-            return res.status(403).json({
-              success: false,
-              message: getApprovalMessage(user.status),
-              status: user.status,
-            });
-          }
-
-
-          const newAccessToken = generateAccessToken({
-            id: user.id,
-            role: user.role,
-            status: user.status,
-            email: user.email,
-            userTypeId: user.userTypeId
-          });
-
-          // Set new access token in httpOnly cookie
-          res.cookie('accessToken', newAccessToken, {
-            httpOnly: true,
-            secure: cookieSecure,
-            sameSite,
-            maxAge: 15 * 60 * 1000 // 15 minutes
-          });
-
-          req.user = buildUserInfo(user);
-          req.token = newAccessToken;
-
-          // Keep header for backward compatibility during migration
-          res.setHeader('X-New-Access-Token', newAccessToken);
-
-          return next();
-
-        } catch (refreshError) {
-          return res.status(401).json({
-            success: false,
-            message: "Invalid refresh token"
-          });
-        }
-      } else {
-
-        return res.status(401).json({
-          success: false,
-          message: "Invalid access token and no refresh token provided"
-        });
-      }
-    }
-
+    return respond401("Access denied. No valid token provided.");
   } catch (err) {
     return res.status(401).json({
       success: false,
       message: "Authentication error",
-      error: err.message
+      error: err.message,
     });
   }
 };

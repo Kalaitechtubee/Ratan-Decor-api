@@ -2,6 +2,8 @@
 const rateLimit = require('express-rate-limit');
 
 
+const { getCookieOptions } = require('./cookieOptions');
+
 const createRateLimiter = (windowMs, max, message, skipFn = null) => {
   return rateLimit({
     windowMs,
@@ -285,19 +287,10 @@ const secureLogout = (req, res) => {
       sessionSecurity.blacklistRefreshToken(refreshToken);
     }
 
-    // Clear access token cookie with exact settings used when setting
-    res.clearCookie('accessToken', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'None'
-    });
-
-    // Clear refresh token cookie with exact settings used when setting
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'None'
-    });
+    // Clear cookies using the same options as when setting
+    const clearOptions = getCookieOptions();
+    res.clearCookie('accessToken', clearOptions);
+    res.clearCookie('refreshToken', clearOptions);
 
     return res.json({
       success: true,
