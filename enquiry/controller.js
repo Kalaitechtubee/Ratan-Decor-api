@@ -502,8 +502,23 @@ async getEnquiryById(req, res) {
         });
       }
 
-      const validSources = ["Email", "WhatsApp", "Phone", "VideoCall"];
-      if (source && !validSources.includes(source)) {
+      // Normalize source to match model enum (lowercase)
+      const validSources = ["website", "phone", "email", "chat", "social-media", "other"];
+      const sourceMap = {
+        email: "email",
+        phone: "phone",
+        whatsapp: "phone",
+        videocall: "phone",
+        video: "phone",
+        website: "website",
+        chat: "chat",
+        social: "social-media",
+        "social-media": "social-media",
+        other: "other",
+      };
+      const normalizedSource = source ? source.toString().toLowerCase() : null;
+      const mappedSource = normalizedSource ? (sourceMap[normalizedSource] || normalizedSource) : null;
+      if (mappedSource && !validSources.includes(mappedSource)) {
         return res.status(400).json({
           success: false,
           message: `Invalid source. Must be one of: ${validSources.join(", ")}`,
@@ -519,6 +534,27 @@ async getEnquiryById(req, res) {
         });
       }
 
+      // Resolve userType: accept numeric ID or name
+      let finalUserTypeId = undefined;
+      if (userType !== undefined) {
+        if (userType === null || userType === '') {
+          finalUserTypeId = null;
+        } else if (!isNaN(parseInt(userType, 10))) {
+          finalUserTypeId = parseInt(userType, 10);
+        } else {
+          const userTypeRecord = await UserType.findOne({
+            where: { name: userType.toString().trim() },
+          });
+          if (!userTypeRecord) {
+            return res.status(400).json({
+              success: false,
+              message: `Invalid userType: ${userType}`,
+            });
+          }
+          finalUserTypeId = userTypeRecord.id;
+        }
+      }
+
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (email !== undefined) updateData.email = email.trim().toLowerCase();
@@ -526,8 +562,8 @@ async getEnquiryById(req, res) {
       if (companyName !== undefined) updateData.companyName = companyName?.trim() || null;
       if (state !== undefined) updateData.state = state.trim();
       if (city !== undefined) updateData.city = city.trim();
-      if (userType !== undefined) updateData.userType = userType;
-      if (source !== undefined) updateData.source = source;
+      if (userType !== undefined) updateData.userType = finalUserTypeId;
+      if (source !== undefined) updateData.source = mappedSource || "website";
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
       if (videoCallDate !== undefined) updateData.videoCallDate = videoCallDate || null;
       if (videoCallTime !== undefined) updateData.videoCallTime = videoCallTime || null;

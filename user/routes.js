@@ -41,7 +41,7 @@ router.get('/',
 
 
 router.get('/staff',
-  moduleAccess.requireAdmin,
+  moduleAccess.requireStaffAccess,
   getAllStaffUsers
 );
 
@@ -53,7 +53,7 @@ router.get('/:id',
 
 
 router.get('/staff/:id',
-  moduleAccess.requireAdmin,
+  moduleAccess.requireStaffAccess,
   getStaffUserById
 );
 
