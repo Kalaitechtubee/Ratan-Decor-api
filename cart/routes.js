@@ -1,4 +1,4 @@
-// cart/routes.js - Updated without express-validator
+// cart/routes.js - Fixed with correct middleware import
 const express = require('express');
 const router = express.Router();
 const { 
@@ -9,15 +9,15 @@ const {
   getCartCount,
   clearCart 
 } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // ===============================
 // Global middlewares
 // ===============================
-router.use(authMiddleware); // All routes require authentication
+router.use(authenticateToken); // All routes require authentication
 router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.general); // Global rate limiting
+router.use(rateLimits.auth); // Global rate limiting
 
 // Main cart routes
 router.post('/', 

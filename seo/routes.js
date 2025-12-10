@@ -1,15 +1,16 @@
-// routes/seo.js - Updated without express-validator
+// routes/seo.js - Updated with proper middleware and route handlers
 const express = require("express");
 const router = express.Router();
 const seoController = require("./controllers");
-const { authMiddleware, authorizeRoles } = require("../middleware");
+const { authenticateToken, authorizeRoles } = require("../middleware/auth");
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // ===============================
 // Global middlewares
 // ===============================
+router.use(authenticateToken); // Require authentication for all routes
 router.use(sanitizeInput);
-router.use(rateLimits.general);
+router.use(rateLimits.auth);
 
 // ==========================
 // Public Routes
@@ -21,24 +22,22 @@ router.get("/:id", auditLogger, seoController.getSeoById);
 
 // ==========================
 // Protected Routes (Admin/Manager/SuperAdmin Only)
+// ==========================
 router.post("/", 
-  authMiddleware, 
-  authorizeRoles(["Admin", "Manager", "SuperAdmin"]), // Explicit SuperAdmin
   auditLogger,
+  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
   seoController.createSeo
 );
 
 router.put("/:id", 
-  authMiddleware, 
-  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
   auditLogger,
+  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
   seoController.updateSeo
 );
 
 router.delete("/:id", 
-  authMiddleware, 
-  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
   auditLogger,
+  authorizeRoles(["Admin", "SuperAdmin"]),
   seoController.deleteSeo
 );
 

@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
@@ -5,11 +6,9 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const fs = require('fs');
-
 // Swagger imports
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
-
 // Import routes
 const authRoutes = require('./auth/routes');
 const productRoutes = require('./product/routes');
@@ -28,7 +27,6 @@ const seoRoutes = require('./seo/routes');
 const videoCallEnquiryRoutes = require('./VideoCallEnquiry/routes');
 const contactRoutes = require('./contact/router');
 const sliderRoutes = require('./slider/routes');
-
 // Security middleware
 const {
   sanitizeInput,
@@ -38,7 +36,6 @@ const {
 } = require('./middleware/security');
 
 const app = express();
-
 
 const uploadsPath = path.join(__dirname, 'uploads');
 const uploadSubdirs = ['products', 'categories', 'userTypes', 'sliders', 'defaults'];
@@ -57,7 +54,7 @@ uploadSubdirs.forEach(subdir => {
     fs.mkdirSync(subdirPath, { recursive: true, mode: 0o755 });
     console.log(`✅ Created ${subdir} subdirectory`);
   }
-  console.log(`   ${subdir}: ${subdirPath}`);
+  console.log(` ${subdir}: ${subdirPath}`);
 });
 
 app.use(helmet({
@@ -78,7 +75,6 @@ app.use(helmet({
   },
 }));
 
-
 app.set('trust proxy', 1);
 
 // ============================================================================
@@ -95,22 +91,22 @@ const corsOptions = {
       'http://127.0.0.1:5173',
       process.env.FRONTEND_URL || 'http://localhost:3000'
     ];
-    
+   
     // For requests without origin (e.g., Postman, server-to-server)
     if (!origin) {
       return callback(null, true);
     }
-    
+   
     // Check if origin is in allowed list
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    
+   
     // In development, allow localhost with any port for easier testing
     if (process.env.NODE_ENV !== 'production' && origin.match(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/)) {
       return callback(null, true);
     }
-    
+   
     // Reject all other origins
     const error = new Error('Not allowed by CORS');
     error.status = 403;
@@ -122,27 +118,27 @@ const corsOptions = {
     "X-Requested-With",
     "Content-Type",
     "Accept",
-    "Authorization",  // Keep for backward compatibility during migration
+    "Authorization", // Keep for backward compatibility during migration
     "Cache-Control",
     "Pragma"
   ],
   exposedHeaders: [
     "X-Total-Count",
-    "X-New-Access-Token"  // For token refresh notification
+    "X-New-Access-Token" // For token refresh notification
   ],
-  credentials: true,  // CRITICAL: Allows cookies to be sent
+  credentials: true, // CRITICAL: Allows cookies to be sent
   optionsSuccessStatus: 200,
   maxAge: 86400 // 24 hours - cache preflight requests
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Handle preflight for all routes
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-
-console.log('🖼️  Setting up static file serving...');
+console.log('🖼️ Setting up static file serving...');
 
 // Helper function to detect search engine bots
 const isSearchEngineCrawler = (userAgent) => {
@@ -170,72 +166,72 @@ app.options('/uploads/*', (req, res) => {
 
 // Serve uploaded files with proper headers
 app.use('/uploads', (req, res, next) => {
-  const requestedPath = req.path;
-  const filePath = path.join(uploadsPath, requestedPath);
-
-  console.log(`📥 Static file request: ${requestedPath}`);
-  console.log(`📂 Looking for file: ${filePath}`);
-
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`❌ File not found: ${filePath}`);
-
-
-    if (requestedPath.includes('/products/')) {
-      const defaultImagePath = path.join(uploadsPath, 'defaults', 'no-image.png');
-      if (fs.existsSync(defaultImagePath)) {
-        console.log('📦 Serving default image');
-        res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.sendFile(defaultImagePath);
+  try {
+    const requestedPath = req.path;
+    const filePath = path.join(uploadsPath, requestedPath);
+    console.log(`📥 Static file request: ${requestedPath}`);
+    console.log(`📂 Looking for file: ${filePath}`);
+    
+    if (!fs.existsSync(filePath)) {
+      console.log(`❌ File not found: ${filePath}`);
+      if (requestedPath.includes('/products/')) {
+        const defaultImagePath = path.join(uploadsPath, 'defaults', 'no-image.png');
+        if (fs.existsSync(defaultImagePath)) {
+          console.log('📦 Serving default image');
+          res.setHeader('Content-Type', 'image/png');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          return res.sendFile(defaultImagePath);
+        }
       }
+      return res.status(404).json({
+        success: false,
+        message: 'File not found',
+        path: requestedPath,
+        fullPath: filePath,
+        uploadsDir: uploadsPath
+      });
     }
-
-    return res.status(404).json({
+    
+    console.log(`✅ File found, preparing to serve`);
+    const ext = path.extname(filePath).toLowerCase();
+    const contentTypeMap = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml'
+    };
+    
+    if (contentTypeMap[ext]) {
+      res.setHeader('Content-Type', contentTypeMap[ext]);
+      console.log(` Content-Type: ${contentTypeMap[ext]}`);
+    }
+    
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('ETag', `"${fs.statSync(filePath).mtime.getTime()}"`);
+    
+    console.log(`✅ Serving file: ${requestedPath}`);
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('❌ Static file serving error:', error);
+    res.status(500).json({
       success: false,
-      message: 'File not found',
-      path: requestedPath,
-      fullPath: filePath,
-      uploadsDir: uploadsPath
+      message: 'Error serving file'
     });
   }
-
-  console.log(`✅ File found, preparing to serve`);
-
-
-  const ext = path.extname(filePath).toLowerCase();
-  const contentTypeMap = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.webp': 'image/webp',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml'
-  };
-
-  if (contentTypeMap[ext]) {
-    res.setHeader('Content-Type', contentTypeMap[ext]);
-    console.log(`   Content-Type: ${contentTypeMap[ext]}`);
-  }
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  res.setHeader('ETag', `"${fs.statSync(filePath).mtime.getTime()}"`);
-
-  console.log(`✅ Serving file: ${requestedPath}`);
-  res.sendFile(filePath);
 });
 
 app.get('/api/images/:type/:filename', (req, res) => {
   try {
     const { type, filename } = req.params;
-
     console.log(`📥 API image request: ${type}/${filename}`);
-
+    
     const allowedTypes = ['products', 'categories', 'userTypes', 'sliders', 'defaults'];
     if (!allowedTypes.includes(type)) {
       console.log(`❌ Invalid type: ${type}`);
@@ -245,8 +241,7 @@ app.get('/api/images/:type/:filename', (req, res) => {
         allowedTypes
       });
     }
-
-
+    
     if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       console.log(`❌ Invalid filename: ${filename}`);
       return res.status(400).json({
@@ -254,20 +249,18 @@ app.get('/api/images/:type/:filename', (req, res) => {
         message: 'Invalid filename'
       });
     }
-
+    
     const imagePath = path.join(uploadsPath, type, filename);
     console.log(`📂 Full path: ${imagePath}`);
-
+    
     if (!fs.existsSync(imagePath)) {
       console.log(`❌ Image not found: ${imagePath}`);
-
-    
+   
       const defaultImagePath = path.join(uploadsPath, 'defaults', 'no-image.png');
       if (fs.existsSync(defaultImagePath)) {
         console.log('📦 Serving default image');
         return res.sendFile(defaultImagePath);
       }
-
       return res.status(404).json({
         success: false,
         message: 'Image not found',
@@ -276,8 +269,7 @@ app.get('/api/images/:type/:filename', (req, res) => {
         path: imagePath
       });
     }
-
-
+    
     const ext = path.extname(filename).toLowerCase();
     const contentTypeMap = {
       '.jpg': 'image/jpeg',
@@ -287,18 +279,17 @@ app.get('/api/images/:type/:filename', (req, res) => {
       '.gif': 'image/gif',
       '.svg': 'image/svg+xml'
     };
-
+    
     if (contentTypeMap[ext]) {
       res.setHeader('Content-Type', contentTypeMap[ext]);
     }
-
+    
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
+    
     console.log(`✅ API serving image: ${type}/${filename}`);
     res.sendFile(imagePath);
-
   } catch (error) {
     console.error('❌ IMAGE SERVING ERROR:', error);
     res.status(500).json({
@@ -309,13 +300,12 @@ app.get('/api/images/:type/:filename', (req, res) => {
   }
 });
 
-
 app.get('/api/check-file/:type/:filename', (req, res) => {
   try {
     const { type, filename } = req.params;
     const filePath = path.join(uploadsPath, type, filename);
     const exists = fs.existsSync(filePath);
-
+    
     let directoryContents = [];
     if (!exists) {
       try {
@@ -327,7 +317,7 @@ app.get('/api/check-file/:type/:filename', (req, res) => {
         console.error('Error reading directory:', err);
       }
     }
-
+    
     res.json({
       success: true,
       exists,
@@ -339,6 +329,7 @@ app.get('/api/check-file/:type/:filename', (req, res) => {
       fileStats: exists ? fs.statSync(filePath) : undefined
     });
   } catch (error) {
+    console.error('❌ Check file error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -348,11 +339,9 @@ app.get('/api/check-file/:type/:filename', (req, res) => {
 
 console.log('✅ Static file serving configured');
 
-
 app.use(trackSuspiciousActivity);
 app.use(sanitizeInput);
 app.use(auditLogger);
-
 
 const skipRateLimit = (req) => {
   const userAgent = req.get('User-Agent') || '';
@@ -371,7 +360,6 @@ app.use('/api/auth/register', rateLimits.register);
 app.use('/api/auth/otp', rateLimits.otp);
 app.use('/api/admin', rateLimits.admin, adminRoutes);
 app.use('/api', rateLimits.general);
-
 
 const swaggerUiOptions = {
   customCss: `
@@ -398,7 +386,6 @@ app.get('/api-docs.json', (req, res) => {
   res.send(swaggerSpec);
 });
 
-
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/addresses', addressRoutes);
@@ -414,7 +401,6 @@ app.use('/api/seo', cors(corsOptions), seoRoutes);
 app.use('/api/video-call-enquiries', videoCallEnquiryRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/sliders', sliderRoutes);
-
 
 app.use((req, res, next) => {
   req.setTimeout(30000);
@@ -469,7 +455,6 @@ app.get('/', (req, res) => {
   });
 });
 
-
 app.use('/api/*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -499,10 +484,11 @@ app.use('*', (req, res) => {
   });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
   let statusCode = err.status || 500;
   let message = err.message || 'Internal Server Error';
-
+  
   if (err.name === 'SequelizeValidationError') {
     statusCode = 400;
     message = 'Validation error: ' + err.errors.map(e => e.message).join(', ');
@@ -519,7 +505,7 @@ app.use((err, req, res, next) => {
     statusCode = 413;
     message = 'Request entity too large';
   }
-
+  
   if (message !== 'Not allowed by CORS') {
     console.error('❌ GLOBAL ERROR:', {
       message: err.message,
@@ -530,7 +516,7 @@ app.use((err, req, res, next) => {
       userAgent: req.get('User-Agent')
     });
   }
-
+  
   res.status(statusCode).json({
     success: false,
     message,

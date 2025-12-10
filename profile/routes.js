@@ -2,15 +2,15 @@
 const express = require('express');
 const router = express.Router();
 const { getProfile, updateProfile } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // ===============================
 // Global middlewares
 // ===============================
-router.use(authMiddleware); // Auth required for all
+router.use(authenticateToken); // Auth required for all
 router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.general); // Global rate limiting
+router.use(rateLimits.auth); // Global rate limiting
 
 // Get profile (authenticated user)
 router.get('/',

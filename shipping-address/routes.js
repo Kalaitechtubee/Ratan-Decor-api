@@ -1,4 +1,4 @@
-// routes/shipping-address.js - Updated without express-validator
+// routes/shipping-address.js
 const express = require('express');
 const router = express.Router();
 const {
@@ -9,15 +9,15 @@ const {
   deleteShippingAddress,
   setDefaultShippingAddress
 } = require('./controller');
-const { authMiddleware, requireOwnDataOrStaff } = require('../middleware/auth');
+const { authenticateToken, requireOwnDataOrStaff } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // ===============================
 // Global middlewares
 // ===============================
-router.use(authMiddleware); // All routes require authentication
+router.use(authenticateToken); // All routes require authentication
 router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.general); // Global rate limiting
+router.use(rateLimits.auth); // Global rate limiting
 
 // CRUD operations (authenticated user - SuperAdmin/Admin can access via staff bypass if needed)
 // Create shipping address
@@ -32,55 +32,32 @@ router.get('/',
   getShippingAddresses
 );
 
-// Get specific shipping address (own or staff - SuperAdmin/Admin bypass)
+// Get single shipping address
 router.get('/:id',
-  requireOwnDataOrStaff, // Ensures ownership or staff access
   auditLogger,
+  requireOwnDataOrStaff,
   getShippingAddressById
 );
 
-// Update shipping address (own or staff - SuperAdmin/Admin bypass)
+// Update shipping address
 router.put('/:id',
-  requireOwnDataOrStaff,
   auditLogger,
+  requireOwnDataOrStaff,
   updateShippingAddress
 );
 
-// Delete shipping address (own or staff - SuperAdmin/Admin bypass)
+// Delete shipping address
 router.delete('/:id',
-  requireOwnDataOrStaff,
   auditLogger,
+  requireOwnDataOrStaff,
   deleteShippingAddress
 );
 
-// Set default address (own or staff - SuperAdmin/Admin bypass)
-router.patch('/:id/default',
-  requireOwnDataOrStaff,
+// Set default shipping address
+router.patch('/:id/set-default',
   auditLogger,
+  requireOwnDataOrStaff,
   setDefaultShippingAddress
 );
-
-// Global error handling
-router.use((error, req, res, next) => {
-  console.error('Shipping Address route error:', error);
-  if (error.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation error',
-      errors: error.errors
-    });
-  }
-  if (error.name === 'CastError') {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid ID format'
-    });
-  }
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
-  });
-});
 
 module.exports = router;

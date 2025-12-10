@@ -1,21 +1,22 @@
+// address/routes.js
 const express = require('express');
 const router = express.Router();
 const { createAddress, getAddresses, getAddressById, updateAddress, deleteAddress } = require('./controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get all addresses for logged-in user
-router.get('/', authMiddleware, getAddresses);
+router.get('/', authenticateToken, getAddresses);
 
 // Get single address by ID
-router.get('/:id', authMiddleware, getAddressById);
+router.get('/:id', authenticateToken, getAddressById);
 
 // Create new address
-router.post('/', authMiddleware, createAddress);
+router.post('/', authenticateToken, createAddress);
 
 // Update address
-router.put('/:id', authMiddleware, updateAddress);
+router.put('/:id', authenticateToken, updateAddress);
 
 // Delete address
-router.delete('/:id', authMiddleware, deleteAddress);
+router.delete('/:id', authenticateToken, deleteAddress);
 
 module.exports = router;
