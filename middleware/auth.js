@@ -123,32 +123,62 @@ const authenticateToken = async (req, res, next) => {
 // -----------------------------
 // Role Authorization Middleware
 // -----------------------------
-const authorizeRoles = (allowedRoles) => {
+const authorizeRoles = (...allowedRoles) => {
   return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
+    try {
+      // Flatten the allowedRoles array in case it's nested
+      const roles = Array.isArray(allowedRoles[0]) ? allowedRoles[0] : allowedRoles;
+      
+      // If no specific roles are required, just continue
+      if (!roles || roles.length === 0) {
+        return next();
+      }
+
+      // Get user from request (should be set by authenticateToken)
+      if (!req.user || !req.user.role) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+        });
+      }
+
+      // Convert all roles to lowercase for case-insensitive comparison
+      const normalizedUserRole = req.user.role ? req.user.role.toString().toLowerCase() : '';
+      const normalizedAllowedRoles = roles.map(role => 
+        role ? role.toString().toLowerCase() : ''
+      );
+
+      // SuperAdmin has access to everything
+      if (normalizedUserRole === 'superadmin') {
+        return next();
+      }
+
+      // Check if user has required role
+      const hasRole = normalizedAllowedRoles.includes(normalizedUserRole);
+
+      if (!hasRole) {
+        return res.status(403).json({
+          success: false,
+          message: `Access denied. Your role (${req.user.role || 'none'}) does not have permission.`,
+          requiredRoles: roles,
+          userRole: req.user.role || 'none',
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error('Authorization error:', {
+        message: error.message,
+        stack: error.stack,
+        user: req.user,
+        allowedRoles: allowedRoles
+      });
+      return res.status(500).json({
         success: false,
-        message: "Authentication required"
+        message: 'An error occurred during authorization',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-    
-    const userRole = req.user.role;
-   
-    // SuperAdmin always has access
-    if (userRole === 'SuperAdmin') {
-      return next();
-    }
-    
-    if (!allowedRoles.includes(userRole)) {
-      return res.status(403).json({
-        success: false,
-        message: `Access denied for role ${userRole}`,
-        requiredRoles: allowedRoles,
-        userRole: userRole
-      });
-    }
-    
-    next();
   };
 };
 

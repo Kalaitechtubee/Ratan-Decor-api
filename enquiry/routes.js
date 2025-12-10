@@ -14,7 +14,7 @@ const { sanitizeInput, auditLogger, rateLimits } = require("../middleware/securi
 // ===============================
 router.use(authenticateToken); // All routes require authentication
 router.use(sanitizeInput);     // Sanitize request input
-router.use(rateLimits.general); // Global rate limiting
+router.use(rateLimits.auth); // Global rate limiting
 
 // ===============================
 // Enquiry Routes
@@ -26,6 +26,11 @@ router.post("/create", auditLogger, enquiryController.createEnquiry);
 // Get all enquiries (Admin, Manager, Sales only - SuperAdmin/Admin included)
 router.get(
   "/all",
+  (req, res, next) => {
+    // Debug log to check user and roles
+    console.log('User in middleware:', req.user);
+    next();
+  },
   moduleAccess.requireSalesAccess,
   auditLogger,
   enquiryController.getAllEnquiries
