@@ -1,44 +1,26 @@
-// routes/seo.js - Updated with proper middleware and route handlers
+// routes/seo.js (updated: aligned with moduleAccess.requireManagerOrAdmin, consistent middleware)
 const express = require("express");
 const router = express.Router();
 const seoController = require("./controllers");
-const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const { authenticateToken, moduleAccess } = require("../middleware/auth");
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
-router.use(authenticateToken); // Require authentication for all routes
+router.use(authenticateToken);
 router.use(sanitizeInput);
 router.use(rateLimits.auth);
 
-// ==========================
 // Public Routes
-// ==========================
 router.get("/", auditLogger, seoController.getAllSeo);               
 router.get("/pagenames", auditLogger, seoController.getAllPageNames); 
 router.get("/page/:pageName", auditLogger, seoController.getSeoByPageName); 
 router.get("/:id", auditLogger, seoController.getSeoById);
 
-// ==========================
-// Protected Routes (Admin/Manager/SuperAdmin Only)
-// ==========================
-router.post("/", 
-  auditLogger,
-  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
-  seoController.createSeo
-);
+// Protected Routes (SuperAdmin/Admin only)
+router.post("/", auditLogger, moduleAccess.requireManagerOrAdmin, seoController.createSeo);
 
-router.put("/:id", 
-  auditLogger,
-  authorizeRoles(["Admin", "Manager", "SuperAdmin"]),
-  seoController.updateSeo
-);
+router.put("/:id", auditLogger, moduleAccess.requireManagerOrAdmin, seoController.updateSeo);
 
-router.delete("/:id", 
-  auditLogger,
-  authorizeRoles(["Admin", "SuperAdmin"]),
-  seoController.deleteSeo
-);
+router.delete("/:id", auditLogger, moduleAccess.requireAdmin, seoController.deleteSeo);
 
 module.exports = router;

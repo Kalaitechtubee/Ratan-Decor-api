@@ -1,4 +1,4 @@
-// auth/controller.js (corrected path)
+// auth/controller.js (updated with role creation constraints)
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
@@ -217,6 +217,7 @@ const login = async (req, res) => {
 };
 
 // User registration
+// User registration (COMPLETE FIXED VERSION)
 const register = async (req, res) => {
   try {
     const {
@@ -224,7 +225,8 @@ const register = async (req, res) => {
       phone, company, address,
       mobile, country, state, city, pincode,
       userTypeId, userTypeName,
-      createdBy
+      createdBy,
+      skipTokenGeneration = false  // NEW: Flag to skip token generation for staff creation
     } = req.body;
     
     if (!name || !email || !password) {
@@ -264,6 +266,19 @@ const register = async (req, res) => {
     let initialStatus = 'Approved';
     let requiresApproval = false;
     let canCreate = false;
+    let creatorRole = null;
+    
+    // Fetch creator role if createdBy provided
+    if (createdBy) {
+      const creator = await User.findByPk(createdBy);
+      if (!creator) {
+        return res.status(404).json({
+          success: false,
+          message: 'Creator not found'
+        });
+      }
+      creatorRole = creator.role;
+    }
     
     // Role-based registration logic
     const requestedRoleLower = requestedRole.toLowerCase();
@@ -281,22 +296,10 @@ const register = async (req, res) => {
           message: 'Staff roles can only be created by admin or superadmin'
         });
       }
-      canCreate = true;
-      initialStatus = 'Approved';
-    } else if (REGISTRATION_RULES.ADMIN_ROLES.includes(requestedRoleLower)) {
-      if (!createdBy) {
+      if (!canCreateRole(creatorRole, requestedRole)) {
         return res.status(403).json({
           success: false,
-          message: 'Admin role can only be created by superadmin'
-        });
-      }
-      canCreate = true;
-      initialStatus = 'Approved';
-    } else if (REGISTRATION_RULES.SUPERADMIN_ROLES.includes(requestedRoleLower)) {
-      if (!createdBy) {
-        return res.status(403).json({
-          success: false,
-          message: 'superadmin role can only be created by existing superadmin'
+          message: 'Creator not authorized to create this role'
         });
       }
       canCreate = true;
@@ -313,6 +316,37 @@ const register = async (req, res) => {
         success: false,
         message: 'You are not authorized to create this role'
       });
+    }
+    
+    // Enforce uniqueness for SuperAdmin and Admin
+    if (requestedRole === 'SuperAdmin') {
+      const superAdminCount = await User.count({ where: { role: 'SuperAdmin' } });
+      if (superAdminCount > 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only one SuperAdmin account is allowed'
+        });
+      }
+      if (creatorRole !== 'SuperAdmin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only existing SuperAdmin can create SuperAdmin'
+        });
+      }
+    } else if (requestedRole === 'Admin') {
+      const adminCount = await User.count({ where: { role: 'Admin' } });
+      if (adminCount > 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only one Admin account is allowed'
+        });
+      }
+      if (creatorRole !== 'SuperAdmin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only SuperAdmin can create Admin'
+        });
+      }
     }
     
     // Hash password and create user
@@ -374,41 +408,56 @@ const register = async (req, res) => {
       }
     }
     
-    // Generate tokens after registration (align with login)
-    const accessToken = generateAccessToken({
-      id: user.id,
-      role: user.role,
-      status: user.status,
-      email: user.email,
-      userTypeId: user.userTypeId
-    });
-    const refreshToken = generateRefreshToken({
-      id: user.id,
-      role: user.role,
-      status: user.status,
-      email: user.email,
-      userTypeId: user.userTypeId
-    });
+    // ✅ CRITICAL FIX: Only generate and set tokens if NOT creating staff
+    let accessToken = null;
+    let refreshToken = null;
     
-    // Set tokens in httpOnly cookies with consistent options
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+    if (!skipTokenGeneration) {
+      // Generate tokens for normal registration/login flow
+      accessToken = generateAccessToken({
+        id: user.id,
+        role: user.role,
+        status: user.status,
+        email: user.email,
+        userTypeId: user.userTypeId
+      });
+      refreshToken = generateRefreshToken({
+        id: user.id,
+        role: user.role,
+        status: user.status,
+        email: user.email,
+        userTypeId: user.userTypeId
+      });
+      
+      // Set tokens in httpOnly cookies with consistent options
+      res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+      res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
+    }
+    
+    // Build response data
+    const responseData = {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: initialStatus,
+      requiresApproval
+    };
+    
+    // Only include tokens in response if they were generated
+    if (!skipTokenGeneration) {
+      responseData.accessToken = accessToken;
+      responseData.refreshToken = refreshToken;
+    }
     
     res.status(201).json({
       success: true,
       message: requiresApproval
         ? 'Registration successful. Your account is pending approval.'
-        : 'Registration successful. You can now login.',
-      data: {
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: initialStatus,
-        requiresApproval,
-        accessToken,
-        refreshToken
-      }
+        : skipTokenGeneration
+          ? 'Staff user created successfully.'
+          : 'Registration successful. You can now login.',
+      data: responseData
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -425,7 +474,7 @@ const register = async (req, res) => {
   }
 };
 
-// Create staff user (Admin/Manager only)
+// Create staff user (COMPLETE FIXED VERSION)
 const createStaffUser = async (req, res) => {
   try {
     const creator = req.user;
@@ -444,7 +493,18 @@ const createStaffUser = async (req, res) => {
       });
     }
     
-    if (!canCreateRole(creator.role, role)) {
+    // Normalize role
+    const roleInput = role.toString().trim();
+    const roleKey = roleInput.toLowerCase();
+    const requestedRole = ROLE_CANONICAL[roleKey];
+    if (!requestedRole) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role: ${roleInput}`
+      });
+    }
+    
+    if (!canCreateRole(creator.role, requestedRole)) {
       const creatorRoleLower = creator.role.toLowerCase();
       const allowedRoles = [];
       if (creatorRoleLower === 'superadmin') {
@@ -461,7 +521,42 @@ const createStaffUser = async (req, res) => {
       });
     }
     
+    // Enforce uniqueness for SuperAdmin and Admin
+    if (requestedRole === 'SuperAdmin') {
+      const superAdminCount = await User.count({ where: { role: 'SuperAdmin' } });
+      if (superAdminCount > 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only one SuperAdmin account is allowed'
+        });
+      }
+      if (creator.role !== 'SuperAdmin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only existing SuperAdmin can create SuperAdmin'
+        });
+      }
+    } else if (requestedRole === 'Admin') {
+      const adminCount = await User.count({ where: { role: 'Admin' } });
+      if (adminCount > 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only one Admin account is allowed'
+        });
+      }
+      if (creator.role !== 'SuperAdmin') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only SuperAdmin can create Admin'
+        });
+      }
+    }
+    
+    // ✅ CRITICAL FIX: Set skipTokenGeneration flag before calling register
     req.body.createdBy = creator.id;
+    req.body.role = requestedRole;
+    req.body.skipTokenGeneration = true;  // This prevents cookie overwrite!
+    
     return register(req, res);
   } catch (error) {
     console.error('Create staff user error:', error);

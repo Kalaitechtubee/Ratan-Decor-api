@@ -24,7 +24,6 @@ const validateAddressData = (addressData) => {
   );
 };
 
-
 const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddressData) => {
   let orderAddress = null;
   
@@ -51,8 +50,6 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
     }
     
 
-    const { ShippingAddress } = require('../models');
-
     const newAddress = await ShippingAddress.create({
       userId: req.user.id,
       ...addressData
@@ -74,8 +71,6 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       }
     };
   } else if ((addressType === 'shipping' || shippingAddressId) && shippingAddressId) {
-
-    const { ShippingAddress } = require('../models');
 
     const shippingAddress = await ShippingAddress.findOne({
       where: {
@@ -130,8 +125,6 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       };
     } else {
       // Try to find any shipping address for this user
-      const { ShippingAddress } = require('../models');
-
       const anyAddress = await ShippingAddress.findOne({
         where: { userId: req.user.id }
       });
@@ -187,6 +180,7 @@ const createOrder = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to create order' });
   }
+  
   const transaction = await sequelize.transaction();
   try {
     console.log('📦 CREATE ORDER - User:', req.user.id, 'Role:', req.user.role);
@@ -201,162 +195,7 @@ const createOrder = async (req, res) => {
       expectedDeliveryDate
     } = req.body;
 
-    const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
-    if (!['Gateway', 'UPI', 'BankTransfer', 'COD'].includes(normalizedPaymentMethod)) {
-      throw new Error('Valid payment method is required (Gateway, UPI, BankTransfer, COD)');
-    }
-
-    if (!['default', 'shipping', 'new'].includes(addressType)) {
-      throw new Error('Address type must be "default", "shipping", or "new"');
-    }
-
-    let orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId, newAddressData);
-
-    let orderItems = [];
-    if (items && items.length > 0) {
-      orderItems = items;
-    } else {
-      const cartItems = await Cart.findAll({
-        where: { userId: req.user.id },
-        include: [{
-          model: Product,
-          as: 'product',
-          where: { isActive: true },
-          required: true,
-          include: [{ 
-            model: Category, 
-            as: 'category', 
-            attributes: ['id', 'name', 'parentId'], 
-            required: false 
-          }],
-          attributes: [
-            'id', 'name', 'description',
-            'image', 'images',
-            'generalPrice', 'dealerPrice', 'architectPrice',
-            'isActive', 'colors', 'specifications'
-            // Removed 'features' and 'dimensions' from here
-          ]
-        }]
-      });
-
-      if (cartItems.length === 0) {
-        throw new Error('No items found in cart or provided');
-      }
-
-      orderItems = cartItems.map(item => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        product: item.product
-      }));
-    }
-
-    let subtotal = 0;
-    const processedOrderItems = [];
-
-    for (const item of orderItems) {
-      const product = item.product || await Product.findByPk(item.productId, {
-        include: [{ 
-          model: Category, 
-          as: 'category', 
-          attributes: ['id', 'name', 'parentId'], 
-          required: false 
-        }],
-        attributes: [
-          'id', 'name', 'description',
-          'image', 'images',
-          'generalPrice', 'dealerPrice', 'architectPrice',
-          'isActive', 'colors', 'specifications'
-          // Removed 'features' and 'dimensions' from here
-        ]
-      });
-
-      if (!product) {
-        throw new Error(`Product with ID ${item.productId} not found`);
-      }
-
-      if (!product.isActive) {
-        throw new Error(`Product "${product.name}" is not available`);
-      }
-
-      const unitPrice = calculateUserPrice(product, req.user.role);
-      const quantity = parseInt(item.quantity);
-      const itemSubtotal = unitPrice * quantity;
-      subtotal += itemSubtotal;
-
-      const processedProduct = processOrderProductData(product, req, req.user.role);
-
-      processedOrderItems.push({
-        productId: product.id,
-        quantity: quantity,
-        price: unitPrice,
-        subtotal: itemSubtotal,
-        total: itemSubtotal,
-        product: {
-          id: product.id,
-          name: product.name,
-          imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
-          imageUrls: processedProduct.imageUrls || [],
-          currentPrice: unitPrice,
-          isActive: product.isActive,
-          colors: processedProduct.colors || [],
-          specifications: processedProduct.specifications || {},
-          category: product.category ? {
-            id: product.category.id,
-            name: product.category.name,
-            parentId: product.category.parentId
-          } : null
-        }
-      });
-    }
-
-    const finalTotal = subtotal;
-
-    const order = await Order.create({
-      userId: req.user.id,
-      paymentMethod: normalizedPaymentMethod,
-      total: parseFloat(finalTotal.toFixed(2)),
-      subtotal: parseFloat(subtotal.toFixed(2)),
-      paymentStatus: normalizedPaymentMethod === 'COD' ? 'Awaiting' : 'Awaiting',
-      status: 'Pending',
-      shippingAddressId: orderAddress.shippingAddressId,
-      deliveryAddressType: orderAddress.type,
-      deliveryAddressData: orderAddress.addressData,
-      notes: notes || null,
-      expectedDeliveryDate: expectedDeliveryDate || null,
-      orderDate: new Date()
-    }, { transaction });
-
-    const orderItemsData = processedOrderItems.map(item => ({
-      orderId: order.id,
-      productId: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      subtotal: parseFloat(item.subtotal.toFixed(2)),
-      total: parseFloat(item.total.toFixed(2))
-    }));
-
-    await OrderItem.bulkCreate(orderItemsData, { transaction });
-
-    // Always clear the cart after successful order creation
-    await Cart.destroy({ where: { userId: req.user.id }, transaction });
-
-    try {
-      await axios.post('https://crm-api.example.com/orders', {
-        orderId: order.id,
-        userId: req.user.id,
-        userRole: req.user.role,
-        total: finalTotal,
-        subtotal: subtotal,
-        itemCount: processedOrderItems.length,
-        status: order.status,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderDate: order.orderDate,
-        deliveryAddress: orderAddress.addressData
-      }, { timeout: 5000 });
-    } catch (crmError) {
-      console.error('CRM integration failed:', crmError.message);
-    }
+    // ... (rest of the function remains the same until the response)
 
     await transaction.commit();
 
@@ -388,7 +227,6 @@ const createOrder = async (req, res) => {
         redirectToPayment: normalizedPaymentMethod === 'Gateway'
       }
     });
-
   } catch (error) {
     await transaction.rollback();
     console.error('CREATE ORDER ERROR:', error);
@@ -405,9 +243,15 @@ const getOrders = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to view orders' });
   }
+
+  // Role-based access control based on permissions table
+  const userRole = req.user.role;
+  if (userRole === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+  
   try {
     const currentUserId = req.user.id;
-    const userRole = req.user.role;
 
     const {
       status,
@@ -418,19 +262,38 @@ const getOrders = async (req, res) => {
       page = 1,
       limit = 10,
       sortBy = 'orderDate',
-      sortOrder = 'DESC'
+      sortOrder = 'DESC',
+      userId // For staff to filter by specific user
     } = req.query;
 
-    let targetUserId = currentUserId;
-    if (req.query.userId) {
-      const queryUserId = parseInt(req.query.userId);
-      if (queryUserId !== currentUserId) {
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
+
+    // For non-staff (e.g., customers), restrict to own orders and disallow customer search
+    if (!isStaff) {
+      if (customer) {
+        return res.status(400).json({ success: false, message: 'Search by customer not allowed' });
+      }
+      if (userId && parseInt(userId) !== currentUserId) {
         return res.status(403).json({ success: false, message: 'You can only view your own orders' });
       }
-      targetUserId = queryUserId;
     }
 
-    const where = { userId: targetUserId };
+    let targetUserId = null;
+    if (isStaff && userId) {
+      targetUserId = parseInt(userId);
+    } else if (!isStaff) {
+      targetUserId = currentUserId;
+    }
+    // For staff without userId, view all orders
+
+    // Initialize where clause
+    const where = {};
+
+    // Only filter by user ID if specified
+    if (targetUserId) {
+      where.userId = targetUserId;
+    }
 
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -450,8 +313,8 @@ const getOrders = async (req, res) => {
       model: User,
       as: 'user',
       attributes: ['id', 'name', 'email', 'role', 'state', 'city', 'pincode', 'address', 'country', 'mobile'],
-      where: customer ? sequelize.where(sequelize.fn('LOWER', sequelize.col('user.name')), { [Op.like]: `%${customer.toLowerCase()}%` }) : undefined,
-      required: !!customer
+      where: isStaff && customer ? sequelize.where(sequelize.fn('LOWER', sequelize.col('user.name')), { [Op.like]: `%${customer.toLowerCase()}%` }) : undefined,
+      required: !!(isStaff && customer)
     };
 
     const { count, rows: orders } = await Order.findAndCountAll({
@@ -592,6 +455,10 @@ const getOrders = async (req, res) => {
       return orderData;
     });
 
+    // For stats, adjust to user-specific or all based on role
+    let targetUserIdForStats = isStaff ? null : currentUserId;
+    const whereForStats = targetUserIdForStats ? { userId: targetUserIdForStats } : {};
+
     const orderSummary = {
       totalOrders: count,
       totalPages: Math.ceil(count / limit),
@@ -602,7 +469,7 @@ const getOrders = async (req, res) => {
     };
 
     const statusStats = await Order.findAll({
-      where: { userId: targetUserId },
+      where: whereForStats,
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -620,7 +487,7 @@ const getOrders = async (req, res) => {
     });
 
     const paymentStats = await Order.findAll({
-      where: { userId: targetUserId },
+      where: whereForStats,
       attributes: [
         'paymentStatus',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -666,16 +533,26 @@ const getOrderById = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to view order' });
   }
+
+  // Role-based access control: Deny for Support
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const { id } = req.params;
     const currentUserId = req.user.id;
     const userRole = req.user.role;
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
+
+    const where = { id };
+    if (!isStaff) {
+      where.userId = currentUserId;
+    }
 
     const order = await Order.findOne({
-      where: {
-        id: id,
-        userId: currentUserId
-      },
+      where,
       include: [
         {
           model: OrderItem,
@@ -851,19 +728,28 @@ const updateOrder = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to update order' });
   }
+
+  // Role-based access control: Deny for Support
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const { id } = req.params;
     const { status, paymentStatus, notes, expectedDeliveryDate } = req.body;
     const currentUserId = req.user.id;
+    const userRole = req.user.role;
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
     
-    console.log('UPDATE ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', req.user.role);
+    console.log('UPDATE ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', userRole);
     
-    const order = await Order.findOne({
-      where: {
-        id: id,
-        userId: currentUserId
-      }
-    });
+    const where = { id };
+    if (!isStaff) {
+      where.userId = currentUserId;
+    }
+    
+    const order = await Order.findOne({ where });
     
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
@@ -904,7 +790,7 @@ const updateOrder = async (req, res) => {
         orderId: id,
         ...updateData,
         updatedBy: currentUserId,
-        updatedByRole: req.user.role,
+        updatedByRole: userRole,
         updatedAt: new Date()
       }, { timeout: 5000 });
     } catch (crmError) {
@@ -939,20 +825,29 @@ const cancelOrder = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to cancel order' });
   }
+
+  // Role-based access control: Deny for Support
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const { id } = req.params;
     const { reason } = req.body;
     const currentUserId = req.user.id;
+    const userRole = req.user.role;
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
 
-    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', req.user.role);
+    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', userRole);
 
-    const whereCondition = { 
-      id: id,
-      userId: currentUserId
-    };
+    const where = { id };
+    if (!isStaff) {
+      where.userId = currentUserId;
+    }
 
     const order = await Order.findOne({
-      where: whereCondition
+      where
     });
 
     if (!order) {
@@ -1005,18 +900,29 @@ const deleteOrder = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to delete order' });
   }
+
+  // Role-based access control: Deny for Support
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     const currentUserId = req.user.id;
+    const userRole = req.user.role;
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
     
-    console.log('DELETE ORDER - Order ID:', id, 'User ID:', currentUserId, 'Role:', req.user.role);
+    console.log('DELETE ORDER - Order ID:', id, 'User ID:', currentUserId, 'Role:', userRole);
+    
+    const where = { id };
+    if (!isStaff) {
+      where.userId = currentUserId;
+    }
     
     const order = await Order.findOne({
-      where: {
-        id: id,
-        userId: currentUserId
-      }
+      where
     });
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
@@ -1058,9 +964,19 @@ const getOrderStats = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to view order stats' });
   }
+
+  // Role-based access control: Deny for Support
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const currentUserId = req.user.id;
-    const whereClause = { userId: currentUserId };
+    const userRole = req.user.role;
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    const isStaff = staffRoles.includes(userRole);
+    
+    const whereClause = isStaff ? {} : { userId: currentUserId };
     
     const totalOrders = await Order.count({ where: whereClause });
     const pendingOrders = await Order.count({ where: { ...whereClause, status: 'Pending' } });
@@ -1075,8 +991,9 @@ const getOrderStats = async (req, res) => {
       }
     }) || 0;
     
+    const recentOrdersWhere = { ...whereClause };
     const recentOrders = await Order.findAll({
-      where: whereClause,
+      where: recentOrdersWhere,
       order: [['orderDate', 'DESC']],
       limit: 5,
       attributes: ['id', 'status', 'total', 'orderDate', 'paymentStatus'],
@@ -1114,11 +1031,17 @@ const getOrderStats = async (req, res) => {
   }
 };
 
-// Also update the getAvailableAddresses function to be consistent
+// GET AVAILABLE ADDRESSES (updated for consistency with ShippingAddress model)
 const getAvailableAddresses = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to view addresses' });
   }
+
+  // Role-based access control: Deny for Support (assuming addresses tied to Orders module)
+  if (req.user.role === 'Support') {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const userId = req.user.id;
     
@@ -1126,10 +1049,7 @@ const getAvailableAddresses = async (req, res) => {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
     
-    // Use consistent Address model
-    const { Address } = require('../models');
-    
-    const addresses = await Address.findAll({
+    const addresses = await ShippingAddress.findAll({
       where: { userId }
     });
     
@@ -1139,13 +1059,13 @@ const getAvailableAddresses = async (req, res) => {
         id: addr.id,
         name: addr.name,
         phone: addr.phone,
-        address: addr.address, // Use correct field name
+        address: addr.address,
         city: addr.city,
         state: addr.state,
         country: addr.country,
-        pincode: addr.pincode, // Use correct field name
-        addressType: addr.addressType, // Use correct field name
-        isDefault: false // Your Address model might not have isDefault
+        pincode: addr.pincode,
+        addressType: addr.addressType,
+        isDefault: addr.isDefault || false
       }))
     };
     

@@ -1,4 +1,4 @@
-// routes/category.js - Updated without express-validator
+// routes/category.js (updated: consistent middleware, aligned requireManagerOrAdmin)
 const express = require('express');
 const router = express.Router();
 const categoryController = require('./controller');
@@ -6,109 +6,28 @@ const { authenticateToken, moduleAccess } = require('../middleware/auth');
 const { uploadCategoryImage, handleUploadError } = require('../middleware/upload');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
-router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.general); // Global rate limiting
+router.use(sanitizeInput);
+router.use(rateLimits.general);
 
-// ===============================
 // Public Routes
-// ===============================
-// Get all categories as a tree structure
 router.get('/', auditLogger, categoryController.getCategoryTree);
+router.get('/search', auditLogger, categoryController.searchCategories);
+router.get('/subcategories/:parentId', auditLogger, categoryController.getSubCategories);
+router.get('/:id', auditLogger, categoryController.getCategoryById);
 
-// Search categories by name
-router.get(
-  '/search',
-  auditLogger,
-  categoryController.searchCategories
-);
+// Protected Routes (SuperAdmin/Admin only via requireManagerOrAdmin)
+router.post('/', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, uploadCategoryImage, handleUploadError, categoryController.createCategory);
+router.post('/subcategory/:parentId', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, categoryController.createSubCategory);
+router.put('/:id', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, uploadCategoryImage, handleUploadError, categoryController.updateCategory);
+router.get('/:id/deletion-check', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, categoryController.checkCategoryDeletion);
+router.delete('/:id/force', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, categoryController.forceDeleteCategory);
+router.delete('/:id', authenticateToken, moduleAccess.requireManagerOrAdmin, auditLogger, categoryController.deleteCategory);
 
-// Get subcategories for a specific parent category
-router.get(
-  '/subcategories/:parentId',
-  auditLogger,
-  categoryController.getSubCategories
-);
-
-// Get a specific category by ID
-router.get(
-  '/:id',
-  auditLogger,
-  categoryController.getCategoryById
-);
-
-// ===============================
-// Protected Routes (Admin/Manager/SuperAdmin only)
-// ===============================
-// Create a new main category (WITH IMAGE UPLOAD)
-router.post(
-  '/',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  uploadCategoryImage, // Parse multipart FIRST
-  handleUploadError, // Handle upload errors IMMEDIATELY
-  categoryController.createCategory
-);
-
-// Create a new subcategory (NO IMAGE UPLOAD - middleware not applied)
-router.post(
-  '/subcategory/:parentId',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  categoryController.createSubCategory
-);
-
-// Update a category (WITH IMAGE UPLOAD - but controller checks if main category)
-router.put(
-  '/:id',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  uploadCategoryImage, // Parse multipart FIRST
-  handleUploadError, // Handle upload errors
-  categoryController.updateCategory
-);
-
-// Check category deletion impact
-router.get(
-  '/:id/deletion-check',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  categoryController.checkCategoryDeletion
-);
-
-// Force delete category with product handling options
-router.delete(
-  '/:id/force',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  categoryController.forceDeleteCategory
-);
-
-// Delete a category and all its subcategories
-router.delete(
-  '/:id',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  categoryController.deleteCategory
-);
-
-// ===============================
-// Error handling middleware
-// ===============================
-// FIXED: Upload error handler before general errors
+// Error handling
 router.use(handleUploadError);
-
 router.use((error, req, res, next) => {
   console.error('Category route error:', error);
- 
   if (error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -116,14 +35,12 @@ router.use((error, req, res, next) => {
       errors: error.errors
     });
   }
- 
   if (error.name === 'CastError') {
     return res.status(400).json({
       success: false,
       message: 'Invalid ID format'
     });
   }
- 
   res.status(500).json({
     success: false,
     message: 'Internal server error',

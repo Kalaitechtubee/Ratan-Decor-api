@@ -1,38 +1,22 @@
-// routes/contact.js - Updated without express-validator
+// routes/contact.js (updated: aligned with permissions table using requireContactsAccess)
 const express = require('express');
 const router = express.Router();
 const ContactController = require('./contactController');
 const { authenticateToken, moduleAccess } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
-router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.general); // Global rate limiting
+router.use(sanitizeInput);
+router.use(rateLimits.general);
 
-// Public route: Submit contact form (no auth required)
-router.post('/submit',
-  auditLogger,
-  ContactController.submitContactForm
-);
+// Public route
+router.post('/submit', auditLogger, ContactController.submitContactForm);
 
-// Protected routes (Admin/SuperAdmin/Manager for viewing)
-router.get('/all',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  ContactController.getAllContacts
-);
+// Protected routes (SuperAdmin, Admin, Support, Sales)
+router.get('/all', authenticateToken, moduleAccess.requireContactsAccess, auditLogger, ContactController.getAllContacts);
+router.get('/:id', authenticateToken, moduleAccess.requireContactsAccess, auditLogger, ContactController.getContactById);
 
-router.get('/:id',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin, // SuperAdmin/Admin included
-  auditLogger,
-  ContactController.getContactById
-);
-
-// Global error handling
+// Error handling
 router.use((error, req, res, next) => {
   console.error('Contact route error:', error);
   if (error.name === 'ValidationError') {

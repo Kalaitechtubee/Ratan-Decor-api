@@ -1,4 +1,4 @@
-// middleware/security.js (add secureLogout to exports)
+// middleware/security.js (no changes needed, already aligns)
 const rateLimit = require('express-rate-limit');
 const { getCookieOptions } = require('./cookieOptions');
 

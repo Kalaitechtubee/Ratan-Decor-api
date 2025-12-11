@@ -1,4 +1,4 @@
-// cart/routes.js - Fixed with correct middleware import
+// cart/routes.js (updated: consistent middleware, aligned auth)
 const express = require('express');
 const router = express.Router();
 const { 
@@ -12,46 +12,22 @@ const {
 const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
-router.use(authenticateToken); // All routes require authentication
-router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.auth); // Global rate limiting
+router.use(authenticateToken);
+router.use(sanitizeInput);
+router.use(rateLimits.auth);
 
 // Main cart routes
-router.post('/', 
-  auditLogger,
-  addToCart  // Add item to cart
-);
-
-router.get('/', 
-  auditLogger,
-  getCart  // Get all cart items with full details
-);
-
-router.put('/:id', 
-  auditLogger,
-  updateCart  // Update cart item quantity
-);
-
-router.delete('/:id', 
-  auditLogger,
-  deleteCartItem  // Delete specific cart item
-);
+router.post('/', auditLogger, addToCart);
+router.get('/', auditLogger, getCart);
+router.put('/:id', auditLogger, updateCart);
+router.delete('/:id', auditLogger, deleteCartItem);
 
 // Additional cart routes
-router.get('/count', 
-  auditLogger,
-  getCartCount  // Get cart count for badges
-);
+router.get('/count', auditLogger, getCartCount);
+router.delete('/', auditLogger, clearCart);
 
-router.delete('/', 
-  auditLogger,
-  clearCart  // Clear entire cart
-);
-
-// Global error handling
+// Error handling
 router.use((error, req, res, next) => {
   console.error('Cart route error:', error);
   if (error.name === 'ValidationError') {

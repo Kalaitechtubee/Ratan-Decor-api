@@ -1,4 +1,4 @@
-// routes/order.js - Updated without role-based access but with authentication
+// routes/order.js (updated: proper module access control aligned with permissions table)
 const express = require('express');
 const router = express.Router();
 const {
@@ -11,59 +11,83 @@ const {
   getOrderStats,
   getAvailableAddresses
 } = require('./controller');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, moduleAccess } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
 router.use(authenticateToken);
 router.use(sanitizeInput);
 router.use(rateLimits.general);
 
-// Get available addresses (authenticated user only)
-router.get('/addresses',
-  auditLogger,
-  getAvailableAddresses
-);
+// GET /api/orders/addresses - Get available shipping addresses
+// Orders module: SuperAdmin, Admin, Sales
+router.get('/addresses', moduleAccess.requireOrdersAccess, auditLogger, getAvailableAddresses);
 
-// Create order (authenticated user only)
-router.post('/',
-  auditLogger,
-  createOrder
-);
+// POST /api/orders - Create new order
+// Any authenticated user can create orders (customers + staff)
+router.post('/', auditLogger, createOrder);
 
-// Get orders (authenticated user sees own orders)
-router.get('/', auditLogger, getOrders);
+// GET /api/orders - Get all orders (with role-based filtering in controller)
+// Orders module: SuperAdmin, Admin, Sales
+router.get('/', moduleAccess.requireOrdersAccess, auditLogger, getOrders);
 
-// Order stats (authenticated user sees own stats)
-router.get('/stats',
-  auditLogger,
-  getOrderStats
-);
+// GET /api/orders/stats - Get order statistics
+// Orders module: SuperAdmin, Admin, Sales
+router.get('/stats', moduleAccess.requireOrdersAccess, auditLogger, getOrderStats);
 
-// Get order by ID (own order only)
-router.get('/:id',
-  auditLogger,
-  getOrderById
-);
+// GET /api/orders/:id - Get order by ID (with ownership check in controller)
+// Orders module: SuperAdmin, Admin, Sales (+ own orders for customers)
+router.get('/:id', moduleAccess.requireOrdersAccess, auditLogger, getOrderById);
 
-// Cancel order (own order only)
-router.put('/:id/cancel',
-  auditLogger,
-  cancelOrder
-);
+// PUT /api/orders/:id/cancel - Cancel order (with ownership check in controller)
+// Orders module: SuperAdmin, Admin, Sales (+ own orders for customers)
+router.put('/:id/cancel', moduleAccess.requireOrdersAccess, auditLogger, cancelOrder);
 
-// Update order (own order only)
-router.put('/:id',
-  auditLogger,
-  updateOrder
-);
+// PUT /api/orders/:id - Update order (with ownership check in controller)
+// Orders module: SuperAdmin, Admin, Sales (+ own orders for customers)
+router.put('/:id', moduleAccess.requireOrdersAccess, auditLogger, updateOrder);
 
-// Delete order (own order only)
-router.delete('/:id',
-  auditLogger,
-  deleteOrder
-);
+// DELETE /api/orders/:id - Delete order
+// Orders module: SuperAdmin, Admin, Sales
+router.delete('/:id', moduleAccess.requireOrdersAccess, auditLogger, deleteOrder);
+
+// Error handling middleware
+router.use((error, req, res, next) => {
+  console.error('Order route error:', {
+    message: error.message,
+    userId: req.user?.id,
+    role: req.user?.role,
+    path: req.path
+  });
+
+  if (error.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation error',
+      errors: error.errors
+    });
+  }
+
+  if (error.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid ID format'
+    });
+  }
+
+  if (error.name === 'SequelizeValidationError') {
+    return res.status(400).json({
+      success: false,
+      message: 'Database validation error',
+      errors: error.errors.map(e => e.message)
+    });
+  }
+
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
 
 module.exports = router;

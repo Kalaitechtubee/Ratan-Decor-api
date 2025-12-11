@@ -1,4 +1,4 @@
-// auth/router.js - Updated with security middleware
+// auth/router.js (updated: aligned with moduleAccess.requireAdmin for staff routes, consistent middleware)
 const express = require('express');
 const router = express.Router();
 const {
@@ -28,48 +28,26 @@ router.post('/forgot-password', rateLimits.otp, forgotPassword);
 router.post('/reset-password', rateLimits.otp, resetPassword);
 router.post('/verify-otp', rateLimits.otp, verifyOTP);
 
-// Token refresh endpoint - can be called with refresh token
-// The authenticateToken middleware handles refresh internally and sets cookie
+// Token refresh endpoint - handled by authenticateToken middleware
 router.post('/refresh', authenticateToken, (req, res) => {
-  // If we reached here, authenticateToken already refreshed the token and set it in cookie
-  // Return success (token is in cookie, not in response body for security)
-  return res.json({
+  res.json({
     success: true,
-    accessToken: req.token, // TODO: Remove after frontend migration
     message: 'Token refreshed successfully'
   });
 });
 
 // Alternative refresh endpoint for compatibility
 router.post('/refresh-token', authenticateToken, (req, res) => {
-  // If we reached here, authenticateToken already refreshed the token and set it in cookie
-  return res.json({
+  res.json({
     success: true,
-    accessToken: req.token, // TODO: Remove after frontend migration
     message: 'Token refreshed successfully'
   });
 });
 
-// Admin/Manager routes for creating staff
-router.post('/create-staff',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin,
-  createStaffUser
-);
-
-// Admin/Manager routes for getting all staff users
-router.get('/staff',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin,
-  getAllStaffUsers
-);
-
-// Admin/Manager routes for getting staff user by ID
-router.get('/staff/:id',
-  authenticateToken,
-  moduleAccess.requireManagerOrAdmin,
-  getStaffUserById
-);
+// Admin routes for staff management (SuperAdmin/Admin only)
+router.post('/create-staff', authenticateToken, moduleAccess.requireAdmin, createStaffUser);
+router.get('/staff', authenticateToken, moduleAccess.requireAdmin, getAllStaffUsers);
+router.get('/staff/:id', authenticateToken, moduleAccess.requireAdmin, getStaffUserById);
 
 // Protected user routes
 router.get('/profile', authenticateToken, getProfile);
@@ -78,5 +56,15 @@ router.post('/logout', authenticateToken, secureLogout);
 
 // Public route for user types
 router.get('/user-types', userTypeController.getAllUserTypes);
+
+// Error handling
+router.use((error, req, res, next) => {
+  console.error('Auth route error:', error);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+  });
+});
 
 module.exports = router;

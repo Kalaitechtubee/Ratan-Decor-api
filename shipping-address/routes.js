@@ -1,4 +1,4 @@
-// routes/shipping-address.js
+// routes/shipping-address.js (updated: consistent middleware, aligned requireOwnDataOrStaff)
 const express = require('express');
 const router = express.Router();
 const {
@@ -12,52 +12,21 @@ const {
 const { authenticateToken, requireOwnDataOrStaff } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// ===============================
 // Global middlewares
-// ===============================
-router.use(authenticateToken); // All routes require authentication
-router.use(sanitizeInput); // Global sanitization
-router.use(rateLimits.auth); // Global rate limiting
+router.use(authenticateToken);
+router.use(sanitizeInput);
+router.use(rateLimits.auth);
 
-// CRUD operations (authenticated user - SuperAdmin/Admin can access via staff bypass if needed)
-// Create shipping address
-router.post('/',
-  auditLogger,
-  createShippingAddress
-);
+router.post('/', auditLogger, createShippingAddress);
 
-// Get shipping addresses (own or staff - SuperAdmin/Admin bypass)
-router.get('/',
-  auditLogger,
-  getShippingAddresses
-);
+router.get('/', auditLogger, getShippingAddresses);
 
-// Get single shipping address
-router.get('/:id',
-  auditLogger,
-  requireOwnDataOrStaff,
-  getShippingAddressById
-);
+router.get('/:id', auditLogger, requireOwnDataOrStaff, getShippingAddressById);
 
-// Update shipping address
-router.put('/:id',
-  auditLogger,
-  requireOwnDataOrStaff,
-  updateShippingAddress
-);
+router.put('/:id', auditLogger, requireOwnDataOrStaff, updateShippingAddress);
 
-// Delete shipping address
-router.delete('/:id',
-  auditLogger,
-  requireOwnDataOrStaff,
-  deleteShippingAddress
-);
+router.delete('/:id', auditLogger, requireOwnDataOrStaff, deleteShippingAddress);
 
-// Set default shipping address
-router.patch('/:id/set-default',
-  auditLogger,
-  requireOwnDataOrStaff,
-  setDefaultShippingAddress
-);
+router.patch('/:id/set-default', auditLogger, requireOwnDataOrStaff, setDefaultShippingAddress);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-// admin/controller.js
+// admin/controller.js (no changes needed, as it aligns with permissions via middleware)
 const { User, Enquiry, Order, Product, Category } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const { canCreateRole } = require('../auth/controller');

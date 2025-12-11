@@ -7,10 +7,15 @@ const {
   getFallbackImageUrl,
 } = require('../utils/imageUtils');
 
-const STAFF_ROLES = ['superadmin', 'admin', 'manager', 'sales', 'support'];
-const CLIENT_ROLES = ['customer', 'architect', 'dealer'];
+const STAFF_ROLES = ['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'];
+const CLIENT_ROLES = ['Customer', 'Architect', 'Dealer'];
 
 const getAllUsers = async (req, res) => {
+  // Role-based access control: SuperAdmin, Admin, Sales for Customers module
+  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Customers module' });
+  }
+
   try {
     const {
       page = 1,
@@ -34,8 +39,8 @@ const getAllUsers = async (req, res) => {
       ];
     }
     if (role) {
-      // Respect explicit role filter; keep as lowercase to match stored values
-      where.role = role.toLowerCase();
+      // Assume role from query is title case to match DB; if needed, normalize: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
+      where.role = role;
     }
     if (status) {
       where.status = status;
@@ -91,6 +96,11 @@ const getAllUsers = async (req, res) => {
 };
 
 const getAllStaffUsers = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin for Staff Management module
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Staff Management module' });
+  }
+
   try {
     const { page = 1, limit = 10, search, status, userTypeName, role } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -102,11 +112,11 @@ const getAllStaffUsers = async (req, res) => {
     };
 
     if (role) {
-      const roleLower = role.toLowerCase();
-      if (!STAFF_ROLES.includes(roleLower)) {
+      // Assume role from query is title case to match DB; if needed, normalize: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
+      if (!STAFF_ROLES.includes(role)) {
         return res.status(400).json({ success: false, message: 'Invalid staff role filter' });
       }
-      where.role = roleLower;
+      where.role = role;
     }
 
     if (search) {
@@ -156,6 +166,11 @@ const getAllStaffUsers = async (req, res) => {
 };
 
 const getStaffUserById = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin for Staff Management module
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Staff Management module' });
+  }
+
   try {
     const user = await User.findOne({
       where: {
@@ -174,6 +189,11 @@ const getStaffUserById = async (req, res) => {
 };
 
 const getUserById = async (req, res) => {
+  // Role-based access control: SuperAdmin, Admin, Sales for Customers module
+  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Customers module' });
+  }
+
   try {
     const user = await User.findByPk(req.params.id, {
       attributes: { exclude: ['password'] },
@@ -188,9 +208,14 @@ const getUserById = async (req, res) => {
 };
 
 const createUser = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin can create users (Sales can view but not create)
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to user creation' });
+  }
+
   try {
     const { name, email, password, mobile, company, role, status, userTypeId } = req.body;
-    const validRoles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support', 'superadmin'];
+    const validRoles = ['Customer', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate required fields
@@ -212,8 +237,11 @@ const createUser = async (req, res) => {
       });
     }
 
+    // Normalize role to title case
+    const normalizedRole = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+
     // Validate role
-    if (!validRoles.includes(role)) {
+    if (!validRoles.includes(normalizedRole)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
@@ -230,10 +258,10 @@ const createUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
       }
     } else {
-      // Ensure customer user type exists
-      let customerType = await UserType.findOne({ where: { name: 'customer' } });
+      // Ensure customer user type exists (assuming title case in DB)
+      let customerType = await UserType.findOne({ where: { name: 'Customer' } });
       if (!customerType) {
-        customerType = await UserType.create({ name: 'customer', isActive: true });
+        customerType = await UserType.create({ name: 'Customer', isActive: true });
       }
       finalUserTypeId = customerType.id;
     }
@@ -251,7 +279,7 @@ const createUser = async (req, res) => {
       password: hashedPassword,
       mobile,
       company,
-      role,
+      role: normalizedRole,
       status: status || 'Pending',
       userTypeId: finalUserTypeId,
       createdAt: new Date(),
@@ -272,12 +300,17 @@ const createUser = async (req, res) => {
 };
 
 const updateUser = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin can update users (Sales can view but not update)
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to user update' });
+  }
+
   try {
     const { name, email, mobile, company, role, status, userTypeId } = req.body;
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const validRoles = ['customer', 'architect', 'dealer', 'admin', 'manager', 'sales', 'support', 'superadmin'];
+    const validRoles = ['Customer', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate email if provided
@@ -292,9 +325,14 @@ const updateUser = async (req, res) => {
       }
     }
 
-    // Validate role
-    if (role && !validRoles.includes(role)) {
-      return res.status(400).json({ success: false, message: 'Invalid role' });
+    // Normalize role to title case if provided
+    let normalizedRole = role;
+    if (role) {
+      normalizedRole = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+      // Validate role
+      if (!validRoles.includes(normalizedRole)) {
+        return res.status(400).json({ success: false, message: 'Invalid role' });
+      }
     }
 
     // Validate status
@@ -303,7 +341,7 @@ const updateUser = async (req, res) => {
     }
 
     // Validate userTypeId
-    if (userTypeId) {
+    if (userTypeId !== undefined) {
       const userType = await UserType.findByPk(userTypeId);
       if (!userType) {
         return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
@@ -315,7 +353,7 @@ const updateUser = async (req, res) => {
       email: email || user.email,
       mobile: mobile !== undefined ? mobile : user.mobile,
       company: company !== undefined ? company : user.company,
-      role: role || user.role,
+      role: normalizedRole !== undefined ? normalizedRole : user.role,
       status: status || user.status,
       userTypeId: userTypeId !== undefined ? userTypeId : user.userTypeId,
     });
@@ -337,6 +375,11 @@ const updateUser = async (req, res) => {
 };
 
 const deleteUser = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin can delete users (Sales can view but not delete)
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to user deletion' });
+  }
+
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -350,6 +393,11 @@ const deleteUser = async (req, res) => {
 };
 
 const getUserOrderHistory = async (req, res) => {
+  // Role-based access control: SuperAdmin, Admin, Sales for Orders module
+  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const userId = req.params.id;
     const {
@@ -363,9 +411,9 @@ const getUserOrderHistory = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    // Check if user can access this data (consistent with middleware)
-    const allowedRoles = ['admin', 'manager', 'sales', 'support'];
-    if (!allowedRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
+    // Additional check: Staff can access any user's orders, but non-staff (e.g., customer) only own
+    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
+    if (!staffRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -577,6 +625,11 @@ const getUserOrderHistory = async (req, res) => {
 };
 
 const getFullOrderHistory = async (req, res) => {
+  // Role-based access control: Only SuperAdmin and Admin for full order history
+  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
+  }
+
   try {
     const {
       status,
@@ -588,11 +641,6 @@ const getFullOrderHistory = async (req, res) => {
       sortBy = 'orderDate',
       sortOrder = 'DESC'
     } = req.query;
-
-    // Only admin and manager can access full order history
-    if (req.user.role.toLowerCase() !== 'admin' && req.user.role.toLowerCase() !== 'manager') {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
 
     const where = {};
 
