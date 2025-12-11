@@ -1,6 +1,7 @@
 // controllers/videoCallEnquiryController.js
 const { Op } = require("sequelize");
 const { VideoCallEnquiry, VideoCallInternalNote, User, Product } = require("../models");
+const { formatTimeForStorage, formatTimeForDisplay, isValidTime } = require("../utils/timeUtils");
 
 const videoCallEnquiryController = {
   async create(req, res) {
@@ -34,6 +35,11 @@ const videoCallEnquiryController = {
       // If authenticated, use req.user.id; otherwise, allow guest (userId null)
       const enquiryUserId = req.user?.id || userId || null;
 
+      // Validate time format
+      if (!isValidTime(videoCallTime)) {
+        return res.status(400).json({ success: false, message: "Invalid time format. Please use HH:mm or H:mm AM/PM format." });
+      }
+
       // Optional: Check if productId exists (if provided)
       if (productId) {
         const product = await Product.findByPk(productId);
@@ -51,7 +57,7 @@ const videoCallEnquiryController = {
         email: email.trim().toLowerCase(),
         phoneNo: phoneNo.replace(/[^0-9+]/g, ""), // Clean phone number
         videoCallDate,
-        videoCallTime,
+        videoCallTime: formatTimeForStorage(videoCallTime), // Convert to 24-hour format for storage
         source: source || "Guest",
         notes: notes || null,
       });
@@ -65,7 +71,7 @@ const videoCallEnquiryController = {
           email: enquiry.email,
           phoneNo: enquiry.phoneNo,
           videoCallDate: enquiry.videoCallDate,
-          videoCallTime: enquiry.videoCallTime,
+          videoCallTime: formatTimeForDisplay(enquiry.videoCallTime), // Convert to AM/PM format for display
         },
       });
     } catch (error) {
@@ -112,9 +118,15 @@ const videoCallEnquiryController = {
         order: [["createdAt", "DESC"]],
       });
 
+      // Format time for display in AM/PM format
+      const formattedData = result.rows.map(enquiry => ({
+        ...enquiry.toJSON(),
+        videoCallTime: formatTimeForDisplay(enquiry.videoCallTime)
+      }));
+
       res.json({
         success: true,
-        data: result.rows,
+        data: formattedData,
         pagination: {
           page: parseInt(page),
           totalPages: Math.ceil(result.count / limit),
@@ -171,9 +183,9 @@ const videoCallEnquiryController = {
       // Handle internal notes only if authenticated and requested
       if (includeNotes === 'true') {
         if (!req.user) {
-          return res.status(403).json({ 
-            success: false, 
-            message: "Authentication required to view internal notes." 
+          return res.status(403).json({
+            success: false,
+            message: "Authentication required to view internal notes."
           });
         }
         const notes = await VideoCallInternalNote.findAll({
@@ -187,7 +199,13 @@ const videoCallEnquiryController = {
         enquiry.setDataValue('internalNotes', notes);
       }
 
-      res.json({ success: true, data: enquiry });
+      // Format time for display
+      const formattedEnquiry = {
+        ...enquiry.toJSON(),
+        videoCallTime: formatTimeForDisplay(enquiry.videoCallTime)
+      };
+
+      res.json({ success: true, data: formattedEnquiry });
     } catch (error) {
       console.error("Get enquiry by ID error:", error);
       res.status(500).json({ success: false, message: error.message });
@@ -200,7 +218,16 @@ const videoCallEnquiryController = {
       const enquiry = await VideoCallEnquiry.findByPk(req.params.id);
       if (!enquiry) return res.status(404).json({ success: false, message: "Enquiry not found" });
 
-      await enquiry.update(req.body);
+      // Handle time conversion if videoCallTime is being updated
+      const updateData = { ...req.body };
+      if (updateData.videoCallTime) {
+        if (!isValidTime(updateData.videoCallTime)) {
+          return res.status(400).json({ success: false, message: "Invalid time format. Please use HH:mm or H:mm AM/PM format." });
+        }
+        updateData.videoCallTime = formatTimeForStorage(updateData.videoCallTime);
+      }
+
+      await enquiry.update(updateData);
 
       const updated = await VideoCallEnquiry.findByPk(req.params.id, {
         include: [
@@ -209,7 +236,13 @@ const videoCallEnquiryController = {
         ],
       });
 
-      res.json({ success: true, message: "Enquiry updated", data: updated });
+      // Format time for display
+      const formattedUpdated = {
+        ...updated.toJSON(),
+        videoCallTime: formatTimeForDisplay(updated.videoCallTime)
+      };
+
+      res.json({ success: true, message: "Enquiry updated", data: formattedUpdated });
     } catch (error) {
       console.error("Update enquiry error:", error);
       res.status(500).json({ success: false, message: error.message });
@@ -227,7 +260,13 @@ const videoCallEnquiryController = {
         order: [["createdAt", "DESC"]],
       });
 
-      res.json({ success: true, data: enquiries });
+      // Format time for display
+      const formattedEnquiries = enquiries.map(enquiry => ({
+        ...enquiry.toJSON(),
+        videoCallTime: formatTimeForDisplay(enquiry.videoCallTime)
+      }));
+
+      res.json({ success: true, data: formattedEnquiries });
     } catch (error) {
       console.error("Get my enquiries error:", error);
       res.status(500).json({ success: false, message: error.message });
@@ -508,6 +547,15 @@ const videoCallEnquiryController = {
         order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
       });
 
+      // Format time for display in followUps
+      const formattedFollowUps = followUps.map(note => ({
+        ...note.toJSON(),
+        enquiry: {
+          ...note.enquiry.toJSON(),
+          videoCallTime: formatTimeForDisplay(note.enquiry.videoCallTime)
+        }
+      }));
+
       const overdue = await VideoCallInternalNote.findAll({
         where: {
           followUpDate: {
@@ -527,6 +575,15 @@ const videoCallEnquiryController = {
         ],
         order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
       });
+
+      // Format time for display in overdue
+      const formattedOverdue = overdue.map(note => ({
+        ...note.toJSON(),
+        enquiry: {
+          ...note.enquiry.toJSON(),
+          videoCallTime: formatTimeForDisplay(note.enquiry.videoCallTime)
+        }
+      }));
 
       res.json({
         success: true,

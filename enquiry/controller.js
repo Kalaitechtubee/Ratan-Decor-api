@@ -2,6 +2,7 @@
 const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require('jsonwebtoken');
+const { formatTimeForStorage, formatTimeForDisplay, isValidTime } = require("../utils/timeUtils");
 
 const getReqUserRole = (req) => {
   if (req.user && req.user.role) {
@@ -116,6 +117,18 @@ const enquiryController = {
         });
       }
 
+      // Validate videoCallTime if provided
+      let formattedVideoCallTime = null;
+      if (videoCallTime) {
+        if (!isValidTime(videoCallTime)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid video call time format. Please use HH:MM AM/PM or HH:MM format",
+          });
+        }
+        formattedVideoCallTime = formatTimeForStorage(videoCallTime);
+      }
+
       const enquiry = await Enquiry.create({
         userId: finalUserId,
         productId: parsedProductId,
@@ -129,7 +142,7 @@ const enquiryController = {
         source: source || "Email",
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,
-        videoCallTime: videoCallTime || null,
+        videoCallTime: formattedVideoCallTime || null,
         status: "New",
         role: role || req.user?.role || "Customer",
         pincode: cleanPincode,
@@ -555,6 +568,18 @@ async getEnquiryById(req, res) {
         }
       }
 
+      // Validate videoCallTime if provided
+      let formattedVideoCallTime = undefined;
+      if (videoCallTime !== undefined) {
+        if (videoCallTime && !isValidTime(videoCallTime)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid video call time format. Please use HH:MM AM/PM or HH:MM format",
+          });
+        }
+        formattedVideoCallTime = videoCallTime ? formatTimeForStorage(videoCallTime) : null;
+      }
+
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (email !== undefined) updateData.email = email.trim().toLowerCase();
@@ -566,7 +591,7 @@ async getEnquiryById(req, res) {
       if (source !== undefined) updateData.source = mappedSource || "website";
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
       if (videoCallDate !== undefined) updateData.videoCallDate = videoCallDate || null;
-      if (videoCallTime !== undefined) updateData.videoCallTime = videoCallTime || null;
+      if (formattedVideoCallTime !== undefined) updateData.videoCallTime = formattedVideoCallTime;
       if (productId !== undefined) updateData.productId = productId ? parseInt(productId, 10) : null;
       if (role !== undefined) updateData.role = role;
       if (status !== undefined) updateData.status = status;
@@ -642,7 +667,7 @@ async getEnquiryById(req, res) {
   async updateEnquiryStatus(req, res) {
     try {
       const { id } = req.params;
-      const { status, notes, role, pincode } = req.body; // Added pincode
+      const { status, notes, role, pincode, videoCallTime } = req.body; // Added pincode and videoCallTime
 
       if (!id || isNaN(parseInt(id))) {
         return res.status(400).json({
@@ -683,6 +708,18 @@ async getEnquiryById(req, res) {
         });
       }
 
+      // Validate videoCallTime if provided
+      let formattedVideoCallTime = undefined;
+      if (videoCallTime !== undefined) {
+        if (videoCallTime && !isValidTime(videoCallTime)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid video call time format. Please use HH:MM AM/PM or HH:MM format",
+          });
+        }
+        formattedVideoCallTime = videoCallTime ? formatTimeForStorage(videoCallTime) : null;
+      }
+
       const enquiry = await Enquiry.findByPk(id);
       if (!enquiry) {
         return res.status(404).json({
@@ -695,6 +732,7 @@ async getEnquiryById(req, res) {
       if (notes !== undefined) updateData.notes = notes?.trim() || null;
       if (role !== undefined) updateData.role = role;
       if (pincode !== undefined) updateData.pincode = cleanPincode; // New field
+      if (formattedVideoCallTime !== undefined) updateData.videoCallTime = formattedVideoCallTime;
       updateData.updatedAt = new Date();
 
       await enquiry.update(updateData);
