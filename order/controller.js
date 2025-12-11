@@ -184,9 +184,12 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
 
 // CREATE ORDER
 const createOrder = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to create order' });
+  }
   const transaction = await sequelize.transaction();
   try {
-    console.log('📦 CREATE ORDER - User:', req.user?.id, 'Role:', req.user?.role);
+    console.log('📦 CREATE ORDER - User:', req.user.id, 'Role:', req.user.role);
 
     const {
       paymentMethod,
@@ -399,7 +402,13 @@ const createOrder = async (req, res) => {
 
 // GET ORDERS
 const getOrders = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to view orders' });
+  }
   try {
+    const currentUserId = req.user.id;
+    const userRole = req.user.role;
+
     const {
       status,
       paymentStatus,
@@ -412,7 +421,16 @@ const getOrders = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    const where = req.query.userId ? { userId: req.query.userId } : {};
+    let targetUserId = currentUserId;
+    if (req.query.userId) {
+      const queryUserId = parseInt(req.query.userId);
+      if (queryUserId !== currentUserId) {
+        return res.status(403).json({ success: false, message: 'You can only view your own orders' });
+      }
+      targetUserId = queryUserId;
+    }
+
+    const where = { userId: targetUserId };
 
     if (status) {
       where.status = Array.isArray(status) ? { [Op.in]: status } : status;
@@ -528,7 +546,7 @@ const getOrders = async (req, res) => {
         orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
           if (item.product) {
-            const processedProduct = processOrderProductData(item.product, req, req.user.role);
+            const processedProduct = processOrderProductData(item.product, req, userRole);
             
             // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
             const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
@@ -541,9 +559,9 @@ const getOrders = async (req, res) => {
               name: item.product.name,
               imageUrl: imageUrl,
               imageUrls: imageUrls,
-              currentPrice: calculateUserPrice(item.product, req.user.role),
+              currentPrice: calculateUserPrice(item.product, userRole),
               orderPrice: parseFloat(item.price),
-              priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
+              priceChange: parseFloat((calculateUserPrice(item.product, userRole) - item.price).toFixed(2)),
               isActive: item.product.isActive,
               colors: processedProduct?.colors || [],
               specifications: processedProduct?.specifications || {},
@@ -584,7 +602,7 @@ const getOrders = async (req, res) => {
     };
 
     const statusStats = await Order.findAll({
-      where: req.query.userId ? { userId: req.query.userId } : {},
+      where: { userId: targetUserId },
       attributes: [
         'status',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -602,7 +620,7 @@ const getOrders = async (req, res) => {
     });
 
     const paymentStats = await Order.findAll({
-      where: req.query.userId ? { userId: req.query.userId } : {},
+      where: { userId: targetUserId },
       attributes: [
         'paymentStatus',
         [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
@@ -645,13 +663,18 @@ const getOrders = async (req, res) => {
 
 // GET ORDER BY ID
 const getOrderById = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to view order' });
+  }
   try {
     const { id } = req.params;
+    const currentUserId = req.user.id;
+    const userRole = req.user.role;
 
     const order = await Order.findOne({
       where: {
         id: id,
-        ...(['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id })
+        userId: currentUserId
       },
       include: [
         {
@@ -752,7 +775,7 @@ const getOrderById = async (req, res) => {
       const fallbackImageUrl = getFallbackImageUrl(req);
       
       if (item.product) {
-        const processedProduct = processOrderProductData(item.product, req, req.user.role);
+        const processedProduct = processOrderProductData(item.product, req, userRole);
         
         // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
         const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
@@ -766,9 +789,9 @@ const getOrderById = async (req, res) => {
           description: item.product.description || null,
           imageUrl: imageUrl,
           imageUrls: imageUrls,
-          currentPrice: calculateUserPrice(item.product, req.user.role),
+          currentPrice: calculateUserPrice(item.product, userRole),
           orderPrice: parseFloat(item.price),
-          priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
+          priceChange: parseFloat((calculateUserPrice(item.product, userRole) - item.price).toFixed(2)),
           isActive: item.product.isActive,
           colors: processedProduct?.colors || [],
           specifications: processedProduct?.specifications || {},
@@ -825,16 +848,20 @@ const getOrderById = async (req, res) => {
 
 // UPDATE ORDER
 const updateOrder = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to update order' });
+  }
   try {
     const { id } = req.params;
     const { status, paymentStatus, notes, expectedDeliveryDate } = req.body;
+    const currentUserId = req.user.id;
     
-    console.log('UPDATE ORDER - Order ID:', id, 'User Role:', req.user?.role);
+    console.log('UPDATE ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', req.user.role);
     
     const order = await Order.findOne({
       where: {
         id: id,
-        ...(['admin', 'manager'].includes(req.user.role.toLowerCase()) ? {} : { userId: req.user.id })
+        userId: currentUserId
       }
     });
     
@@ -844,14 +871,10 @@ const updateOrder = async (req, res) => {
     
     const updateData = {};
     
-    if (['admin', 'manager'].includes(req.user.role.toLowerCase())) {
-      if (status !== undefined) updateData.status = status;
-      if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
-      if (notes !== undefined) updateData.notes = notes;
-      if (expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = expectedDeliveryDate;
-    } else {
-      if (notes !== undefined) updateData.notes = notes;
-    }
+    if (status !== undefined) updateData.status = status;
+    if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
+    if (notes !== undefined) updateData.notes = notes;
+    if (expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = expectedDeliveryDate;
     
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ success: false, message: 'No valid fields to update' });
@@ -880,7 +903,7 @@ const updateOrder = async (req, res) => {
       await axios.put(`https://crm-api.example.com/orders/${id}`, {
         orderId: id,
         ...updateData,
-        updatedBy: req.user.id,
+        updatedBy: currentUserId,
         updatedByRole: req.user.role,
         updatedAt: new Date()
       }, { timeout: 5000 });
@@ -913,17 +936,20 @@ const updateOrder = async (req, res) => {
 
 // CANCEL ORDER
 const cancelOrder = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to cancel order' });
+  }
   try {
     const { id } = req.params;
     const { reason } = req.body;
+    const currentUserId = req.user.id;
 
-    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', req.user?.id, 'User Role:', req.user?.role);
+    console.log('CANCEL ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', req.user.role);
 
-    // Staff users can cancel any order, regular users can only cancel their own orders
-    let whereCondition = { id: id };
-    if (!['admin', 'superadmin', 'manager', 'sales', 'support'].includes(req.user.role.toLowerCase())) {
-      whereCondition.userId = req.user.id;
-    }
+    const whereCondition = { 
+      id: id,
+      userId: currentUserId
+    };
 
     const order = await Order.findOne({
       where: whereCondition
@@ -948,7 +974,7 @@ const cancelOrder = async (req, res) => {
       await axios.put(`https://crm-api.example.com/orders/${id}/cancel`, {
         orderId: id,
         reason: reason || 'Cancelled by user',
-        cancelledBy: req.user.id,
+        cancelledBy: currentUserId,
         cancelledAt: new Date()
       }, { timeout: 5000 });
     } catch (crmError) {
@@ -976,13 +1002,22 @@ const cancelOrder = async (req, res) => {
 
 // DELETE ORDER
 const deleteOrder = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to delete order' });
+  }
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
+    const currentUserId = req.user.id;
     
-    console.log('DELETE ORDER - Order ID:', id, 'Admin:', req.user?.role);
+    console.log('DELETE ORDER - Order ID:', id, 'User ID:', currentUserId, 'Role:', req.user.role);
     
-    const order = await Order.findByPk(id);
+    const order = await Order.findOne({
+      where: {
+        id: id,
+        userId: currentUserId
+      }
+    });
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
@@ -994,7 +1029,7 @@ const deleteOrder = async (req, res) => {
     
     try {
       await axios.delete(`https://crm-api.example.com/orders/${id}`, {
-        data: { deletedBy: req.user.id, deletedAt: new Date() },
+        data: { deletedBy: currentUserId, deletedAt: new Date() },
         timeout: 5000
       });
     } catch (crmError) {
@@ -1020,9 +1055,12 @@ const deleteOrder = async (req, res) => {
 
 // GET ORDER STATS
 const getOrderStats = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to view order stats' });
+  }
   try {
-    const userId = ['admin', 'manager', 'sales', 'user'].includes(req.user.role.toLowerCase()) ? null : req.user.id;
-    const whereClause = userId ? { userId } : {};
+    const currentUserId = req.user.id;
+    const whereClause = { userId: currentUserId };
     
     const totalOrders = await Order.count({ where: whereClause });
     const pendingOrders = await Order.count({ where: { ...whereClause, status: 'Pending' } });
@@ -1078,6 +1116,9 @@ const getOrderStats = async (req, res) => {
 
 // Also update the getAvailableAddresses function to be consistent
 const getAvailableAddresses = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required to view addresses' });
+  }
   try {
     const userId = req.user.id;
     
