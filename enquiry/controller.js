@@ -1,4 +1,3 @@
-
 const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require('jsonwebtoken');
@@ -257,7 +256,7 @@ async getAllEnquiries(req, res) {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { email: { [Op.like]: `%${search}%` } },
-        { phoneNo: { [Op.like]: `%${search}%` } },
+        { phone: { [Op.like]: `%${search}%` } },
         { companyName: { [Op.like]: `%${search}%` } },
         { pincode: { [Op.like]: `%${search}%` } },
         { productDesignNumber: { [Op.like]: `%${search}%` } },
