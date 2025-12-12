@@ -1,3 +1,4 @@
+// user/controller.js (consolidated: includes staff management without role checks)
 const { User, UserType, Order, OrderItem, Product, Category, ShippingAddress, sequelize } = require('../models');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
@@ -8,14 +9,30 @@ const {
 } = require('../utils/imageUtils');
 
 const STAFF_ROLES = ['SuperAdmin', 'Admin', 'Manager', 'Sales', 'Support'];
-const CLIENT_ROLES = ['Customer', 'Architect', 'Dealer'];
+
+// Canonical role map (case-insensitive input -> stored value)
+const ROLE_CANONICAL = {
+  superadmin: 'SuperAdmin',
+  admin: 'Admin',
+  manager: 'Manager',
+  sales: 'Sales',
+  support: 'Support',
+  dealer: 'Dealer',
+  architect: 'Architect',
+  general: 'General',
+  customer: 'customer'
+};
+
+const CLIENT_ROLES = ['customer', 'General', 'Architect', 'Dealer'];
+const VALID_ROLES = Object.values(ROLE_CANONICAL);
+
+const normalizeRole = (roleInput) => {
+  if (!roleInput) return null;
+  const roleKey = roleInput.toString().trim().toLowerCase();
+  return ROLE_CANONICAL[roleKey] || null;
+};
 
 const getAllUsers = async (req, res) => {
-  // Role-based access control: SuperAdmin, Admin, Sales for Customers module
-  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'Access denied to Customers module' });
-  }
-
   try {
     const {
       page = 1,
@@ -39,8 +56,11 @@ const getAllUsers = async (req, res) => {
       ];
     }
     if (role) {
-      // Assume role from query is title case to match DB; if needed, normalize: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
-      where.role = role;
+      const normalizedRole = normalizeRole(role);
+      if (!normalizedRole) {
+        return res.status(400).json({ success: false, message: 'Invalid role filter' });
+      }
+      where.role = normalizedRole;
     }
     if (status) {
       where.status = status;
@@ -96,11 +116,6 @@ const getAllUsers = async (req, res) => {
 };
 
 const getAllStaffUsers = async (req, res) => {
-  // Role-based access control: Only SuperAdmin and Admin for Staff Management module
-  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'Access denied to Staff Management module' });
-  }
-
   try {
     const { page = 1, limit = 10, search, status, userTypeName, role } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -112,11 +127,11 @@ const getAllStaffUsers = async (req, res) => {
     };
 
     if (role) {
-      // Assume role from query is title case to match DB; if needed, normalize: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
-      if (!STAFF_ROLES.includes(role)) {
+      const normalizedRole = normalizeRole(role);
+      if (!normalizedRole || !STAFF_ROLES.includes(normalizedRole)) {
         return res.status(400).json({ success: false, message: 'Invalid staff role filter' });
       }
-      where.role = role;
+      where.role = normalizedRole;
     }
 
     if (search) {
@@ -151,7 +166,7 @@ const getAllStaffUsers = async (req, res) => {
 
     res.json({
       success: true,
-      data: rows,
+      staffUsers: rows,
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(count / limitNum),
@@ -166,11 +181,6 @@ const getAllStaffUsers = async (req, res) => {
 };
 
 const getStaffUserById = async (req, res) => {
-  // Role-based access control: Only SuperAdmin and Admin for Staff Management module
-  if (!['SuperAdmin', 'Admin'].includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: 'Access denied to Staff Management module' });
-  }
-
   try {
     const user = await User.findOne({
       where: {
@@ -215,7 +225,6 @@ const createUser = async (req, res) => {
 
   try {
     const { name, email, password, mobile, company, role, status, userTypeId } = req.body;
-    const validRoles = ['Customer', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate required fields
@@ -237,11 +246,9 @@ const createUser = async (req, res) => {
       });
     }
 
-    // Normalize role to title case
-    const normalizedRole = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
-
-    // Validate role
-    if (!validRoles.includes(normalizedRole)) {
+    // Normalize role
+    const normalizedRole = normalizeRole(role);
+    if (!normalizedRole || !VALID_ROLES.includes(normalizedRole)) {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
@@ -258,10 +265,10 @@ const createUser = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid userTypeId' });
       }
     } else {
-      // Ensure customer user type exists (assuming title case in DB)
-      let customerType = await UserType.findOne({ where: { name: 'Customer' } });
+      // Ensure customer user type exists
+      let customerType = await UserType.findOne({ where: { name: 'customer' } });
       if (!customerType) {
-        customerType = await UserType.create({ name: 'Customer', isActive: true });
+        customerType = await UserType.create({ name: 'customer', isActive: true });
       }
       finalUserTypeId = customerType.id;
     }
@@ -282,7 +289,6 @@ const createUser = async (req, res) => {
       role: normalizedRole,
       status: status || 'Pending',
       userTypeId: finalUserTypeId,
-      createdAt: new Date(),
     });
 
     const userWithoutPassword = user.toJSON();
@@ -310,7 +316,6 @@ const updateUser = async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const validRoles = ['Customer', 'Architect', 'Dealer', 'Admin', 'Manager', 'Sales', 'Support', 'SuperAdmin'];
     const validStatuses = ['Pending', 'Approved', 'Rejected'];
 
     // Validate email if provided
@@ -325,12 +330,12 @@ const updateUser = async (req, res) => {
       }
     }
 
-    // Normalize role to title case if provided
+    // Normalize role to canonical if provided
     let normalizedRole = role;
-    if (role) {
-      normalizedRole = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+    if (role !== undefined) {
+      normalizedRole = normalizeRole(role);
       // Validate role
-      if (!validRoles.includes(normalizedRole)) {
+      if (!normalizedRole || !VALID_ROLES.includes(normalizedRole)) {
         return res.status(400).json({ success: false, message: 'Invalid role' });
       }
     }
@@ -475,6 +480,7 @@ const getUserOrderHistory = async (req, res) => {
 
     const processedOrders = orders.map(order => {
       const orderData = order.toJSON();
+      const buyerRole = orderData.user?.role || 'customer';
 
       let deliveryAddress = null;
       if (orderData.deliveryAddressData) {
@@ -528,16 +534,16 @@ const getUserOrderHistory = async (req, res) => {
         orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
           if (item.product) {
-            const processedProduct = processOrderProductData(item.product, req, req.user.role);
+            const processedProduct = processOrderProductData(item.product, req, buyerRole);
 
             itemData.product = {
               id: item.product.id,
               name: item.product.name,
               imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
               imageUrls: processedProduct.imageUrls || [],
-              currentPrice: calculateUserPrice(item.product, req.user.role),
+              currentPrice: calculateUserPrice(item.product, buyerRole),
               orderPrice: parseFloat(item.price),
-              priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
+              priceChange: parseFloat((calculateUserPrice(item.product, buyerRole) - item.price).toFixed(2)),
               isActive: item.product.isActive,
               colors: processedProduct.colors || [],
               specifications: processedProduct.specifications || {},
@@ -700,6 +706,7 @@ const getFullOrderHistory = async (req, res) => {
 
     const processedOrders = orders.map(order => {
       const orderData = order.toJSON();
+      const buyerRole = orderData.user?.role || 'customer';
 
       let deliveryAddress = null;
       if (orderData.deliveryAddressData) {
@@ -753,16 +760,16 @@ const getFullOrderHistory = async (req, res) => {
         orderData.orderItems = orderData.orderItems.map(item => {
           const itemData = { ...item };
           if (item.product) {
-            const processedProduct = processOrderProductData(item.product, req, req.user.role);
+            const processedProduct = processOrderProductData(item.product, req, buyerRole);
 
             itemData.product = {
               id: item.product.id,
               name: item.product.name,
               imageUrl: processedProduct.imageUrl || getFallbackImageUrl(req),
               imageUrls: processedProduct.imageUrls || [],
-              currentPrice: calculateUserPrice(item.product, req.user.role),
+              currentPrice: calculateUserPrice(item.product, buyerRole),
               orderPrice: parseFloat(item.price),
-              priceChange: parseFloat((calculateUserPrice(item.product, req.user.role) - item.price).toFixed(2)),
+              priceChange: parseFloat((calculateUserPrice(item.product, buyerRole) - item.price).toFixed(2)),
               isActive: item.product.isActive,
               colors: processedProduct.colors || [],
               specifications: processedProduct.specifications || {},

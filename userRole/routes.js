@@ -1,8 +1,9 @@
-// routes/userRole.js (updated: aligned moduleAccess.requireStaffAccess and requireManagerOrAdmin, consistent middleware)
+// routes/userRole.js (clean version: removed all role-based access)
 const express = require('express');
 const router = express.Router();
+
 const userRoleController = require('../userRole/controller');
-const { authenticateToken, moduleAccess } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // Global middlewares
@@ -10,19 +11,26 @@ router.use(authenticateToken);
 router.use(sanitizeInput);
 router.use(rateLimits.general);
 
+// ===============================
+// Public (Authenticated) Endpoints
+// ===============================
+
 router.get('/', auditLogger, userRoleController.getAllRoles);
 
-router.get('/users', moduleAccess.requireStaffAccess, auditLogger, userRoleController.getUsersByRole);
+router.get('/users', auditLogger, userRoleController.getUsersByRole);
 
-router.put('/users/:id/role', moduleAccess.requireStaffAccess, auditLogger, userRoleController.updateUserRole);
+router.put('/users/:id/role', auditLogger, userRoleController.updateUserRole);
 
-router.put('/users/:id/status', moduleAccess.requireManagerOrAdmin, auditLogger, userRoleController.updateUserStatus);
+router.put('/users/:id/status', auditLogger, userRoleController.updateUserStatus);
 
-router.get('/stats', moduleAccess.requireManagerOrAdmin, auditLogger, userRoleController.getRoleStats);
+router.get('/stats', auditLogger, userRoleController.getRoleStats);
 
-// Error handling
+// ===============================
+// Error Handling
+// ===============================
 router.use((error, req, res, next) => {
   console.error('UserRole route error:', error);
+
   if (error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -30,12 +38,14 @@ router.use((error, req, res, next) => {
       errors: error.errors
     });
   }
+
   if (error.name === 'CastError') {
     return res.status(400).json({
       success: false,
       message: 'Invalid ID format'
     });
   }
+
   res.status(500).json({
     success: false,
     message: 'Internal server error',

@@ -1,4 +1,4 @@
-// auth/controller.js (updated with role creation constraints)
+// auth/controller.js (updated: removed duplicate staff management functions; kept auth-focused)
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
@@ -216,7 +216,6 @@ const login = async (req, res) => {
   }
 };
 
-// User registration
 // User registration (COMPLETE FIXED VERSION)
 const register = async (req, res) => {
   try {
@@ -567,109 +566,6 @@ const createStaffUser = async (req, res) => {
   }
 };
 
-// Get all staff users (Admin/Manager only)
-const getAllStaffUsers = async (req, res) => {
-  try {
-    const requester = req.user;
-    if (!['superadmin', 'admin', 'manager'].includes(requester.role.toLowerCase())) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only SuperAdmin, Admin, or Manager can view staff users'
-      });
-    }
-    
-    const staffUsers = await User.findAll({
-      where: {
-        role: REGISTRATION_RULES.STAFF_ROLES
-      },
-      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }],
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']]
-    });
-    
-    res.json({
-      success: true,
-      users: staffUsers.map(user => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        mobile: user.mobile,
-        company: user.company,
-        userTypeId: user.userTypeId,
-        userTypeName: user.userType ? user.userType.name : null,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      })),
-      total: staffUsers.length
-    });
-  } catch (error) {
-    console.error('Get all staff users error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-// Get staff user by ID (Admin/Manager only)
-const getStaffUserById = async (req, res) => {
-  try {
-    const requester = req.user;
-    if (!['superadmin', 'admin', 'manager'].includes(requester.role.toLowerCase())) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only SuperAdmin, Admin, or Manager can view staff user details'
-      });
-    }
-    
-    const { id } = req.params;
-    const user = await User.findByPk(id, {
-      include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
-    });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    // Check if the user has a staff role
-    if (!REGISTRATION_RULES.STAFF_ROLES.includes(user.role.toLowerCase())) {
-      return res.status(403).json({
-        success: false,
-        message: 'This endpoint is only for staff users'
-      });
-    }
-    
-    // Return user details excluding sensitive information
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status,
-        mobile: user.mobile,
-        company: user.company,
-        userTypeId: user.userTypeId,
-        userTypeName: user.userType ? user.userType.name : null,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Get staff user by ID error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
 // Check user status by ID
 const checkStatus = async (req, res) => {
   try {
@@ -871,8 +767,6 @@ module.exports = {
   login,
   register,
   createStaffUser,
-  getAllStaffUsers,
-  getStaffUserById,
   checkStatus,
   resendApproval,
   updateUser,

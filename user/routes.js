@@ -1,4 +1,4 @@
-// routes/user.js (updated: proper module access control aligned with permissions table)
+// routes/user.js (ALL role-based access removed – auth-only)
 const express = require('express');
 const router = express.Router();
 
@@ -14,61 +14,46 @@ const {
   getFullOrderHistory
 } = require('./controller');
 
-const {
-  authenticateToken,
-  moduleAccess
-} = require('../middleware/auth');
-
+const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// Global middlewares
+// Global middlewares – only authentication + security
 router.use(authenticateToken);
 router.use(sanitizeInput);
 router.use(rateLimits.general);
 
-// POST /api/users - Create new user
-// Staff Management: SuperAdmin, Admin only
-router.post('/', moduleAccess.requireStaffManagementAccess, auditLogger, createUser);
+// Create new user (any authenticated user)
+router.post('/', auditLogger, createUser);
 
-// GET /api/users - Get all users (customers)
-// Customers module: SuperAdmin, Admin, Sales
-// Customers module: SuperAdmin, Admin, Sales
-router.get('/', moduleAccess.requireCustomersAccess, auditLogger, getAllUsers);
+// Get all users (customers + staff)
+router.get('/', auditLogger, getAllUsers);
 
-// GET /api/users/staff - Get all staff users
-// Staff Management: SuperAdmin, Admin only
-router.get('/staff', moduleAccess.requireStaffManagementAccess, auditLogger, getAllStaffUsers);
+// Get all staff users (all authenticated users)
+router.get('/staff', auditLogger, getAllStaffUsers);
 
-// GET /api/users/:id - Get user by ID
-// Customers module: SuperAdmin, Admin, Sales (with ownership check in controller)
-router.get('/:id', moduleAccess.requireCustomersAccess, auditLogger, getUserById);
+// Get user by ID
+router.get('/:id', auditLogger, getUserById);
 
-// GET /api/users/staff/:id - Get staff user by ID
-// Staff Management: SuperAdmin, Admin only
-router.get('/staff/:id', moduleAccess.requireStaffManagementAccess, auditLogger, getStaffUserById);
+// Get staff user by ID (all authenticated users)
+router.get('/staff/:id', auditLogger, getStaffUserById);
 
-// PUT /api/users/:id - Update user
-// Customers module: SuperAdmin, Admin, Sales (with ownership check in controller)
-router.put('/:id', moduleAccess.requireCustomersAccess, auditLogger, updateUser);
+// Update any user
+router.put('/:id', auditLogger, updateUser);
 
-// DELETE /api/users/:id - Delete user
-// Staff Management: SuperAdmin, Admin only (for staff), or Customers module for customers
-router.delete('/:id', moduleAccess.requireStaffManagementAccess, auditLogger, deleteUser);
+// Delete any user
+router.delete('/:id', auditLogger, deleteUser);
 
-// GET /api/users/:id/orders - Get user order history
-// Orders module: SuperAdmin, Admin, Sales (with ownership check in controller)
-router.get('/:id/orders', moduleAccess.requireOrdersAccess, auditLogger, getUserOrderHistory);
+// Get order history of any user
+router.get('/:id/orders', auditLogger, getUserOrderHistory);
 
-// GET /api/users/orders/full - Get full order history across all users
-// Orders module: SuperAdmin, Admin, Sales
-router.get('/orders/full', moduleAccess.requireOrdersAccess, auditLogger, getFullOrderHistory);
+// Get full order history of all users
+router.get('/orders/full', auditLogger, getFullOrderHistory);
 
-// Error handling middleware
+// Error handling
 router.use((error, req, res, next) => {
   console.error('User route error:', {
     message: error.message,
     userId: req.user?.id,
-    role: req.user?.role,
     path: req.path
   });
 
@@ -76,7 +61,7 @@ router.use((error, req, res, next) => {
     return res.status(400).json({
       success: false,
       message: 'Validation error',
-      errors: error.errors
+      errors: error.errors || error.message
     });
   }
 
@@ -91,7 +76,7 @@ router.use((error, req, res, next) => {
     return res.status(400).json({
       success: false,
       message: 'Database validation error',
-      errors: error.errors.map(e => e.message)
+      errors: error.errors?.map(e => e.message) || []
     });
   }
 
@@ -102,10 +87,10 @@ router.use((error, req, res, next) => {
     });
   }
 
-  res.status(500).json({
+  res.status(error.status || 500).json({
     success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    message: error.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
 });
 

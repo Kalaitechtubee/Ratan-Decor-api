@@ -1,7 +1,7 @@
-// middleware/auth.js (corrected: fixed role consistency, normalized roles in status checks, extracted user loading helper, removed JWT secret fallback, added ID validation in requireOwnDataOrStaff, improved logging)
+// middleware/auth.js (updated: removed role-based checks in moduleAccess – now all pass-through for authenticated users only)
 const jwt = require('jsonwebtoken');
 const { User, UserType, VideoCallEnquiry } = require('../models');
-const { verifyAccessToken, verifyRefreshToken } = require('../services/jwt.service');
+const { generateAccessToken, verifyAccessToken, verifyRefreshToken } = require('../services/jwt.service');
 const { getCookieOptions } = require('./cookieOptions');
 const { sessionSecurity } = require('./security');
 
@@ -39,7 +39,7 @@ const loadAndSetUser = async (req, res, userId) => {
       company: user.company
     };
 
-    return { user };
+    return { user: req.user }; // Return the payload object for consistency
   } catch (err) {
     console.error('User loading error:', { message: err.message, userId });
     return { error: { status: 500, message: 'Failed to load user' } };
@@ -94,13 +94,8 @@ const authenticateToken = async (req, res, next) => {
           return respondError(result.error.status, result.error.message);
         }
 
-        const newAccessToken = jwt.sign({
-          id: result.user.id,
-          role: result.user.role,
-          status: result.user.status,
-          email: result.user.email,
-          userTypeId: result.user.userTypeId
-        }, secret, { expiresIn: '15m' });
+        // Use generateAccessToken for consistency
+        const newAccessToken = generateAccessToken(result.user);
        
         setAccessCookie(newAccessToken);
         req.token = newAccessToken;
@@ -171,50 +166,50 @@ const authorizeRoles = (...allowedRoles) => {
 };
 
 // -----------------------------
-// Module-specific Access (updated to match exact table permissions)
+// Module-specific Access (removed role checks – all pass-through for authenticated users)
 // -----------------------------
 const moduleAccess = {
-  // Dashboard: SuperAdmin, Admin, Support, Sales
-  requireDashboardAccess: authorizeRoles(["SuperAdmin", "Admin", "Support", "Sales"]),
+  // Dashboard: Pass-through
+  requireDashboardAccess: (req, res, next) => next(),
  
-  // Orders: SuperAdmin, Admin, Sales
-  requireOrdersAccess: authorizeRoles(["SuperAdmin", "Admin", "Sales"]),
+  // Orders: Pass-through
+  requireOrdersAccess: (req, res, next) => next(),
  
-  // Enquiries: SuperAdmin, Admin, Sales
-  requireEnquiriesAccess: authorizeRoles(["SuperAdmin", "Admin", "Sales"]),
+  // Enquiries: Pass-through
+  requireEnquiriesAccess: (req, res, next) => next(),
  
-  // Customers: SuperAdmin, Admin, Sales (using consistent casing)
-  requireCustomersAccess: authorizeRoles(["SuperAdmin", "Admin", "Sales"]),
+  // Customers: Pass-through
+  requireCustomersAccess: (req, res, next) => next(),
  
-  // Products: SuperAdmin, Admin, Support
-  requireProductsAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]),
+  // Products: Pass-through
+  requireProductsAccess: (req, res, next) => next(),
  
-  // Staff Management: SuperAdmin, Admin
-  requireStaffManagementAccess: authorizeRoles(["SuperAdmin", "Admin"]),
+  // Staff Management: Pass-through
+  requireStaffManagementAccess: (req, res, next) => next(),
  
-  // Business Types: SuperAdmin, Admin, Support
-  requireBusinessTypesAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]),
+  // Business Types: Pass-through
+  requireBusinessTypesAccess: (req, res, next) => next(),
  
-  // Categories: SuperAdmin, Admin, Support
-  requireCategoriesAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]),
+  // Categories: Pass-through
+  requireCategoriesAccess: (req, res, next) => next(),
  
-  // Sliders: SuperAdmin, Admin, Support
-  requireSlidersAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]),
+  // Sliders: Pass-through
+  requireSlidersAccess: (req, res, next) => next(),
  
-  // SEO: SuperAdmin, Admin, Support
-  requireSeoAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]),
+  // SEO: Pass-through
+  requireSeoAccess: (req, res, next) => next(),
  
-  // Contacts: SuperAdmin, Admin, Support, Sales
-  requireContactsAccess: authorizeRoles(["SuperAdmin", "Admin", "Support", "Sales"]),
+  // Contacts: Pass-through
+  requireContactsAccess: (req, res, next) => next(),
  
-  // Legacy/Adjusted existing (removed Manager where not in table, adjusted for table alignment)
-  requireAdmin: authorizeRoles(["SuperAdmin", "Admin"]),
-  requireManagerOrAdmin: authorizeRoles(["SuperAdmin", "Admin"]), // Removed Manager as not in table
-  requireSalesAccess: authorizeRoles(["SuperAdmin", "Admin", "Sales"]), // Removed Manager
-  requireSupportAccess: authorizeRoles(["SuperAdmin", "Admin", "Support"]), // Removed Manager
-  requireBusinessUser: authorizeRoles(["SuperAdmin", "Admin", "Support"]), // Adjusted to match Business Types/Support
-  requireAuth: authorizeRoles(["SuperAdmin", "Admin", "Support", "Sales"]), // Limited to table roles
-  requireStaffAccess: authorizeRoles(["SuperAdmin", "Admin"]) // Limited to Staff Management
+  // Legacy/Adjusted (all pass-through)
+  requireAdmin: (req, res, next) => next(),
+  requireManagerOrAdmin: (req, res, next) => next(),
+  requireSalesAccess: (req, res, next) => next(),
+  requireSupportAccess: (req, res, next) => next(),
+  requireBusinessUser: (req, res, next) => next(),
+  requireAuth: (req, res, next) => next(),
+  requireStaffAccess: (req, res, next) => next()
 };
 
 // -----------------------------

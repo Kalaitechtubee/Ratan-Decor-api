@@ -1,6 +1,7 @@
-// routes/shipping-address.js (updated: consistent middleware, aligned requireOwnDataOrStaff)
+// routes/shipping-address.js (clean version: removed all role/ownership checks)
 const express = require('express');
 const router = express.Router();
+
 const {
   createShippingAddress,
   getShippingAddresses,
@@ -9,7 +10,8 @@ const {
   deleteShippingAddress,
   setDefaultShippingAddress
 } = require('./controller');
-const { authenticateToken, requireOwnDataOrStaff } = require('../middleware/auth');
+
+const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
 // Global middlewares
@@ -17,16 +19,17 @@ router.use(authenticateToken);
 router.use(sanitizeInput);
 router.use(rateLimits.auth);
 
+// Routes (authenticated only — no ownership checks)
 router.post('/', auditLogger, createShippingAddress);
 
 router.get('/', auditLogger, getShippingAddresses);
 
-router.get('/:id', auditLogger, requireOwnDataOrStaff, getShippingAddressById);
+router.get('/:id', auditLogger, getShippingAddressById);
 
-router.put('/:id', auditLogger, requireOwnDataOrStaff, updateShippingAddress);
+router.put('/:id', auditLogger, updateShippingAddress);
 
-router.delete('/:id', auditLogger, requireOwnDataOrStaff, deleteShippingAddress);
+router.delete('/:id', auditLogger, deleteShippingAddress);
 
-router.patch('/:id/set-default', auditLogger, requireOwnDataOrStaff, setDefaultShippingAddress);
+router.patch('/:id/set-default', auditLogger, setDefaultShippingAddress);
 
 module.exports = router;

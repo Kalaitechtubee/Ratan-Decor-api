@@ -1,61 +1,64 @@
-// routes/videoCallEnquiry.js (updated: unified with enquiries logic, aligned requireSalesAccess and requireOwnDataOrStaff, removed optionalAuth for consistency)
+// routes/videoCallEnquiry.js (ALL role-based access removed – auth-only where needed)
 const express = require('express');
 const router = express.Router();
 const videoCallEnquiryController = require('./controller');
-const { authenticateToken, moduleAccess, requireOwnDataOrStaff } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// Global middlewares for protected routes
-router.use('/my-enquiries', authenticateToken, sanitizeInput, rateLimits.general);
-router.use('/all', authenticateToken, sanitizeInput, rateLimits.general);
+// Global middlewares (applied only where needed)
+router.use(sanitizeInput);
+router.use(rateLimits.general);
 
-// Public: Create video call enquiry
-router.post('/create', sanitizeInput, auditLogger, videoCallEnquiryController.create);
+// Public: Anyone can create a video call enquiry
+router.post('/create', auditLogger, videoCallEnquiryController.create);
 
-// Authenticated: Get own enquiries
-router.get('/my-enquiries', auditLogger, videoCallEnquiryController.getMyEnquiries);
+// Authenticated user: Get my own enquiries
+router.get('/my-enquiries', authenticateToken, auditLogger, videoCallEnquiryController.getMyEnquiries);
 
-// Staff: Get all
-router.get('/all', moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.getAll);
+// Anyone authenticated can view all (previously staff-only)
+router.get('/all', authenticateToken, auditLogger, videoCallEnquiryController.getAll);
 
-// Get specific (own or staff)
-router.get('/:id', authenticateToken, sanitizeInput, requireOwnDataOrStaff, auditLogger, videoCallEnquiryController.getById);
+// Get specific enquiry by ID (any authenticated user)
+router.get('/:id', authenticateToken, auditLogger, videoCallEnquiryController.getById);
 
-// Update (own or staff)
-router.put('/:id', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.update);
+// Update any enquiry (any authenticated user)
+router.put('/:id', authenticateToken, auditLogger, videoCallEnquiryController.update);
 
-// Delete (own or staff)
-router.delete('/:id', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.delete);
+// Delete any enquiry (any authenticated user)
+router.delete('/:id', authenticateToken, auditLogger, videoCallEnquiryController.delete);
 
-// Internal Notes (staff)
-router.post('/:id/internal-notes', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.addInternalNote);
-router.get('/:id/internal-notes', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.getInternalNotes);
-router.put('/internal-notes/:noteId', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.updateInternalNote);
-router.delete('/internal-notes/:noteId', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.deleteInternalNote);
+// Internal Notes – now accessible to any authenticated user
+router.post('/:id/internal-notes', authenticateToken, auditLogger, videoCallEnquiryController.addInternalNote);
+router.get('/:id/internal-notes', authenticateToken, auditLogger, videoCallEnquiryController.getInternalNotes);
+router.put('/internal-notes/:noteId', authenticateToken, auditLogger, videoCallEnquiryController.updateInternalNote);
+router.delete('/internal-notes/:noteId', authenticateToken, auditLogger, videoCallEnquiryController.deleteInternalNote);
 
-// Follow-up Dashboard (staff)
-router.get('/dashboard/follow-ups', authenticateToken, sanitizeInput, moduleAccess.requireSalesAccess, auditLogger, videoCallEnquiryController.getFollowUpDashboard);
+// Follow-up Dashboard – now accessible to any authenticated user
+router.get('/dashboard/follow-ups', authenticateToken, auditLogger, videoCallEnquiryController.getFollowUpDashboard);
 
 // Error handling
 router.use((error, req, res, next) => {
   console.error('Video Call Enquiry route error:', error);
+
   if (error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
       message: 'Validation error',
-      errors: error.errors
+      errors: error.errors || error.message
     });
   }
+
   if (error.name === 'CastError') {
     return res.status(400).json({
       success: false,
       message: 'Invalid ID format'
     });
   }
-  res.status(500).json({
+
+  res.status(error.status || 500).json({
     success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    message: error.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? error.stack : undefined
   });
 });
 
