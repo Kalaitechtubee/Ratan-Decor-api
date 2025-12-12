@@ -199,8 +199,10 @@ const getStaffUserById = async (req, res) => {
 };
 
 const getUserById = async (req, res) => {
-  // Role-based access control: SuperAdmin, Admin, Sales for Customers module
-  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
+  // Role-based access control: allow staff roles or the user themselves
+  // STAFF_ROLES is defined above and includes SuperAdmin, Admin, Manager, Sales, Support
+  const requestedUserId = Number(req.params.id);
+  if (!STAFF_ROLES.includes(req.user.role) && req.user.id !== requestedUserId) {
     return res.status(403).json({ success: false, message: 'Access denied to Customers module' });
   }
 
@@ -398,8 +400,9 @@ const deleteUser = async (req, res) => {
 };
 
 const getUserOrderHistory = async (req, res) => {
-  // Role-based access control: SuperAdmin, Admin, Sales for Orders module
-  if (!['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role)) {
+  // Role-based access control: allow staff roles or the user themselves
+  const requestedUserId = Number(req.params.id);
+  if (!STAFF_ROLES.includes(req.user.role) && req.user.id !== requestedUserId) {
     return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
   }
 
@@ -416,9 +419,8 @@ const getUserOrderHistory = async (req, res) => {
       sortOrder = 'DESC'
     } = req.query;
 
-    // Additional check: Staff can access any user's orders, but non-staff (e.g., customer) only own
-    const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
-    if (!staffRoles.includes(req.user.role) && parseInt(userId) !== req.user.id) {
+    // Additional check: Staff can access any user's orders, but non-staff only their own
+    if (!STAFF_ROLES.includes(req.user.role) && parseInt(userId) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
