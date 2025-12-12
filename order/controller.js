@@ -195,7 +195,98 @@ const createOrder = async (req, res) => {
       expectedDeliveryDate
     } = req.body;
 
-    // ... (rest of the function remains the same until the response)
+    const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
+
+    // Prepare delivery address (may create new ShippingAddress)
+    const orderAddress = await prepareOrderAddress(req, addressType, shippingAddressId, newAddressData);
+
+    // Build items list: prefer `items` from body, otherwise use cart items
+    let itemsToProcess = [];
+    if (Array.isArray(items) && items.length > 0) {
+      itemsToProcess = items.map(it => ({ productId: it.productId || it.id, quantity: Number(it.quantity || 1) }));
+    } else {
+      const cartItems = await Cart.findAll({ where: { userId: req.user.id }, include: [{ model: Product, as: 'product' }], transaction });
+      itemsToProcess = cartItems.map(ci => ({ productId: ci.productId, quantity: Number(ci.quantity || 1), product: ci.product }));
+    }
+
+    if (!itemsToProcess || itemsToProcess.length === 0) {
+      throw new Error('No items provided to create order');
+    }
+
+    // Load products for any items missing product data
+    const productIds = itemsToProcess.map(i => i.productId);
+    const products = await Product.findAll({ where: { id: productIds } , include: [{ model: Category, as: 'category' }], transaction });
+    const productMap = {};
+    products.forEach(p => { productMap[p.id] = p; });
+
+    // Calculate totals
+    let subtotal = 0;
+    let totalGst = 0;
+
+    const processedOrderItems = [];
+    for (const it of itemsToProcess) {
+      const product = it.product || productMap[it.productId];
+      if (!product) throw new Error(`Product not found: ${it.productId}`);
+
+      const unitPrice = calculateUserPrice(product, req.user.role);
+      const qty = Number(it.quantity || 1);
+      const itemSubtotal = parseFloat((unitPrice * qty).toFixed(2));
+      const gstRate = parseFloat(product.gst || 0) || 0;
+      const itemGst = parseFloat(((itemSubtotal * gstRate) / 100).toFixed(2));
+      const itemTotal = parseFloat((itemSubtotal + itemGst).toFixed(2));
+
+      subtotal += itemSubtotal;
+      totalGst += itemGst;
+
+      processedOrderItems.push({
+        productId: product.id,
+        quantity: qty,
+        price: unitPrice,
+        subtotal: itemSubtotal,
+        gstAmount: itemGst,
+        total: itemTotal,
+        product
+      });
+    }
+
+    subtotal = parseFloat(subtotal.toFixed(2));
+    totalGst = parseFloat(totalGst.toFixed(2));
+    const total = parseFloat((subtotal + totalGst).toFixed(2));
+
+    // Create Order
+    const order = await Order.create({
+      userId: req.user.id,
+      paymentMethod: normalizedPaymentMethod || 'Gateway',
+      total,
+      subtotal,
+      gstAmount: totalGst,
+      shippingAddressId: orderAddress && orderAddress.shippingAddressId ? orderAddress.shippingAddressId : null,
+      deliveryAddressType: orderAddress ? orderAddress.type : 'default',
+      deliveryAddressData: orderAddress ? orderAddress.addressData : null,
+      notes: notes || null,
+      expectedDeliveryDate: expectedDeliveryDate || null
+    }, { transaction });
+
+    // Create OrderItems
+    for (const poi of processedOrderItems) {
+      await OrderItem.create({
+        orderId: order.id,
+        productId: poi.productId,
+        quantity: poi.quantity,
+        price: poi.price,
+        subtotal: poi.subtotal,
+        gstAmount: poi.gstAmount,
+        total: poi.total
+      }, { transaction });
+    }
+
+    // Clear user's cart for the ordered products
+    try {
+      await Cart.destroy({ where: { userId: req.user.id, productId: productIds }, transaction });
+    } catch (e) {
+      // non-fatal: log and continue
+      console.warn('Failed to clear cart items after order creation:', e && e.message ? e.message : e);
+    }
 
     await transaction.commit();
 
@@ -228,7 +319,14 @@ const createOrder = async (req, res) => {
       }
     });
   } catch (error) {
-    await transaction.rollback();
+    try {
+      if (transaction && !['commit', 'rollback'].includes(transaction.finished)) {
+        await transaction.rollback();
+      }
+    } catch (rbErr) {
+      console.warn('Transaction rollback skipped or failed:', rbErr && rbErr.message ? rbErr.message : rbErr);
+    }
+
     console.error('CREATE ORDER ERROR:', error);
     res.status(400).json({
       success: false,
