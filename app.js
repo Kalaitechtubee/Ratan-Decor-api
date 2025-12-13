@@ -78,61 +78,80 @@ app.use(helmet({
 app.set('trust proxy', 1);
 
 // ============================================================================
-// CORS CONFIGURATION
+// CORS CONFIGURATION - WORKING VERSION
 // ============================================================================
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
+  'http://luxcycs.com',
+  'http://luxcycs.com:3000',
+  'http://www.luxcycs.com',
+  'https://luxcycs.com',
+  'https://www.luxcycs.com',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 const corsOptions = {
   origin: function(origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-      process.env.FRONTEND_URL || 'http://localhost:3000'
-    ];
-   
-    // For requests without origin (e.g., Postman, server-to-server)
+    // Allow requests with no origin (Postman, mobile apps, server-to-server)
     if (!origin) {
       return callback(null, true);
     }
-   
-    // Check if origin is in allowed list
+
+    // Check whitelist
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-   
-    // In development, allow localhost with any port for easier testing
-    if (process.env.NODE_ENV !== 'production' && origin.match(/^http:\/\/(localhost|127\.0\.0\.1):\d+$/)) {
+
+    // Development: Allow any localhost with any port
+    if (process.env.NODE_ENV !== 'production' &&
+        origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
       return callback(null, true);
     }
-   
-    // Reject all other origins
-    const error = new Error('Not allowed by CORS');
+
+    // Log rejection for debugging
+    console.log('❌ CORS BLOCKED:', origin);
+    console.log('   Allowed origins:', allowedOrigins.join(', '));
+
+    const error = new Error(`CORS policy: Origin ${origin} is not allowed`);
     error.status = 403;
     callback(error);
   },
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
   allowedHeaders: [
-    "Origin",
-    "X-Requested-With",
-    "Content-Type",
-    "Accept",
-    "Authorization", // Keep for backward compatibility during migration
-    "Cache-Control",
-    "Pragma"
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cookie',
+    'Cache-Control'
   ],
-  exposedHeaders: [
-    "X-Total-Count",
-    "X-New-Access-Token" // For token refresh notification
-  ],
-  credentials: true, // CRITICAL: Allows cookies to be sent
+  exposedHeaders: ['X-Total-Count', 'X-New-Access-Token'],
+  credentials: true,  // CRITICAL for cookies
   optionsSuccessStatus: 200,
-  maxAge: 86400 // 24 hours - cache preflight requests
+  maxAge: 86400
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Handle preflight for all routes
+app.options('*', cors(corsOptions));
+
+// 🔥 Force credentials header in all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (allowedOrigins.includes(origin) ||
+      (process.env.NODE_ENV !== 'production' && origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -435,6 +454,10 @@ app.get('/api', (req, res) => {
     documentation: '/api-docs',
     timestamp: new Date().toISOString()
   });
+});
+
+app.get('/check', (req, res) => {
+  res.send("working :)");
 });
 
 app.get('/', (req, res) => {
