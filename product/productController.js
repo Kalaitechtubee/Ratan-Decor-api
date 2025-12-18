@@ -1,19 +1,19 @@
-
+// controllers/productController.js
 const { Product, Category, ProductRating, User } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const jwt = require('jsonwebtoken');
 const path = require('path');
-const fs = require('fs').promises; // Use promises for async cleanup
+const fs = require('fs').promises;
 
-const getReqUserRole = (req) => req.user?.role || 'General'; // OPTIMIZED: Use req.user from auth middleware
+const getReqUserRole = (req) => req.user?.role || 'General';
 
 const computePrice = (product, role) =>
   role.toLowerCase() === 'dealer'
     ? product.dealerPrice
     : role.toLowerCase() === 'architect'
-    ? product.architectPrice
-    : product.generalPrice;
+      ? product.architectPrice
+      : product.generalPrice;
 
 const validateVisibleTo = (visibleTo) => {
   if (!Array.isArray(visibleTo) || visibleTo.length === 0) return false;
@@ -22,15 +22,10 @@ const validateVisibleTo = (visibleTo) => {
 
 const getImageUrl = (filename, req, imageType = 'products') => {
   if (!filename || typeof filename !== 'string') return null;
-  // ✅ Already a full URL (external or CDN)
   if (filename.startsWith('http://') || filename.startsWith('https://')) return filename;
-  // ✅ Already a local uploads path
   if (filename.startsWith('/uploads/')) return filename;
-  // ✅ Use BASE_URL from .env (works with or without port)
-  // Fallback: automatically build from request host (includes port)
   const envBaseUrl = process.env.BASE_URL?.trim();
   const baseUrl = envBaseUrl || `${req.protocol}://${req.get('host')}`;
-  // ✅ Build final URL dynamically based on imageType
   return `${baseUrl}/uploads/${imageType}/${filename}`;
 };
 
@@ -64,7 +59,6 @@ const validateColors = (colors) => {
   return colors.every(color => typeof color === 'string' && color.trim().length > 0);
 };
 
-// Helper function to safely parse JSON
 const safeJsonParse = (str, fallback = null) => {
   if (!str) return fallback;
   if (typeof str === 'object') return str;
@@ -76,7 +70,6 @@ const safeJsonParse = (str, fallback = null) => {
   }
 };
 
-// Async file cleanup helper
 const cleanupFiles = async (filenames, uploadDir) => {
   await Promise.all(
     filenames.map(async (filename) => {
@@ -95,8 +88,8 @@ const getProducts = async (req, res) => {
   try {
     const {
       userType,
-      categoryId,
-      subcategoryId,
+      categoryId, // Can be comma-separated IDs: "1,2,3"
+      subcategoryId, // Can be comma-separated IDs: "4,5,6"
       minPrice,
       maxPrice,
       search,
@@ -105,17 +98,26 @@ const getProducts = async (req, res) => {
       isActive,
       designNumber,
       minDesignNumber,
-      maxDesignNumber
+      maxDesignNumber,
+      brandName, // Can be comma-separated: "Brand1,Brand2"
+      colors, // Can be comma-separated: "Red,Blue,Green"
+      minGst,
+      maxGst,
+      size, // Can be comma-separated: "12x12,24x24"
+      thickness, // Can be comma-separated: "8mm,10mm"
+      unitType, // Can be comma-separated: "Box,Sq.Ft"
+      sortBy = 'createdAt', // createdAt, price, name, averageRating
+      sortOrder = 'DESC' // ASC or DESC
     } = req.query;
-   
+
     const userRole = getReqUserRole(req);
     const whereClause = {};
-   
-    // Active status filter
+
+    // Active/Inactive filter
     if (isActive !== undefined) {
       whereClause.isActive = isActive === 'true' || isActive === true;
     }
-   
+
     // User type visibility filter
     if (userType) {
       whereClause[Op.and] = sequelize.where(
@@ -123,39 +125,157 @@ const getProducts = async (req, res) => {
         true
       );
     }
-   
-    // Category filters
-    if (categoryId) whereClause.categoryId = categoryId;
-    if (subcategoryId) whereClause.categoryId = subcategoryId;
-   
-    // Price range filter
-    if (minPrice || maxPrice) {
-      whereClause.generalPrice = {};
-      if (minPrice) whereClause.generalPrice[Op.gte] = Number(minPrice);
-      if (maxPrice) whereClause.generalPrice[Op.lte] = Number(maxPrice);
+
+    // MULTI-SELECT CATEGORY FILTER
+    if (categoryId || subcategoryId) {
+      const categoryIds = [];
+
+      // Parse main category IDs
+      if (categoryId) {
+        const ids = categoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        categoryIds.push(...ids);
+      }
+
+      // Parse subcategory IDs
+      if (subcategoryId) {
+        const ids = subcategoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        categoryIds.push(...ids);
+      }
+
+      // If we have any valid category IDs, filter by them
+      if (categoryIds.length > 0) {
+        whereClause.categoryId = { [Op.in]: categoryIds };
+      }
     }
-   
-    // CORRECTED: Design number filtering
-    if (designNumber && !minDesignNumber && !maxDesignNumber) {
-      // Only exact/partial match when no range is specified
-      whereClause.designNumber = { [Op.like]: `%${designNumber}%` };
-    } else if (minDesignNumber || maxDesignNumber) {
-      // Range filter takes priority
+
+    // PRICE FILTERING based on user role
+    if (minPrice || maxPrice) {
+      let priceField = 'generalPrice'; // default
+
+      if (userRole && userRole.toLowerCase() === 'dealer') {
+        priceField = 'dealerPrice';
+      } else if (userRole && userRole.toLowerCase() === 'architect') {
+        priceField = 'architectPrice';
+      }
+
+      whereClause[priceField] = {};
+      if (minPrice) {
+        const minPriceNum = Number(minPrice);
+        if (!isNaN(minPriceNum) && minPriceNum > 0) {
+          whereClause[priceField][Op.gte] = minPriceNum;
+        }
+      }
+      if (maxPrice) {
+        const maxPriceNum = Number(maxPrice);
+        if (!isNaN(maxPriceNum) && maxPriceNum > 0) {
+          whereClause[priceField][Op.lte] = maxPriceNum;
+        }
+      }
+    }
+
+    // DESIGN NUMBER FILTERING
+    const designNumberConditions = [];
+    if (designNumber) {
+      designNumberConditions.push({ [Op.like]: `%${designNumber.trim()}%` });
+    }
+    if (minDesignNumber || maxDesignNumber) {
       const rangeCondition = {};
       if (minDesignNumber) {
         const num = Number(minDesignNumber);
-        rangeCondition[Op.gte] = isNaN(num) ? 0 : num; // FIXED: Handle NaN as 0
+        if (!isNaN(num)) rangeCondition[Op.gte] = num;
       }
       if (maxDesignNumber) {
         const num = Number(maxDesignNumber);
-        rangeCondition[Op.lte] = isNaN(num) ? Number.MAX_SAFE_INTEGER : num; // FIXED: Handle NaN
+        if (!isNaN(num)) rangeCondition[Op.lte] = num;
       }
-      whereClause.designNumber = rangeCondition;
+      if (Object.keys(rangeCondition).length > 0) {
+        designNumberConditions.push(rangeCondition);
+      }
     }
-   
-    // Search functionality (ENHANCED: Safer escaping)
+
+    if (designNumberConditions.length > 0) {
+      if (designNumberConditions.length === 1) {
+        whereClause.designNumber = designNumberConditions[0];
+      } else {
+        whereClause.designNumber = { [Op.and]: designNumberConditions };
+      }
+    }
+
+    // MULTI-SELECT BRAND NAME FILTER
+    if (brandName) {
+      const brands = brandName.split(',').map(b => b.trim()).filter(b => b.length > 0);
+      if (brands.length > 0) {
+        whereClause.brandName = { [Op.in]: brands };
+      }
+    }
+
+    // MULTI-SELECT SIZE FILTER
+    if (size) {
+      const sizes = size.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      if (sizes.length > 0) {
+        whereClause.size = { [Op.in]: sizes };
+      }
+    }
+
+    // MULTI-SELECT THICKNESS FILTER
+    if (thickness) {
+      const thicknesses = thickness.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      if (thicknesses.length > 0) {
+        whereClause.thickness = { [Op.in]: thicknesses };
+      }
+    }
+
+    // MULTI-SELECT UNIT TYPE FILTER
+    if (unitType) {
+      const units = unitType.split(',').map(u => u.trim()).filter(u => u.length > 0);
+      if (units.length > 0) {
+        whereClause.unitType = { [Op.in]: units };
+      }
+    }
+
+    // GST RANGE FILTER
+    if (minGst || maxGst) {
+      whereClause.gst = {};
+      if (minGst) {
+        const min = Number(minGst);
+        if (!isNaN(min) && min >= 0) {
+          whereClause.gst[Op.gte] = min;
+        }
+      }
+      if (maxGst) {
+        const max = Number(maxGst);
+        if (!isNaN(max) && max <= 100) {
+          whereClause.gst[Op.lte] = max;
+        }
+      }
+    }
+
+    // MULTI-SELECT COLOR FILTER (searches within JSON array)
+    if (colors) {
+      const colorList = colors.split(',').map(c => c.trim()).filter(c => c.length > 0);
+      if (colorList.length > 0) {
+        const colorConditions = colorList.map(color =>
+          sequelize.where(
+            sequelize.fn('JSON_SEARCH', sequelize.col('colors'), 'one', color),
+            Op.ne, null
+          )
+        );
+
+        if (whereClause[Op.and]) {
+          if (Array.isArray(whereClause[Op.and])) {
+            whereClause[Op.and].push({ [Op.or]: colorConditions });
+          } else {
+            whereClause[Op.and] = [whereClause[Op.and], { [Op.or]: colorConditions }];
+          }
+        } else {
+          whereClause[Op.and] = [{ [Op.or]: colorConditions }];
+        }
+      }
+    }
+
+    // SEARCH FUNCTIONALITY
     if (search) {
-      const escapedSearch = search.trim().replace(/[%_\\]/g, '\\$&'); // Escape SQL wildcards
+      const escapedSearch = search.trim().replace(/[%_\\]/g, '\\$&');
       const searchConditions = [
         { name: { [Op.like]: `%${escapedSearch}%` } },
         { description: { [Op.like]: `%${escapedSearch}%` } },
@@ -163,24 +283,44 @@ const getProducts = async (req, res) => {
         { designNumber: { [Op.like]: `%${escapedSearch}%` } },
         sequelize.where(
           sequelize.fn('JSON_SEARCH', sequelize.col('specifications'), 'one', `%${escapedSearch}%`),
-          Op.ne, null // FIXED: Use fn for safer JSON search
+          Op.ne, null
         )
       ];
-     
-      // Handle combining search with existing conditions
+
       if (whereClause[Op.and]) {
-        whereClause[Op.and] = [
-          ...Array.isArray(whereClause[Op.and]) ? whereClause[Op.and] : [whereClause[Op.and]],
-          { [Op.or]: searchConditions }
-        ];
+        if (Array.isArray(whereClause[Op.and])) {
+          whereClause[Op.and].push({ [Op.or]: searchConditions });
+        } else {
+          whereClause[Op.and] = [whereClause[Op.and], { [Op.or]: searchConditions }];
+        }
       } else {
         whereClause[Op.or] = searchConditions;
       }
     }
-   
+
+    // SORTING
+    let orderClause = [];
+    const validSortFields = ['createdAt', 'name', 'averageRating', 'mrpPrice', 'generalPrice', 'architectPrice', 'dealerPrice'];
+    const validSortOrders = ['ASC', 'DESC'];
+
+    if (sortBy === 'price') {
+      // Sort by price based on user role
+      let priceField = 'generalPrice';
+      if (userRole && userRole.toLowerCase() === 'dealer') {
+        priceField = 'dealerPrice';
+      } else if (userRole && userRole.toLowerCase() === 'architect') {
+        priceField = 'architectPrice';
+      }
+      orderClause.push([priceField, validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC']);
+    } else if (validSortFields.includes(sortBy)) {
+      orderClause.push([sortBy, validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC']);
+    } else {
+      orderClause.push(['createdAt', 'DESC']);
+    }
+
     const offset = (page - 1) * limit;
-   
-    // Count queries for different states
+
+    // COUNT QUERIES
     const activeCount = await Product.count({
       where: { ...whereClause, isActive: true }
     });
@@ -188,8 +328,8 @@ const getProducts = async (req, res) => {
       where: { ...whereClause, isActive: false }
     });
     const totalCount = activeCount + inactiveCount;
-   
-    // Main query
+
+    // FETCH PRODUCTS
     const { count, rows: products } = await Product.findAndCountAll({
       where: whereClause,
       include: [
@@ -202,18 +342,41 @@ const getProducts = async (req, res) => {
           ]
         }
       ],
-      order: [['createdAt', 'DESC']],
+      order: orderClause,
       limit: Number(limit),
       offset: Number(offset)
     });
-   
-    // Process products
+
+    // PROCESS PRODUCTS
     const processedProducts = products.map(product => {
       const productData = processProductData(product, req);
       productData.price = computePrice(product, userRole);
       return productData;
     });
-   
+
+    // EXTRACT UNIQUE FILTER OPTIONS from all products (for filter UI)
+    const allProductsForFilters = await Product.findAll({
+      attributes: ['brandName', 'size', 'thickness', 'unitType', 'colors', 'gst'],
+      where: { isActive: true }
+    });
+
+    const uniqueBrands = [...new Set(allProductsForFilters.map(p => p.brandName).filter(Boolean))].sort();
+    const uniqueSizes = [...new Set(allProductsForFilters.map(p => p.size).filter(Boolean))].sort();
+    const uniqueThicknesses = [...new Set(allProductsForFilters.map(p => p.thickness).filter(Boolean))].sort();
+    const uniqueUnitTypes = [...new Set(allProductsForFilters.map(p => p.unitType).filter(Boolean))].sort();
+
+    // Extract unique colors from JSON arrays
+    const allColors = new Set();
+    allProductsForFilters.forEach(p => {
+      if (p.colors && Array.isArray(p.colors)) {
+        p.colors.forEach(color => allColors.add(color));
+      }
+    });
+    const uniqueColors = [...allColors].sort();
+
+    // GST values
+    const gstValues = [...new Set(allProductsForFilters.map(p => p.gst).filter(g => g !== null))].sort((a, b) => a - b);
+
     res.json({
       products: processedProducts,
       count,
@@ -222,40 +385,61 @@ const getProducts = async (req, res) => {
       inactiveCount,
       totalPages: Math.ceil(count / limit),
       currentPage: Number(page),
-      userType: userType || null,
       userRole,
-      isActiveFilter: isActive !== undefined ? whereClause.isActive : null,
-      designNumberFilter: designNumber || null,
-      minDesignNumberFilter: minDesignNumber || null,
-      maxDesignNumberFilter: maxDesignNumber || null
+
+      // Applied filters
+      appliedFilters: {
+        userType: userType || null,
+        categoryIds: categoryId ? categoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
+        subcategoryIds: subcategoryId ? subcategoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
+        priceRange: {
+          min: minPrice || null,
+          max: maxPrice || null,
+          priceField: userRole && userRole.toLowerCase() === 'dealer' ? 'dealerPrice' :
+            userRole && userRole.toLowerCase() === 'architect' ? 'architectPrice' : 'generalPrice'
+        },
+        designNumber: designNumber || null,
+        designNumberRange: {
+          min: minDesignNumber || null,
+          max: maxDesignNumber || null
+        },
+        brandNames: brandName ? brandName.split(',').map(b => b.trim()).filter(b => b.length > 0) : [],
+        colors: colors ? colors.split(',').map(c => c.trim()).filter(c => c.length > 0) : [],
+        sizes: size ? size.split(',').map(s => s.trim()).filter(s => s.length > 0) : [],
+        thicknesses: thickness ? thickness.split(',').map(t => t.trim()).filter(t => t.length > 0) : [],
+        unitTypes: unitType ? unitType.split(',').map(u => u.trim()).filter(u => u.length > 0) : [],
+        gstRange: {
+          min: minGst || null,
+          max: maxGst || null
+        },
+        search: search || null,
+        isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : null,
+        sortBy: sortBy || 'createdAt',
+        sortOrder: sortOrder || 'DESC'
+      },
+
+      // Available filter options
+      availableFilters: {
+        brands: uniqueBrands,
+        sizes: uniqueSizes,
+        thicknesses: uniqueThicknesses,
+        unitTypes: uniqueUnitTypes,
+        colors: uniqueColors,
+        gstValues: gstValues
+      }
     });
   } catch (error) {
     console.error('Get products error:', error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
+
 const createProduct = async (req, res) => {
   try {
-    // Enhanced debugging
-    console.log('=== CREATE PRODUCT DEBUG ===');
-    console.log('Content-Type:', req.headers['content-type']);
-    console.log('Request Body Keys:', Object.keys(req.body));
-    console.log('Request Body:', req.body);
-    console.log('Files Object:', req.files);
-   
-    // Check if body is empty (multipart not parsed)
-    if (!req.body || Object.keys(req.body).length === 0) {
-      console.error('ERROR: Request body is empty - multipart middleware may not be working');
-      return res.status(400).json({
-        message: 'Request body is empty. Make sure you are using multipart/form-data and the upload middleware is properly configured.',
-        debug: {
-          contentType: req.headers['content-type'],
-          bodyKeys: Object.keys(req.body || {}),
-          hasFiles: !!req.files
-        }
-      });
-    }
     const {
       name,
       description,
@@ -279,15 +463,14 @@ const createProduct = async (req, res) => {
     if (typeof req.body.subcategoryId !== 'undefined') {
       subcategoryId = req.body.subcategoryId;
     }
-    // Enhanced validation with better error messages
+
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
-      console.error('Validation Error: Invalid name', { name, type: typeof name });
       return res.status(400).json({
         message: 'Product name is required and must be a non-empty string',
         received: { name, type: typeof name }
       });
     }
-    // Validate required prices with detailed error messages
+
     const priceValidations = [
       { field: 'generalPrice', value: generalPrice, name: 'General price' },
       { field: 'architectPrice', value: architectPrice, name: 'Architect price' },
@@ -296,14 +479,13 @@ const createProduct = async (req, res) => {
     for (const validation of priceValidations) {
       const { field, value, name } = validation;
       if (value === undefined || value === null || value === '' || isNaN(value) || Number(value) <= 0) {
-        console.error(`Validation Error: Invalid ${field}`, { [field]: value, type: typeof value });
         return res.status(400).json({
           message: `${name} is required and must be a positive number`,
           received: { [field]: value, type: typeof value }
         });
       }
     }
-    // Validate pricing order
+
     const dealerPriceNum = Number(dealerPrice);
     const architectPriceNum = Number(architectPrice);
     const generalPriceNum = Number(generalPrice);
@@ -317,7 +499,7 @@ const createProduct = async (req, res) => {
         }
       });
     }
-    // Handle images (FIXED: Separate main and gallery, no dupes)
+
     let mainImage = null;
     let galleryImages = [];
     if (req.files && req.files.image && req.files.image[0]) {
@@ -326,11 +508,11 @@ const createProduct = async (req, res) => {
     if (req.files && req.files.images) {
       galleryImages = req.files.images.map(file => file.filename);
     }
-    // Parse JSON fields safely
+
     const parsedSpecifications = safeJsonParse(specifications, {});
     const parsedVisibleTo = safeJsonParse(visibleTo, ['Residential', 'Commercial', 'Modular Kitchen', 'Others']);
     const parsedColors = safeJsonParse(colors, []);
-    // Validate parsed fields
+
     if (parsedVisibleTo && !validateVisibleTo(parsedVisibleTo)) {
       return res.status(400).json({
         message: 'Invalid visibleTo values: must be a non-empty array',
@@ -343,14 +525,14 @@ const createProduct = async (req, res) => {
         received: parsedColors
       });
     }
-    // Validate GST
+
     if (gst !== undefined && gst !== null && gst !== '' && (isNaN(gst) || Number(gst) < 0 || Number(gst) > 100)) {
       return res.status(400).json({
         message: 'Invalid GST: must be a number between 0 and 100',
         received: { gst, type: typeof gst }
       });
     }
-    // Validate categoryId if provided
+
     if (categoryId && categoryId !== '' && categoryId !== 'null') {
       const exists = await Category.findByPk(categoryId);
       if (!exists) {
@@ -360,13 +542,14 @@ const createProduct = async (req, res) => {
         });
       }
     }
-    // Prepare product data, prioritize subcategoryId if provided
+
     let finalCategoryId = null;
     if (subcategoryId && subcategoryId !== '' && subcategoryId !== 'null') {
       finalCategoryId = subcategoryId;
     } else if (categoryId && categoryId !== '' && categoryId !== 'null') {
       finalCategoryId = categoryId;
     }
+
     const productData = {
       name: name.trim(),
       description: description || null,
@@ -391,11 +574,9 @@ const createProduct = async (req, res) => {
       totalRatings: 0,
       isActive: true
     };
-    console.log('Creating product with data:', productData);
-    // Create product
+
     const product = await Product.create(productData);
-    console.log('Product created successfully:', product.id);
-    // FIXED: Refetch with includes for consistent response
+
     const createdProduct = await Product.findByPk(product.id, {
       include: [
         {
@@ -408,15 +589,14 @@ const createProduct = async (req, res) => {
         }
       ]
     });
-    // Return processed product
+
     res.status(201).json({
       message: 'Product created successfully',
       product: processProductData(createdProduct, req)
     });
   } catch (error) {
     console.error('Create product error:', error);
-   
-    // Enhanced error response
+
     const errorResponse = {
       message: error.message || 'Failed to create product',
       debug: {
@@ -562,7 +742,6 @@ const getProductById = async (req, res) => {
   }
 };
 
-// HARMONIZED: updateProduct (PATCH) - Partial updates, preserves existings
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -585,19 +764,18 @@ const updateProduct = async (req, res) => {
       brandName,
       unitType
     } = req.body;
-    let subcategoryId = req.body.subcategoryId; // FIXED: Body only, no query
+    let subcategoryId = req.body.subcategoryId;
     let keptImages = [];
     if (req.body.keptImages) {
       keptImages = safeJsonParse(req.body.keptImages, []);
     }
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    // Handle images (FIXED: Separate main/gallery, cleanup old)
+
     const uploadDir = path.join(__dirname, '..', 'uploads', 'products');
     let finalImage = null;
     let finalImages = [...(product.images || []), ...(req.files?.images?.map(f => f.filename) || [])];
     if (req.files?.image?.[0]) {
-      // New main: replace old
       if (product?.image) {
         await cleanupFiles([product.image], uploadDir);
       }
@@ -605,7 +783,6 @@ const updateProduct = async (req, res) => {
     } else {
       finalImage = product?.image || null;
     }
-    // Cleanup removed gallery images
     const removedImages = (product?.images || []).filter(img => !keptImages.includes(img));
     if (removedImages.length > 0) {
       await cleanupFiles(removedImages, uploadDir);
@@ -623,7 +800,6 @@ const updateProduct = async (req, res) => {
     if (gst !== undefined && (isNaN(gst) || gst < 0 || gst > 100)) {
       return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
     }
-    // Validate prices if changed
     if (generalPrice !== undefined && (isNaN(generalPrice) || Number(generalPrice) <= 0)) {
       return res.status(400).json({ message: 'General price must be a positive number' });
     }
@@ -642,14 +818,12 @@ const updateProduct = async (req, res) => {
     ) {
       return res.status(400).json({ message: 'Invalid pricing: dealer < architect < general' });
     }
-    // Validate categoryId if provided
     if (categoryId && categoryId !== '' && categoryId !== 'null') {
       const exists = await Category.findByPk(categoryId);
       if (!exists) {
         return res.status(400).json({ message: 'Invalid categoryId (category not found)' });
       }
     }
-    // Prepare final categoryId, prioritize subcategoryId if provided
     let finalCategoryId = product.categoryId;
     if (subcategoryId !== undefined && subcategoryId !== '' && subcategoryId !== 'null') {
       finalCategoryId = subcategoryId;
@@ -678,7 +852,7 @@ const updateProduct = async (req, res) => {
       images: finalImages
     };
     await product.update(updateData);
-    // FIXED: Refetch with includes
+
     const updatedProduct = await Product.findByPk(product.id, {
       include: [
         {
@@ -701,7 +875,6 @@ const updateProduct = async (req, res) => {
   }
 };
 
-// HARMONIZED: updateProductAll (PUT) - Full updates, but preserves logic from PATCH
 const updateProductAll = async (req, res) => {
   try {
     const { id } = req.params;
@@ -725,9 +898,9 @@ const updateProductAll = async (req, res) => {
       isActive,
       unitType
     } = req.body;
-    let subcategoryId = req.body.subcategoryId; // FIXED: Body only
+    let subcategoryId = req.body.subcategoryId;
     let keptImages = safeJsonParse(req.body.keptImages, []);
-    // Reuse image handling from updateProduct (FIXED)
+
     const uploadDir = path.join(__dirname, '..', 'uploads', 'products');
     const product = await Product.findByPk(id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
@@ -756,7 +929,6 @@ const updateProductAll = async (req, res) => {
     if (gst !== undefined && (isNaN(gst) || gst < 0 || gst > 100)) {
       return res.status(400).json({ message: 'Invalid GST: must be a number between 0 and 100' });
     }
-    // FULL VALIDATION: Like create
     const priceValidations = [
       { field: 'generalPrice', value: generalPrice, name: 'General price' },
       { field: 'architectPrice', value: architectPrice, name: 'Architect price' },
@@ -783,7 +955,6 @@ const updateProductAll = async (req, res) => {
         return res.status(400).json({ message: 'Invalid categoryId (category not found)' });
       }
     }
-    // Prepare final categoryId, prioritize subcategoryId if provided
     let finalCategoryId = null;
     if (subcategoryId && subcategoryId !== '' && subcategoryId !== 'null') {
       finalCategoryId = subcategoryId;
@@ -807,13 +978,13 @@ const updateProductAll = async (req, res) => {
       colors: parsedColors,
       gst: gst !== undefined ? parseFloat(gst) : product.gst,
       brandName: brandName || null,
-      isActive: isActive !== undefined ? isActive : product.isActive, // FIXED: Preserve if not provided
-      unitType: unitType !== undefined ? (unitType || product.unitType) : product.unitType, // FIXED: Preserve
+      isActive: isActive !== undefined ? isActive : product.isActive,
+      unitType: unitType !== undefined ? (unitType || product.unitType) : product.unitType,
       image: finalImage,
       images: finalImages
     };
     await product.update(updateData);
-    // FIXED: Refetch with includes
+
     const updatedProduct = await Product.findByPk(product.id, {
       include: [
         {
@@ -941,4 +1112,4 @@ module.exports = {
   updateProductAll,
   addProductRating,
   getProductRatings
-};getProductRatings
+};

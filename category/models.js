@@ -1,4 +1,4 @@
-
+// models/Category.js
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
@@ -26,10 +26,6 @@ const Category = sequelize.define(
       },
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE',
-    },
-    brandName: {
-      type: DataTypes.STRING,
-      allowNull: true,
     },
     image: {
       type: DataTypes.STRING,

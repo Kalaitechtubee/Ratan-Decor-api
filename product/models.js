@@ -1,3 +1,4 @@
+// models/Product.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -33,10 +34,10 @@ const Product = sequelize.define("Product", {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   },
-mrpPrice: {
-  type: DataTypes.DECIMAL(10, 2),
-  allowNull: true  // Changed from false to true
-},
+  mrpPrice: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
   generalPrice: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
