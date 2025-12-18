@@ -27,6 +27,16 @@ const Slider = sequelize.define(
       allowNull: true,
       comment: 'Description text for the slider',
     },
+    cta: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'Call to action text for the slider',
+    },
+    ctaUrl: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      comment: 'URL to navigate when CTA button is clicked',
+    },
     images: {
       type: DataTypes.JSON,
       allowNull: true,
@@ -59,4 +69,3 @@ const Slider = sequelize.define(
 );
 
 module.exports = Slider;
-// kalai

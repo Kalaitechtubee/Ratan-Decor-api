@@ -1,3 +1,4 @@
+// kalai
 const { Slider, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const fs = require('fs').promises;
@@ -39,6 +40,8 @@ const getAllSliders = async (req, res) => {
         subtitle: slider.subtitle,
         title: slider.title,
         desc: slider.desc,
+        cta: slider.cta,
+        ctaUrl: slider.ctaUrl,
         image: images[0] || null, // First image for backward compatibility
         images: images.map(img => ({
           filename: img,
@@ -97,6 +100,7 @@ const getSliderById = async (req, res) => {
         title: slider.title,
         desc: slider.desc,
         cta: slider.cta,
+        ctaUrl: slider.ctaUrl,
         image: images[0] || null,
         images: images.map(img => ({
           filename: img,
@@ -122,7 +126,7 @@ const createSlider = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { subtitle, title, desc, cta, isActive } = req.body;
+    const { subtitle, title, desc, cta, ctaUrl, isActive } = req.body;
 
     // Validate required fields
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -149,6 +153,8 @@ const createSlider = async (req, res) => {
       subtitle: subtitle?.trim() || null,
       title: title.trim(),
       desc: desc?.trim() || null,
+      cta: cta?.trim() || null,
+      ctaUrl: ctaUrl?.trim() || null,
       images: imageFilenames,
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     }, { transaction });
@@ -165,6 +171,8 @@ const createSlider = async (req, res) => {
         subtitle: slider.subtitle,
         title: slider.title,
         desc: slider.desc,
+        cta: slider.cta,
+        ctaUrl: slider.ctaUrl,
         image: images[0] || null,
         images: images.map(img => ({
           filename: img,
@@ -192,7 +200,7 @@ const updateSlider = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { subtitle, title, desc, cta, isActive, existingImages } = req.body;
+    const { subtitle, title, desc, cta, ctaUrl, isActive, existingImages } = req.body;
 
     const sliderId = parseInt(id, 10);
     if (isNaN(sliderId)) {
@@ -261,7 +269,14 @@ const updateSlider = async (req, res) => {
       }
     }
 
-
+    // Handle ctaUrl update
+    if (ctaUrl !== undefined) {
+      const newCtaUrl = ctaUrl?.trim() || null;
+      if (newCtaUrl !== slider.ctaUrl) {
+        updateData.ctaUrl = newCtaUrl;
+        hasChanges = true;
+      }
+    }
 
     // Handle isActive update
     if (isActive !== undefined) {
@@ -329,6 +344,7 @@ const updateSlider = async (req, res) => {
           title: slider.title,
           desc: slider.desc,
           cta: slider.cta,
+          ctaUrl: slider.ctaUrl,
           image: images[0] || null,
           images: images.map(img => ({
             filename: img,
@@ -356,6 +372,7 @@ const updateSlider = async (req, res) => {
         title: updatedSlider.title,
         desc: updatedSlider.desc,
         cta: updatedSlider.cta,
+        ctaUrl: updatedSlider.ctaUrl,
         image: images[0] || null,
         images: images.map(img => ({
           filename: img,
@@ -435,4 +452,3 @@ module.exports = {
   updateSlider,
   deleteSlider,
 };
-
