@@ -3,19 +3,19 @@ const path = require('path');
 const sequelize = require('./config/database');
 const app = require('./app');
 const http = require('http');
-const { seedUserTypes } = require('./utils/userTypeSeeder');
+// const { seedUserTypes } = require('./utils/userTypeSeeder');
 
 const startServer = async () => {
   try {
     await sequelize.authenticate();
 
     // Seed user types before syncing to avoid foreign key constraint errors
-    await seedUserTypes();
+    // await seedUserTypes();
 
     // Temporarily disable foreign key checks for sync (if needed in your schema)
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
     // sequelize.sync()
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: false });
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
 
     const PORT = process.env.PORT || 3000;
