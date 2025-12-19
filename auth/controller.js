@@ -97,28 +97,20 @@ const login = async (req, res) => {
         message: 'Email and password are required'
       });
     }
-    
+
     // SuperAdmin hardcoded login
     const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL || 'superadmin@ratandecor.com';
     const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD || 'SuperAdmin@123';
     let user;
-    
+
     if (email === SUPERADMIN_EMAIL && password === SUPERADMIN_PASSWORD) {
       user = await User.findOne({
         where: { email: SUPERADMIN_EMAIL },
         include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
       });
-      
+
       // Create SuperAdmin if doesn't exist
       if (!user) {
-        let superAdminUserType = await UserType.findOne({ where: { name: 'superadmin' } });
-        if (!superAdminUserType) {
-          superAdminUserType = await UserType.create({
-            name: 'superadmin',
-            description: 'Super Administrator - Developer access',
-            isActive: true
-          });
-        }
         const hashedPassword = await bcrypt.hash(SUPERADMIN_PASSWORD, 12);
         user = await User.create({
           name: 'Super Administrator',
@@ -126,12 +118,13 @@ const login = async (req, res) => {
           password: hashedPassword,
           role: 'SuperAdmin',
           status: 'Approved',
-          userTypeId: superAdminUserType.id,
+          userTypeId: null, // Hardcoded SuperAdmin doesn't need a UserType
           mobile: '0000000000',
           country: 'India',
           state: 'Tamil Nadu',
           city: 'Chennai',
-          company: 'Ratan Decor'
+          company: 'Ratan Decor',
+          loginAttempts: 0
         });
         user = await User.findByPk(user.id, {
           include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
@@ -157,7 +150,7 @@ const login = async (req, res) => {
         });
       }
     }
-    
+
     // Check user approval status
     if (user.role !== 'SuperAdmin' && user.role !== 'Admin' && user.status !== 'Approved') {
       return res.status(403).json({
@@ -168,7 +161,7 @@ const login = async (req, res) => {
         status: user.status
       });
     }
-    
+
     // Generate tokens using jwt.service
     const accessToken = generateAccessToken({
       id: user.id,
@@ -184,11 +177,11 @@ const login = async (req, res) => {
       email: user.email,
       userTypeId: user.userTypeId
     });
-    
+
     // Set tokens in httpOnly cookies with consistent options
     res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
     res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000)); // 15 minutes
-    
+
     // Response without access token (now in secure cookie)
     // Keep accessToken in response for backward compatibility during migration
     return res.json({
@@ -227,14 +220,14 @@ const register = async (req, res) => {
       createdBy,
       skipTokenGeneration = false  // NEW: Flag to skip token generation for staff creation
     } = req.body;
-    
+
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
         message: 'Name, email, and password are required'
       });
     }
-    
+
     const passwordValidation = validatePasswordPolicy(password);
     if (!passwordValidation.isValid) {
       return res.status(400).json({
@@ -242,7 +235,7 @@ const register = async (req, res) => {
         message: passwordValidation.errors.join('. ')
       });
     }
-    
+
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({
@@ -250,7 +243,7 @@ const register = async (req, res) => {
         message: 'User with this email already exists'
       });
     }
-    
+
     // Normalize role to canonical value (case-insensitive)
     const roleInput = (role || 'customer').toString().trim();
     const roleKey = roleInput.toLowerCase();
@@ -261,12 +254,12 @@ const register = async (req, res) => {
         message: `Invalid role: ${roleInput}`
       });
     }
-    
+
     let initialStatus = 'Approved';
     let requiresApproval = false;
     let canCreate = false;
     let creatorRole = null;
-    
+
     // Fetch creator role if createdBy provided
     if (createdBy) {
       const creator = await User.findByPk(createdBy);
@@ -278,7 +271,7 @@ const register = async (req, res) => {
       }
       creatorRole = creator.role;
     }
-    
+
     // Role-based registration logic
     const requestedRoleLower = requestedRole.toLowerCase();
     if (REGISTRATION_RULES.PUBLIC_ROLES.includes(requestedRoleLower)) {
@@ -309,14 +302,14 @@ const register = async (req, res) => {
         message: `Invalid role: ${requestedRole}`
       });
     }
-    
+
     if (!canCreate) {
       return res.status(403).json({
         success: false,
         message: 'You are not authorized to create this role'
       });
     }
-    
+
     // Enforce uniqueness for SuperAdmin and Admin
     if (requestedRole === 'SuperAdmin') {
       const superAdminCount = await User.count({ where: { role: 'SuperAdmin' } });
@@ -347,7 +340,7 @@ const register = async (req, res) => {
         });
       }
     }
-    
+
     // Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 12);
     let finalUserTypeId = userTypeId;
@@ -355,7 +348,7 @@ const register = async (req, res) => {
       const userType = await UserType.findOne({ where: { name: userTypeName } });
       if (userType) finalUserTypeId = userType.id;
     }
-    
+
     if (!finalUserTypeId) {
       let defaultTypeName = ['customer'].includes(requestedRole) ? 'customer' : requestedRole;
       let defaultType = await UserType.findOne({ where: { name: defaultTypeName } });
@@ -371,7 +364,7 @@ const register = async (req, res) => {
       }
       finalUserTypeId = defaultType.id;
     }
-    
+
     const userData = {
       name,
       email,
@@ -388,9 +381,9 @@ const register = async (req, res) => {
       userTypeId: finalUserTypeId,
       createdBy: createdBy || null
     };
-    
+
     const user = await User.create(userData);
-    
+
     // Create shipping address if provided
     if (address && city && state && country && pincode) {
       try {
@@ -406,11 +399,11 @@ const register = async (req, res) => {
         console.warn('Could not create default shipping address:', e.message);
       }
     }
-    
+
     // ✅ CRITICAL FIX: Only generate and set tokens if NOT creating staff
     let accessToken = null;
     let refreshToken = null;
-    
+
     if (!skipTokenGeneration) {
       // Generate tokens for normal registration/login flow
       accessToken = generateAccessToken({
@@ -427,12 +420,12 @@ const register = async (req, res) => {
         email: user.email,
         userTypeId: user.userTypeId
       });
-      
+
       // Set tokens in httpOnly cookies with consistent options
       res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
       res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000));
     }
-    
+
     // Build response data
     const responseData = {
       userId: user.id,
@@ -442,13 +435,13 @@ const register = async (req, res) => {
       status: initialStatus,
       requiresApproval
     };
-    
+
     // Only include tokens in response if they were generated
     if (!skipTokenGeneration) {
       responseData.accessToken = accessToken;
       responseData.refreshToken = refreshToken;
     }
-    
+
     res.status(201).json({
       success: true,
       message: requiresApproval
@@ -483,7 +476,7 @@ const createStaffUser = async (req, res) => {
         message: 'Only SuperAdmin, Admin, or Manager can create staff users'
       });
     }
-    
+
     const { role, name, email, password } = req.body;
     if (!role || !name || !email || !password) {
       return res.status(400).json({
@@ -491,7 +484,7 @@ const createStaffUser = async (req, res) => {
         message: 'Role, name, email, and password are required for staff creation'
       });
     }
-    
+
     // Normalize role
     const roleInput = role.toString().trim();
     const roleKey = roleInput.toLowerCase();
@@ -502,7 +495,7 @@ const createStaffUser = async (req, res) => {
         message: `Invalid role: ${roleInput}`
       });
     }
-    
+
     if (!canCreateRole(creator.role, requestedRole)) {
       const creatorRoleLower = creator.role.toLowerCase();
       const allowedRoles = [];
@@ -519,7 +512,7 @@ const createStaffUser = async (req, res) => {
         allowedRoles: allowedRoles
       });
     }
-    
+
     // Enforce uniqueness for SuperAdmin and Admin
     if (requestedRole === 'SuperAdmin') {
       const superAdminCount = await User.count({ where: { role: 'SuperAdmin' } });
@@ -550,12 +543,12 @@ const createStaffUser = async (req, res) => {
         });
       }
     }
-    
+
     // ✅ CRITICAL FIX: Set skipTokenGeneration flag before calling register
     req.body.createdBy = creator.id;
     req.body.role = requestedRole;
     req.body.skipTokenGeneration = true;  // This prevents cookie overwrite!
-    
+
     return register(req, res);
   } catch (error) {
     console.error('Create staff user error:', error);
@@ -571,14 +564,14 @@ const checkStatus = async (req, res) => {
   try {
     const { id } = req.params; // get id from route params
     const user = await User.findByPk(id); // cleaner than findOne({ where: { id } })
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found',
       });
     }
-    
+
     return res.json({
       success: true,
       status: user.status,
@@ -609,17 +602,17 @@ const updateUser = async (req, res) => {
   try {
     const userId = req.user.id;
     const updates = req.body;
-    
+
     // Prevent updating sensitive fields
     delete updates.password;
     delete updates.role;
     delete updates.status;
-    
+
     const [affectedRows] = await User.update(updates, { where: { id: userId } });
     if (affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
+
     res.json({ success: true, message: 'Profile updated successfully' });
   } catch (error) {
     console.error('Update user error:', error);
@@ -633,11 +626,11 @@ const getProfile = async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       include: [{ model: UserType, as: 'userType', attributes: ['id', 'name'] }]
     });
-    
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
+
     res.json({
       success: true,
       user: {
@@ -665,16 +658,16 @@ const forgotPassword = async (req, res) => {
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
-    
+
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
+
     const otp = generateOTP();
     otpStore.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
     await sendOTP(email, otp);
-    
+
     res.json({ success: true, message: 'OTP sent to your email' });
   } catch (error) {
     console.error('Forgot password error:', error);
@@ -689,7 +682,7 @@ const resetPassword = async (req, res) => {
     if (!email || !otp || !newPassword) {
       return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
     }
-    
+
     const passwordValidation = validatePasswordPolicy(newPassword);
     if (!passwordValidation.isValid) {
       return res.status(400).json({
@@ -697,18 +690,18 @@ const resetPassword = async (req, res) => {
         message: passwordValidation.errors.join('. ')
       });
     }
-    
+
     const stored = otpStore.get(email);
     if (!stored || stored.otp !== otp || stored.expires < Date.now()) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
-    
+
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     const [affectedRows] = await User.update({ password: hashedPassword }, { where: { email } });
     if (affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
+
     otpStore.delete(email);
     res.json({ success: true, message: 'Password reset successful' });
   } catch (error) {
@@ -724,12 +717,12 @@ const verifyOTP = async (req, res) => {
     if (!email || !otp) {
       return res.status(400).json({ success: false, message: 'Email and OTP are required' });
     }
-    
+
     const stored = otpStore.get(email);
     if (!stored || stored.otp !== otp || stored.expires < Date.now()) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
-    
+
     res.json({ success: true, message: 'OTP verified successfully' });
   } catch (error) {
     console.error('Verify OTP error:', error);
@@ -742,14 +735,14 @@ const logout = async (req, res) => {
   try {
     const accessToken = req.token || req.cookies?.accessToken;
     const refreshToken = req.cookies?.refreshToken;
-    
+
     if (accessToken) sessionSecurity.blacklistToken(accessToken);
     if (refreshToken) sessionSecurity.blacklistRefreshToken(refreshToken);
-    
+
     const clearOptions = getCookieOptions();
     res.clearCookie('accessToken', clearOptions);
     res.clearCookie('refreshToken', clearOptions);
-    
+
     return res.json({
       success: true,
       message: 'Logout successful. Tokens invalidated and cookies cleared.'
