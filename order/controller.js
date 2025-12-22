@@ -19,16 +19,16 @@ const normalizePaymentMethod = (method) => {
 
 const validateAddressData = (addressData) => {
   const requiredFields = ['name', 'phone', 'address', 'city', 'state', 'country', 'pincode'];
-  return requiredFields.every(field => 
+  return requiredFields.every(field =>
     addressData[field] && typeof addressData[field] === 'string' && addressData[field].trim() !== ''
   );
 };
 
 const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddressData) => {
   let orderAddress = null;
-  
+
   if (addressType === 'new' && newAddressData) {
-  
+
     const addressData = {
       name: newAddressData.name,
       phone: newAddressData.phone,
@@ -36,7 +36,7 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       city: newAddressData.city,
       state: newAddressData.state,
       country: newAddressData.country,
-      pincode: newAddressData.pincode || newAddressData.postalCode, 
+      pincode: newAddressData.pincode || newAddressData.postalCode,
       addressType: newAddressData.addressType || newAddressData.type || 'Home'
     };
 
@@ -48,24 +48,24 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
     if (missingFields.length > 0) {
       throw new Error(`Missing required address fields: ${missingFields.join(', ')}`);
     }
-    
+
 
     const newAddress = await ShippingAddress.create({
       userId: req.user.id,
       ...addressData
     });
-    
+
     orderAddress = {
       type: 'new',
       shippingAddressId: newAddress.id,
       addressData: {
         name: newAddress.name,
         phone: newAddress.phone,
-        address: newAddress.address, 
+        address: newAddress.address,
         city: newAddress.city,
         state: newAddress.state,
         country: newAddress.country,
-        pincode: newAddress.pincode, 
+        pincode: newAddress.pincode,
         addressType: newAddress.addressType,
         isDefault: false
       }
@@ -78,11 +78,11 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
         userId: req.user.id
       }
     });
-    
+
     if (!shippingAddress) {
       throw new Error(`Shipping address with ID ${shippingAddressId} not found or doesn't belong to user`);
     }
-    
+
     orderAddress = {
       type: 'shipping',
       shippingAddressId: shippingAddress.id,
@@ -93,19 +93,19 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
         city: shippingAddress.city,
         state: shippingAddress.state,
         country: shippingAddress.country,
-        pincode: shippingAddress.pincode, 
-        addressType: shippingAddress.addressType, 
+        pincode: shippingAddress.pincode,
+        addressType: shippingAddress.addressType,
         isDefault: false
       }
     };
   } else {
-  
+
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
-    
+
     const hasUsableProfileAddress = !!(user && user.address && user.city && user.state && user.country && user.pincode);
-    
+
     if (hasUsableProfileAddress && (addressType === 'default' || !shippingAddressId)) {
       orderAddress = {
         type: 'default',
@@ -128,7 +128,7 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       const anyAddress = await ShippingAddress.findOne({
         where: { userId: req.user.id }
       });
-      
+
       if (!anyAddress) {
         if (hasUsableProfileAddress) {
           // Fallback to user profile
@@ -171,7 +171,7 @@ const prepareOrderAddress = async (req, addressType, shippingAddressId, newAddre
       }
     }
   }
-  
+
   return orderAddress;
 };
 
@@ -180,7 +180,7 @@ const createOrder = async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ success: false, message: 'Authentication required to create order' });
   }
-  
+
   const transaction = await sequelize.transaction();
   try {
     console.log('📦 CREATE ORDER - User:', req.user.id, 'Role:', req.user.role);
@@ -215,7 +215,7 @@ const createOrder = async (req, res) => {
 
     // Load products for any items missing product data
     const productIds = itemsToProcess.map(i => i.productId);
-    const products = await Product.findAll({ where: { id: productIds } , include: [{ model: Category, as: 'category' }], transaction });
+    const products = await Product.findAll({ where: { id: productIds }, include: [{ model: Category, as: 'category' }], transaction });
     const productMap = {};
     products.forEach(p => { productMap[p.id] = p; });
 
@@ -347,7 +347,7 @@ const getOrders = async (req, res) => {
   if (userRole === 'Support') {
     return res.status(403).json({ success: false, message: 'Access denied to Orders module' });
   }
-  
+
   try {
     const currentUserId = req.user.id;
 
@@ -384,6 +384,16 @@ const getOrders = async (req, res) => {
       targetUserId = currentUserId;
     }
     // For staff without userId, view all orders
+
+    // DEBUG: Log user filtering info
+    console.log('📋 GET ORDERS DEBUG:', {
+      currentUserId,
+      userRole,
+      isStaff,
+      requestedUserId: userId || null,
+      targetUserId,
+      willFilterByUser: !!targetUserId
+    });
 
     // Initialize where clause
     const where = {};
@@ -431,18 +441,18 @@ const getOrders = async (req, res) => {
               'isActive', 'colors', 'specifications'
               // Removed 'features' and 'dimensions'
             ],
-            include: [{ 
-              model: Category, 
-              as: 'category', 
-              attributes: ['id', 'name', 'parentId'], 
-              required: false 
+            include: [{
+              model: Category,
+              as: 'category',
+              attributes: ['id', 'name', 'parentId'],
+              required: false
             }]
           }]
         },
-        { 
-          model: ShippingAddress, 
-          as: 'shippingAddress', 
-          required: false 
+        {
+          model: ShippingAddress,
+          as: 'shippingAddress',
+          required: false
         },
         userInclude
       ],
@@ -508,13 +518,13 @@ const getOrders = async (req, res) => {
           const itemData = { ...item };
           if (item.product) {
             const processedProduct = processOrderProductData(item.product, req, userRole);
-            
+
             // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
             const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
-            const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0 
-              ? processedProduct.imageUrls 
+            const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0
+              ? processedProduct.imageUrls
               : [fallbackImageUrl];
-            
+
             itemData.product = {
               id: item.product.id,
               name: item.product.name,
@@ -606,12 +616,24 @@ const getOrders = async (req, res) => {
       success: true,
       orders: processedOrders,
       orderSummary: orderSummary,
+
+      // User context - helps frontend know whose orders these are
+      forUser: targetUserId ? {
+        id: targetUserId,
+        isFiltered: true
+      } : {
+        id: null,
+        isFiltered: false,
+        reason: 'Staff viewing all orders'
+      },
+      isStaffView: isStaff && !targetUserId,
+
       filters: { status, paymentStatus, startDate, endDate },
-      pagination: { 
-        page: Number(page), 
-        limit: Number(limit), 
-        total: count, 
-        totalPages: Math.ceil(count / limit) 
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: count,
+        totalPages: Math.ceil(count / limit)
       },
       sorting: { sortBy, sortOrder }
     });
@@ -665,11 +687,11 @@ const getOrderById = async (req, res) => {
               'isActive', 'colors', 'specifications'
               // Removed 'features' and 'dimensions'
             ],
-            include: [{ 
-              model: Category, 
-              as: 'category', 
-              attributes: ['id', 'name', 'parentId'], 
-              required: false 
+            include: [{
+              model: Category,
+              as: 'category',
+              attributes: ['id', 'name', 'parentId'],
+              required: false
             }]
           }],
           required: false
@@ -748,16 +770,16 @@ const getOrderById = async (req, res) => {
     orderData.orderItems = (orderData.orderItems || []).map(item => {
       const itemData = { ...item };
       const fallbackImageUrl = getFallbackImageUrl(req);
-      
+
       if (item.product) {
         const processedProduct = processOrderProductData(item.product, req, userRole);
-        
+
         // Ensure imageUrl and imageUrls are always set, even if processedProduct is null
         const imageUrl = processedProduct?.imageUrl || fallbackImageUrl;
-        const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0 
-          ? processedProduct.imageUrls 
+        const imageUrls = processedProduct?.imageUrls && processedProduct.imageUrls.length > 0
+          ? processedProduct.imageUrls
           : [fallbackImageUrl];
-        
+
         itemData.product = {
           id: item.product.id,
           name: item.product.name,
@@ -839,31 +861,31 @@ const updateOrder = async (req, res) => {
     const userRole = req.user.role;
     const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
     const isStaff = staffRoles.includes(userRole);
-    
+
     console.log('UPDATE ORDER - Order ID:', id, 'User ID:', currentUserId, 'User Role:', userRole);
-    
+
     const where = { id };
     if (!isStaff) {
       where.userId = currentUserId;
     }
-    
+
     const order = await Order.findOne({ where });
-    
+
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     const updateData = {};
-    
+
     if (status !== undefined) updateData.status = status;
     if (paymentStatus !== undefined) updateData.paymentStatus = paymentStatus;
     if (notes !== undefined) updateData.notes = notes;
     if (expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = expectedDeliveryDate;
-    
+
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ success: false, message: 'No valid fields to update' });
     }
-    
+
     if (status && order.status !== status) {
       const validTransitions = {
         'Pending': ['Processing', 'Cancelled'],
@@ -872,17 +894,17 @@ const updateOrder = async (req, res) => {
         'Completed': [],
         'Cancelled': []
       };
-      
+
       if (!validTransitions[order.status]?.includes(status)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: `Cannot change order status from ${order.status} to ${status}` 
+        return res.status(400).json({
+          success: false,
+          message: `Cannot change order status from ${order.status} to ${status}`
         });
       }
     }
-    
+
     await order.update(updateData);
-    
+
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}`, {
         orderId: id,
@@ -894,7 +916,7 @@ const updateOrder = async (req, res) => {
     } catch (crmError) {
       console.error('CRM update failed:', crmError.message);
     }
-    
+
     res.json({
       success: true,
       message: 'Order updated successfully',
@@ -907,7 +929,7 @@ const updateOrder = async (req, res) => {
         updatedAt: order.updatedAt
       }
     });
-    
+
   } catch (error) {
     console.error('UPDATE ORDER ERROR:', error);
     res.status(400).json({
@@ -951,18 +973,18 @@ const cancelOrder = async (req, res) => {
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     if (!['Pending', 'Processing'].includes(order.status)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot cancel order with status: ${order.status}` 
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel order with status: ${order.status}`
       });
     }
-    
+
     await order.update({
       status: 'Cancelled'
     });
-    
+
     try {
       await axios.put(`https://crm-api.example.com/orders/${id}/cancel`, {
         orderId: id,
@@ -973,7 +995,7 @@ const cancelOrder = async (req, res) => {
     } catch (crmError) {
       console.error('CRM cancellation notification failed:', crmError.message);
     }
-    
+
     res.json({
       success: true,
       message: 'Order cancelled successfully',
@@ -982,7 +1004,7 @@ const cancelOrder = async (req, res) => {
         status: order.status
       }
     });
-    
+
   } catch (error) {
     console.error('CANCEL ORDER ERROR:', error);
     res.status(400).json({
@@ -1011,26 +1033,26 @@ const deleteOrder = async (req, res) => {
     const userRole = req.user.role;
     const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
     const isStaff = staffRoles.includes(userRole);
-    
+
     console.log('DELETE ORDER - Order ID:', id, 'User ID:', currentUserId, 'Role:', userRole);
-    
+
     const where = { id };
     if (!isStaff) {
       where.userId = currentUserId;
     }
-    
+
     const order = await Order.findOne({
       where
     });
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    
+
     await OrderItem.destroy({ where: { orderId: id }, transaction });
     await order.destroy({ transaction });
-    
+
     await transaction.commit();
-    
+
     try {
       await axios.delete(`https://crm-api.example.com/orders/${id}`, {
         data: { deletedBy: currentUserId, deletedAt: new Date() },
@@ -1039,13 +1061,13 @@ const deleteOrder = async (req, res) => {
     } catch (crmError) {
       console.error('CRM deletion notification failed:', crmError.message);
     }
-    
+
     res.json({
       success: true,
       message: 'Order deleted successfully',
       deletedOrderId: parseInt(id)
     });
-    
+
   } catch (error) {
     await transaction.rollback();
     console.error('DELETE ORDER ERROR:', error);
@@ -1073,14 +1095,14 @@ const getOrderStats = async (req, res) => {
     const userRole = req.user.role;
     const staffRoles = ['SuperAdmin', 'Admin', 'Sales'];
     const isStaff = staffRoles.includes(userRole);
-    
+
     const whereClause = isStaff ? {} : { userId: currentUserId };
-    
+
     const totalOrders = await Order.count({ where: whereClause });
     const pendingOrders = await Order.count({ where: { ...whereClause, status: 'Pending' } });
     const completedOrders = await Order.count({ where: { ...whereClause, status: 'Completed' } });
     const cancelledOrders = await Order.count({ where: { ...whereClause, status: 'Cancelled' } });
-    
+
     const totalValue = await Order.sum('total', { where: whereClause }) || 0;
     const thisMonthValue = await Order.sum('total', {
       where: {
@@ -1088,7 +1110,7 @@ const getOrderStats = async (req, res) => {
         orderDate: { [Op.gte]: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
       }
     }) || 0;
-    
+
     const recentOrdersWhere = { ...whereClause };
     const recentOrders = await Order.findAll({
       where: recentOrdersWhere,
@@ -1097,7 +1119,7 @@ const getOrderStats = async (req, res) => {
       attributes: ['id', 'status', 'total', 'orderDate', 'paymentStatus'],
       include: [{ model: User, as: 'user', attributes: ['name', 'email'] }]
     });
-    
+
     res.json({
       success: true,
       stats: {
@@ -1118,7 +1140,7 @@ const getOrderStats = async (req, res) => {
         customerName: order.user ? order.user.name : 'Unknown'
       }))
     });
-    
+
   } catch (error) {
     console.error('GET ORDER STATS ERROR:', error);
     res.status(500).json({
@@ -1142,15 +1164,15 @@ const getAvailableAddresses = async (req, res) => {
 
   try {
     const userId = req.user.id;
-    
+
     const user = await User.findByPk(userId, {
       attributes: ['id', 'name', 'email', 'mobile', 'address', 'city', 'state', 'country', 'pincode']
     });
-    
+
     const addresses = await ShippingAddress.findAll({
       where: { userId }
     });
-    
+
     const availableAddresses = {
       defaultAddress: null,
       shippingAddresses: addresses.map(addr => ({
@@ -1166,7 +1188,7 @@ const getAvailableAddresses = async (req, res) => {
         isDefault: addr.isDefault || false
       }))
     };
-    
+
     if (user && user.address && user.city && user.state && user.country && user.pincode) {
       availableAddresses.defaultAddress = {
         type: 'default',
@@ -1180,7 +1202,7 @@ const getAvailableAddresses = async (req, res) => {
         source: 'user_profile'
       };
     }
-    
+
     res.json({
       success: true,
       message: 'Available addresses fetched successfully',
@@ -1190,7 +1212,7 @@ const getAvailableAddresses = async (req, res) => {
         totalAddresses: addresses.length
       }
     });
-    
+
   } catch (error) {
     console.error('GET AVAILABLE ADDRESSES ERROR:', error);
     res.status(500).json({

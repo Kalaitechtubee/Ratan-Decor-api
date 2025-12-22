@@ -14,20 +14,37 @@ const generateImageUrl = (filename, req, imageType = 'categories') => {
   return `${baseUrl}/uploads/${imageType}/${filename}`;
 };
 
-// Utility: Build recursive category tree with improved structure
+// Utility: Build recursive category tree with CLEAN frontend-friendly structure
 const buildTree = (categories, parentId = null, req = null) => {
+  const isMainCategory = parentId === null;
+
   return categories
     .filter(c => c.parentId === parentId)
-    .map(c => ({
-      id: c.id,
-      name: c.name,
-      image: c.image, // Will be null for subcategories
-      imageUrl: c.image ? generateImageUrl(c.image, req, 'categories') : null,
-      parentId: c.parentId,
-      isSubcategory: !!c.parentId,
-      productCount: c.productCount || 0,
-      subCategories: buildTree(categories, c.id, req),
-    }));
+    .map(c => {
+      const childCategories = buildTree(categories, c.id, req);
+      const isSubcategory = !!c.parentId;
+
+      // CLEAN RESPONSE: Different structure for main vs subcategories
+      if (isSubcategory) {
+        // Subcategory: minimal, clean structure (NO image fields, NO parentId, NO isSubcategory)
+        return {
+          id: c.id,
+          name: c.name,
+          productCount: c.productCount || 0,
+          // Only include subCategories if not empty
+          ...(childCategories.length > 0 && { subCategories: childCategories }),
+        };
+      }
+
+      // Main category: full structure with imageUrl
+      return {
+        id: c.id,
+        name: c.name,
+        imageUrl: c.image ? generateImageUrl(c.image, req, 'categories') : null,
+        productCount: c.productCount || 0,
+        subCategories: childCategories,
+      };
+    });
 };
 
 // Utility: Get all descendant IDs recursively (OPTIMIZED: Single query with raw SQL for efficiency)

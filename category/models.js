@@ -31,6 +31,13 @@ const Category = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
       comment: 'Image filename for main categories only (subcategories cannot have images)',
+      validate: {
+        noImageForSubcategory(value) {
+          if (this.parentId && value) {
+            throw new Error('Subcategories cannot have images');
+          }
+        },
+      },
     },
   },
   {
@@ -40,6 +47,14 @@ const Category = sequelize.define(
       { fields: ['parentId'] },
       { unique: true, fields: ['name', 'parentId'] },
     ],
+    hooks: {
+      // Enforce: Subcategories ALWAYS have null image
+      beforeSave: (category) => {
+        if (category.parentId) {
+          category.image = null;
+        }
+      },
+    },
   }
 );
 

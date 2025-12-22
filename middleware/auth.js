@@ -47,28 +47,42 @@ const loadAndSetUser = async (req, res, userId) => {
 };
 
 // -----------------------------
-// Authentication Middleware (Cookie-based)
+// Helper: Get cookie names based on client type (admin vs customer)
+// -----------------------------
+const getCookieNames = (req) => {
+  const clientType = req.headers['x-client-type'] || req.query.clientType || '';
+  const isAdmin = clientType.toLowerCase() === 'admin';
+  return {
+    accessToken: isAdmin ? 'admin_accessToken' : 'accessToken',
+    refreshToken: isAdmin ? 'admin_refreshToken' : 'refreshToken',
+    isAdmin
+  };
+};
+
+// -----------------------------
+// Authentication Middleware (Cookie-based with client type support)
 // -----------------------------
 const authenticateToken = async (req, res, next) => {
   try {
-    const accessToken = req.cookies.accessToken;
-    const refreshToken = req.cookies.refreshToken;
-   
+    const cookieNames = getCookieNames(req);
+    const accessToken = req.cookies[cookieNames.accessToken];
+    const refreshToken = req.cookies[cookieNames.refreshToken];
+
     const setAccessCookie = (token) => {
-      res.cookie('accessToken', token, getCookieOptions(15 * 60 * 1000));
+      res.cookie(cookieNames.accessToken, token, getCookieOptions(15 * 60 * 1000));
       // Header kept for backward compatibility during migration
       res.setHeader('X-New-Access-Token', token);
     };
-   
+
     const respondError = (status, message) => res.status(status).json({ success: false, message });
-   
+
     // Validate JWT secret
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       console.error('JWT_SECRET environment variable is required');
       return respondError(500, 'Server configuration error');
     }
-   
+
     // Try access token first
     if (accessToken && !sessionSecurity.isTokenBlacklisted(accessToken)) {
       try {
@@ -84,7 +98,7 @@ const authenticateToken = async (req, res, next) => {
         console.error('Access token verification failed:', { message: err.message });
       }
     }
-   
+
     // Access token missing/invalid/expired -> try refresh token
     if (refreshToken && !sessionSecurity.isRefreshBlacklisted(refreshToken)) {
       try {
@@ -96,7 +110,7 @@ const authenticateToken = async (req, res, next) => {
 
         // Use generateAccessToken for consistency
         const newAccessToken = generateAccessToken(result.user);
-       
+
         setAccessCookie(newAccessToken);
         req.token = newAccessToken;
         return next();
@@ -105,7 +119,7 @@ const authenticateToken = async (req, res, next) => {
         return respondError(401, 'Invalid refresh token');
       }
     }
-   
+
     return respondError(401, 'Access denied. No valid token provided.');
   } catch (err) {
     console.error('Auth middleware error:', { message: err.message, userId: req.user?.id });
@@ -124,7 +138,7 @@ const authorizeRoles = (...allowedRoles) => {
     try {
       // Flatten the allowedRoles array in case it's nested
       const roles = Array.isArray(allowedRoles[0]) ? allowedRoles[0] : allowedRoles;
-     
+
       // If no specific roles are required, just continue
       if (!roles || roles.length === 0) {
         return next();
@@ -171,37 +185,37 @@ const authorizeRoles = (...allowedRoles) => {
 const moduleAccess = {
   // Dashboard: Pass-through
   requireDashboardAccess: (req, res, next) => next(),
- 
+
   // Orders: Pass-through
   requireOrdersAccess: (req, res, next) => next(),
- 
+
   // Enquiries: Pass-through
   requireEnquiriesAccess: (req, res, next) => next(),
- 
+
   // Customers: Pass-through
   requireCustomersAccess: (req, res, next) => next(),
- 
+
   // Products: Pass-through
   requireProductsAccess: (req, res, next) => next(),
- 
+
   // Staff Management: Pass-through
   requireStaffManagementAccess: (req, res, next) => next(),
- 
+
   // Business Types: Pass-through
   requireBusinessTypesAccess: (req, res, next) => next(),
- 
+
   // Categories: Pass-through
   requireCategoriesAccess: (req, res, next) => next(),
- 
+
   // Sliders: Pass-through
   requireSlidersAccess: (req, res, next) => next(),
- 
+
   // SEO: Pass-through
   requireSeoAccess: (req, res, next) => next(),
- 
+
   // Contacts: Pass-through
   requireContactsAccess: (req, res, next) => next(),
- 
+
   // Legacy/Adjusted (all pass-through)
   requireAdmin: (req, res, next) => next(),
   requireManagerOrAdmin: (req, res, next) => next(),
@@ -222,7 +236,7 @@ const requireOwnDataOrStaff = async (req, res, next) => {
     if (['SuperAdmin', 'Admin', 'Sales', 'Support'].includes(userRole)) {
       return next();
     }
-   
+
     // Non-staff → must own the enquiry
     const enquiryIdParam = req.params.id;
     if (!enquiryIdParam) {
@@ -239,7 +253,7 @@ const requireOwnDataOrStaff = async (req, res, next) => {
         message: 'Invalid enquiry ID'
       });
     }
-   
+
     const enquiry = await VideoCallEnquiry.findByPk(enquiryId);
     if (!enquiry) {
       return res.status(404).json({
@@ -247,14 +261,14 @@ const requireOwnDataOrStaff = async (req, res, next) => {
         message: 'Enquiry not found'
       });
     }
-   
+
     if (enquiry.userId !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'You can only access your own enquiries'
       });
     }
-   
+
     // Attach enquiry to request for controller use
     req.enquiry = enquiry;
     next();

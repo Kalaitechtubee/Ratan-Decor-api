@@ -87,10 +87,23 @@ const sendOTP = async (email, otp) => {
   }
 };
 
+// Helper: Get cookie names based on client type (admin vs customer)
+const getCookieNames = (req) => {
+  const clientType = req.headers['x-client-type'] || req.query.clientType || '';
+  const isAdmin = clientType.toLowerCase() === 'admin';
+  return {
+    accessToken: isAdmin ? 'admin_accessToken' : 'accessToken',
+    refreshToken: isAdmin ? 'admin_refreshToken' : 'refreshToken',
+    isAdmin
+  };
+};
+
 // SuperAdmin login with hardcoded credentials
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const cookieNames = getCookieNames(req);
+
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -178,9 +191,9 @@ const login = async (req, res) => {
       userTypeId: user.userTypeId
     });
 
-    // Set tokens in httpOnly cookies with consistent options
-    res.cookie('refreshToken', refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
-    res.cookie('accessToken', accessToken, getCookieOptions(15 * 60 * 1000)); // 15 minutes
+    // Set tokens in httpOnly cookies with consistent options (using client-specific cookie names)
+    res.cookie(cookieNames.refreshToken, refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie(cookieNames.accessToken, accessToken, getCookieOptions(15 * 60 * 1000)); // 15 minutes
 
     // Response without access token (now in secure cookie)
     // Keep accessToken in response for backward compatibility during migration
@@ -731,15 +744,17 @@ const verifyOTP = async (req, res) => {
 // Logout
 const logout = async (req, res) => {
   try {
-    const accessToken = req.token || req.cookies?.accessToken;
-    const refreshToken = req.cookies?.refreshToken;
+    const cookieNames = getCookieNames(req);
+    const accessToken = req.token || req.cookies?.[cookieNames.accessToken];
+    const refreshToken = req.cookies?.[cookieNames.refreshToken];
 
     if (accessToken) sessionSecurity.blacklistToken(accessToken);
     if (refreshToken) sessionSecurity.blacklistRefreshToken(refreshToken);
 
     const clearOptions = getCookieOptions();
-    res.clearCookie('accessToken', clearOptions);
-    res.clearCookie('refreshToken', clearOptions);
+    // Clear client-specific cookies
+    res.clearCookie(cookieNames.accessToken, clearOptions);
+    res.clearCookie(cookieNames.refreshToken, clearOptions);
 
     return res.json({
       success: true,

@@ -15,7 +15,7 @@ const startServer = async () => {
     // Temporarily disable foreign key checks for sync (if needed in your schema)
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 0');
     // sequelize.sync()
-    await sequelize.sync({ alter:false });
+    await sequelize.sync({ alter:true });
     await sequelize.query('SET FOREIGN_KEY_CHECKS = 1');
 
     const PORT = process.env.PORT || 3000;

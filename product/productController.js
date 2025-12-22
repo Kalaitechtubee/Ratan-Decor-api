@@ -29,24 +29,94 @@ const getImageUrl = (filename, req, imageType = 'products') => {
   return `${baseUrl}/uploads/${imageType}/${filename}`;
 };
 
+/**
+ * CLEAN PRODUCT DATA TRANSFORMER
+ * Returns production-ready, frontend-friendly response
+ * - Removes raw image/images fields (only URLs)
+ * - Cleans up category structure
+ * - Removes unnecessary null values
+ */
 const processProductData = (product, req) => {
-  const productData = product.toJSON ? product.toJSON() : product;
-  let allImageUrls = [];
-  if (productData.image) {
-    allImageUrls.push(getImageUrl(productData.image, req));
+  const rawData = product.toJSON ? product.toJSON() : { ...product };
+
+  // Build image URLs
+  const imageUrls = [];
+  if (rawData.image) {
+    imageUrls.push(getImageUrl(rawData.image, req));
   }
-  if (productData.images && Array.isArray(productData.images)) {
-    allImageUrls = [...allImageUrls, ...productData.images.map(img => getImageUrl(img, req))];
+  if (rawData.images && Array.isArray(rawData.images)) {
+    rawData.images.forEach(img => {
+      if (img) imageUrls.push(getImageUrl(img, req));
+    });
   }
-  productData.imageUrl = allImageUrls[0] || null;
-  productData.imageUrls = allImageUrls;
-  if (!('brandName' in productData)) productData.brandName = null;
-  if (!('designNumber' in productData)) productData.designNumber = null;
-  if (!('size' in productData)) productData.size = null;
-  if (!('thickness' in productData)) productData.thickness = null;
-  if (!('gst' in productData)) productData.gst = null;
-  if (!('unitType' in productData)) productData.unitType = null;
-  return productData;
+
+  // CLEAN CATEGORY STRUCTURE
+  let category = null;
+  if (rawData.category) {
+    const cat = rawData.category;
+    if (cat.parent) {
+      // Product is in a subcategory
+      category = {
+        id: cat.id,
+        name: cat.name,
+        parent: {
+          id: cat.parent.id,
+          name: cat.parent.name,
+        },
+      };
+    } else {
+      // Product is in a main category (no parent)
+      category = {
+        id: cat.id,
+        name: cat.name,
+      };
+    }
+  }
+
+  // BUILD CLEAN RESPONSE
+  return {
+    id: rawData.id,
+    name: rawData.name,
+    description: rawData.description || null,
+
+    // CLEAN IMAGE HANDLING - Only URLs, no raw filenames
+    imageUrl: imageUrls[0] || null,
+    imageUrls: imageUrls.length > 0 ? imageUrls : [],
+
+    // Product details
+    brandName: rawData.brandName || null,
+    designNumber: rawData.designNumber || null,
+    size: rawData.size || null,
+    thickness: rawData.thickness || null,
+    unitType: rawData.unitType || null,
+    colors: rawData.colors && rawData.colors.length > 0 ? rawData.colors : [],
+    specifications: rawData.specifications && Object.keys(rawData.specifications).length > 0
+      ? rawData.specifications
+      : null,
+
+    // Pricing
+    mrpPrice: rawData.mrpPrice || null,
+    generalPrice: rawData.generalPrice,
+    architectPrice: rawData.architectPrice,
+    dealerPrice: rawData.dealerPrice,
+    gst: rawData.gst || null,
+
+    // Status & visibility
+    isActive: rawData.isActive,
+    visibleTo: rawData.visibleTo || [],
+
+    // Ratings
+    averageRating: rawData.averageRating || "0.00",
+    totalRatings: rawData.totalRatings || 0,
+
+    // CLEAN CATEGORY - No parentId, clean structure
+    category,
+    categoryId: rawData.categoryId,
+
+    // Timestamps
+    createdAt: rawData.createdAt,
+    updatedAt: rawData.updatedAt,
+  };
 };
 
 const validateRating = (rating) => {
@@ -387,79 +457,80 @@ const getProducts = async (req, res) => {
       return productData;
     });
 
-    // EXTRACT UNIQUE FILTER OPTIONS from all products (for filter UI)
-    const allProductsForFilters = await Product.findAll({
-      attributes: ['brandName', 'size', 'thickness', 'unitType', 'colors', 'gst'],
-      where: { isActive: true }
-    });
+    // BUILD CLEAN APPLIED FILTERS - Only include active filters
+    const appliedFilters = {};
 
-    const uniqueBrands = [...new Set(allProductsForFilters.map(p => p.brandName).filter(Boolean))].sort();
-    const uniqueSizes = [...new Set(allProductsForFilters.map(p => p.size).filter(Boolean))].sort();
-    const uniqueThicknesses = [...new Set(allProductsForFilters.map(p => p.thickness).filter(Boolean))].sort();
-    const uniqueUnitTypes = [...new Set(allProductsForFilters.map(p => p.unitType).filter(Boolean))].sort();
+    if (userType) appliedFilters.userType = userType;
+    if (categoryId) {
+      appliedFilters.categoryIds = categoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    }
+    if (subcategoryId) {
+      appliedFilters.subcategoryIds = subcategoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    }
+    if (minPrice || maxPrice) {
+      appliedFilters.priceRange = {
+        ...(minPrice && { min: Number(minPrice) }),
+        ...(maxPrice && { max: Number(maxPrice) }),
+      };
+    }
+    if (designNumber) appliedFilters.designNumber = designNumber;
+    if (minDesignNumber || maxDesignNumber) {
+      appliedFilters.designNumberRange = {
+        ...(minDesignNumber && { min: Number(minDesignNumber) }),
+        ...(maxDesignNumber && { max: Number(maxDesignNumber) }),
+      };
+    }
+    if (brandName) {
+      appliedFilters.brandNames = brandName.split(',').map(b => b.trim()).filter(b => b.length > 0);
+    }
+    if (colors) {
+      appliedFilters.colors = colors.split(',').map(c => c.trim()).filter(c => c.length > 0);
+    }
+    if (size) {
+      appliedFilters.sizes = size.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    }
+    if (thickness) {
+      appliedFilters.thicknesses = thickness.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    }
+    if (unitType) {
+      appliedFilters.unitTypes = unitType.split(',').map(u => u.trim()).filter(u => u.length > 0);
+    }
+    if (minGst || maxGst) {
+      appliedFilters.gstRange = {
+        ...(minGst && { min: Number(minGst) }),
+        ...(maxGst && { max: Number(maxGst) }),
+      };
+    }
+    if (search) appliedFilters.search = search;
+    if (isActive !== undefined) appliedFilters.isActive = isActive === 'true' || isActive === true;
+    if (sortBy && sortBy !== 'createdAt') appliedFilters.sortBy = sortBy;
+    if (sortOrder && sortOrder !== 'DESC') appliedFilters.sortOrder = sortOrder;
 
-    // Extract unique colors from JSON arrays
-    const allColors = new Set();
-    allProductsForFilters.forEach(p => {
-      if (p.colors && Array.isArray(p.colors)) {
-        p.colors.forEach(color => allColors.add(color));
-      }
-    });
-    const uniqueColors = [...allColors].sort();
-
-    // GST values
-    const gstValues = [...new Set(allProductsForFilters.map(p => p.gst).filter(g => g !== null))].sort((a, b) => a - b);
-
+    // CLEAN RESPONSE
     res.json({
+      success: true,
       products: processedProducts,
-      count,
-      totalCount,
-      activeCount,
-      inactiveCount,
-      totalPages: Math.ceil(count / limit),
-      currentPage: Number(page),
-      userRole,
 
-      // Applied filters
-      appliedFilters: {
-        userType: userType || null,
-        categoryIds: categoryId ? categoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
-        subcategoryIds: subcategoryId ? subcategoryId.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id)) : [],
-        priceRange: {
-          min: minPrice || null,
-          max: maxPrice || null,
-          priceField: userRole && userRole.toLowerCase() === 'dealer' ? 'dealerPrice' :
-            userRole && userRole.toLowerCase() === 'architect' ? 'architectPrice' : 'generalPrice'
-        },
-        designNumber: designNumber || null,
-        designNumberRange: {
-          min: minDesignNumber || null,
-          max: maxDesignNumber || null
-        },
-        brandNames: brandName ? brandName.split(',').map(b => b.trim()).filter(b => b.length > 0) : [],
-        colors: colors ? colors.split(',').map(c => c.trim()).filter(c => c.length > 0) : [],
-        sizes: size ? size.split(',').map(s => s.trim()).filter(s => s.length > 0) : [],
-        thicknesses: thickness ? thickness.split(',').map(t => t.trim()).filter(t => t.length > 0) : [],
-        unitTypes: unitType ? unitType.split(',').map(u => u.trim()).filter(u => u.length > 0) : [],
-        gstRange: {
-          min: minGst || null,
-          max: maxGst || null
-        },
-        search: search || null,
-        isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : null,
-        sortBy: sortBy || 'createdAt',
-        sortOrder: sortOrder || 'DESC'
+      // Pagination info
+      pagination: {
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: Number(page),
+        perPage: Number(limit),
       },
 
-      // Available filter options
-      availableFilters: {
-        brands: uniqueBrands,
-        sizes: uniqueSizes,
-        thicknesses: uniqueThicknesses,
-        unitTypes: uniqueUnitTypes,
-        colors: uniqueColors,
-        gstValues: gstValues
-      }
+      // Summary counts
+      summary: {
+        total: totalCount,
+        active: activeCount,
+        inactive: inactiveCount,
+      },
+
+      // Current user role
+      userRole,
+
+      // Only include appliedFilters if any filters are active
+      ...(Object.keys(appliedFilters).length > 0 && { appliedFilters }),
     });
   } catch (error) {
     console.error('Get products error:', error);
