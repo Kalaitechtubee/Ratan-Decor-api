@@ -22,8 +22,8 @@ const computePrice = (product, role) =>
   role === 'Dealer'
     ? product.dealerPrice
     : role === 'Architect'
-    ? product.architectPrice
-    : product.generalPrice;
+      ? product.architectPrice
+      : product.generalPrice;
 
 const enquiryController = {
   async createEnquiry(req, res) {
@@ -47,7 +47,7 @@ const enquiryController = {
         productDesignNumber,
       } = req.body;
 
-     
+
       let finalUserId = userId;
       if (!finalUserId && req.user) {
         finalUserId = req.user.id;
@@ -91,12 +91,15 @@ const enquiryController = {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support"];
-      if (role && !validRoles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
-        });
+      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      if (role) {
+        const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
+        if (!normalizedRole) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
+          });
+        }
       }
 
       const validSources = ["Email", "WhatsApp", "Phone", "VideoCall"];
@@ -137,7 +140,7 @@ const enquiryController = {
         companyName: companyName?.trim() || null,
         state: state.trim(),
         city: city.trim(),
-      userType: userType || null,
+        userType: userType || null,
         source: source || "Email",
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,
@@ -226,207 +229,207 @@ const enquiryController = {
     }
   },
 
-async getAllEnquiries(req, res) {
-  try {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      status,
-      source,
-      userType,
-      state,
-      city,
-      role,
-      pincode,
-      includeNotes = false
-    } = req.query;
+  async getAllEnquiries(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        status,
+        source,
+        userType,
+        state,
+        city,
+        role,
+        pincode,
+        includeNotes = false
+      } = req.query;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    if (isNaN(pageNum) || pageNum < 1) {
-      return res.status(400).json({ success: false, message: "Page must be a positive integer" });
-    }
-    if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
-      return res.status(400).json({ success: false, message: "Limit must be between 1 and 100" });
-    }
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      if (isNaN(pageNum) || pageNum < 1) {
+        return res.status(400).json({ success: false, message: "Page must be a positive integer" });
+      }
+      if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
+        return res.status(400).json({ success: false, message: "Limit must be between 1 and 100" });
+      }
 
-    const where = {};
-    if (search) {
-      where[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { email: { [Op.like]: `%${search}%` } },
-        { phone: { [Op.like]: `%${search}%` } },
-        { companyName: { [Op.like]: `%${search}%` } },
-        { pincode: { [Op.like]: `%${search}%` } },
-        { productDesignNumber: { [Op.like]: `%${search}%` } },
+      const where = {};
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { phone: { [Op.like]: `%${search}%` } },
+          { companyName: { [Op.like]: `%${search}%` } },
+          { pincode: { [Op.like]: `%${search}%` } },
+          { productDesignNumber: { [Op.like]: `%${search}%` } },
+        ];
+      }
+      if (status) where.status = status;
+      if (source) where.source = source;
+      if (userType) where.userType = userType;
+      if (state) where.state = state;
+      if (city) where.city = city;
+      if (role) where.role = role;
+      if (pincode) where.pincode = pincode;
+
+      const include = [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
+          required: false,
+        },
+        {
+          model: Product,
+          as: "product",
+          attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
+          required: false,
+        },
+        {
+          model: UserType,
+          as: "userTypeData",
+          attributes: ["id", "name"],
+          required: false,
+        },
       ];
-    }
-    if (status) where.status = status;
-    if (source) where.source = source;
-    if (userType) where.userType = userType;
-    if (state) where.state = state;
-    if (city) where.city = city;
-    if (role) where.role = role;
-    if (pincode) where.pincode = pincode;
 
-    const include = [
-      {
-        model: User,
-        as: "user",
-        attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
-        required: false,
-      },
-      {
-        model: Product,
-        as: "product",
-        attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
-        required: false,
-      },
-      {
-        model: UserType,
-        as: "userTypeData",
-        attributes: ["id", "name"],
-        required: false,
-      },
-    ];
 
-   
-    if (includeNotes === 'true') {
-      include.push({
-        model: EnquiryInternalNote,
-        as: "internalNotes",
-        include: [
-          { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
-        ],
-        order: [["createdAt", "DESC"]]
+      if (includeNotes === 'true') {
+        include.push({
+          model: EnquiryInternalNote,
+          as: "internalNotes",
+          include: [
+            { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
+          ],
+          order: [["createdAt", "DESC"]]
+        });
+      }
+
+      const enquiries = await Enquiry.findAndCountAll({
+        where,
+        include,
+        limit: limitNum,
+        offset: (pageNum - 1) * limitNum,
+        order: [["createdAt", "DESC"]],
+      });
+
+      enquiries.rows.forEach(enquiry => {
+        if (enquiry && enquiry.userTypeData) {
+          enquiry.userType = enquiry.userTypeData.name;
+        }
+        if (enquiry && enquiry.product) {
+          const userRole = getReqUserRole(req);
+          const computedPrice = computePrice(enquiry.product, userRole);
+          enquiry.product.price = computedPrice;
+          delete enquiry.product.generalPrice;
+          delete enquiry.product.architectPrice;
+          delete enquiry.product.dealerPrice;
+        }
+      });
+
+      res.json({
+        success: true,
+        message: "Enquiries retrieved successfully",
+        data: enquiries.rows,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(enquiries.count / limitNum),
+          totalItems: enquiries.count,
+          limit: limitNum,
+        },
+      });
+    } catch (error) {
+      console.error("Get all enquiries error:", error);
+      res.status(500).json({
+        success: false,
+        message: `Error fetching enquiries: ${error.message}`,
       });
     }
+  },
 
-    const enquiries = await Enquiry.findAndCountAll({
-      where,
-      include,
-      limit: limitNum,
-      offset: (pageNum - 1) * limitNum,
-      order: [["createdAt", "DESC"]],
-    });
+  async getEnquiryById(req, res) {
+    try {
+      const { id } = req.params;
+      const { includeNotes = false } = req.query;
 
-    enquiries.rows.forEach(enquiry => {
+      if (!id || isNaN(parseInt(id))) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid enquiry ID",
+        });
+      }
+
+      const include = [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
+          required: false
+        },
+        {
+          model: Product,
+          as: "product",
+          attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
+          required: false
+        },
+        {
+          model: UserType,
+          as: "userTypeData",
+          attributes: ["id", "name"],
+          required: false,
+        },
+      ];
+
+      if (includeNotes === 'true') {
+        include.push({
+          model: EnquiryInternalNote,
+          as: "internalNotes",
+          include: [
+            { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
+          ],
+          order: [["createdAt", "DESC"]]
+        });
+      }
+
+      const enquiry = await Enquiry.findByPk(id, { include });
+
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      // Replace userType ID with name from userTypeData
       if (enquiry && enquiry.userTypeData) {
         enquiry.userType = enquiry.userTypeData.name;
       }
+
+      // Compute role-based price for product
       if (enquiry && enquiry.product) {
         const userRole = getReqUserRole(req);
         const computedPrice = computePrice(enquiry.product, userRole);
         enquiry.product.price = computedPrice;
+        // Remove individual price fields to show only role-based price
         delete enquiry.product.generalPrice;
         delete enquiry.product.architectPrice;
         delete enquiry.product.dealerPrice;
       }
-    });
 
-    res.json({
-      success: true,
-      message: "Enquiries retrieved successfully",
-      data: enquiries.rows,
-      pagination: {
-        currentPage: pageNum,
-        totalPages: Math.ceil(enquiries.count / limitNum),
-        totalItems: enquiries.count,
-        limit: limitNum,
-      },
-    });
-  } catch (error) {
-    console.error("Get all enquiries error:", error);
-    res.status(500).json({
-      success: false,
-      message: `Error fetching enquiries: ${error.message}`,
-    });
-  }
-},
-
-async getEnquiryById(req, res) {
-  try {
-    const { id } = req.params;
-    const { includeNotes = false } = req.query;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({
+      res.json({
+        success: true,
+        message: "Enquiry retrieved successfully",
+        data: enquiry,
+      });
+    } catch (error) {
+      console.error("Get enquiry by ID error:", error);
+      res.status(500).json({
         success: false,
-        message: "Invalid enquiry ID",
+        message: `Error fetching enquiry by ID: ${error.message}`,
       });
     }
-
-    const include = [
-      {
-        model: User,
-        as: "user",
-        attributes: ["id", "name", "email", "role", "state", "city", "pincode", "address", "country", "mobile"],
-        required: false
-      },
-      {
-        model: Product,
-        as: "product",
-        attributes: ["id", "name", "generalPrice", "architectPrice", "dealerPrice"],
-        required: false
-      },
-      {
-        model: UserType,
-        as: "userTypeData",
-        attributes: ["id", "name"],
-        required: false,
-      },
-    ];
-
-    if (includeNotes === 'true') {
-      include.push({
-        model: EnquiryInternalNote,
-        as: "internalNotes",
-        include: [
-          { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
-        ],
-        order: [["createdAt", "DESC"]]
-      });
-    }
-
-    const enquiry = await Enquiry.findByPk(id, { include });
-
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
-      });
-    }
-
-    // Replace userType ID with name from userTypeData
-    if (enquiry && enquiry.userTypeData) {
-      enquiry.userType = enquiry.userTypeData.name;
-    }
-
-    // Compute role-based price for product
-    if (enquiry && enquiry.product) {
-      const userRole = getReqUserRole(req);
-      const computedPrice = computePrice(enquiry.product, userRole);
-      enquiry.product.price = computedPrice;
-      // Remove individual price fields to show only role-based price
-      delete enquiry.product.generalPrice;
-      delete enquiry.product.architectPrice;
-      delete enquiry.product.dealerPrice;
-    }
-
-    res.json({
-      success: true,
-      message: "Enquiry retrieved successfully",
-      data: enquiry,
-    });
-  } catch (error) {
-    console.error("Get enquiry by ID error:", error);
-    res.status(500).json({
-      success: false,
-      message: `Error fetching enquiry by ID: ${error.message}`,
-    });
-  }
-},
+  },
 
   async updateEnquiry(req, res) {
     try {
@@ -499,12 +502,15 @@ async getEnquiryById(req, res) {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support"];
-      if (role && !validRoles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
-        });
+      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      if (role) {
+        const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
+        if (!normalizedRole) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
+          });
+        }
       }
       const validStatuses = ["New", "InProgress", "Confirmed", "Delivered", "Rejected"];
       if (status && !validStatuses.includes(status)) {
@@ -690,12 +696,15 @@ async getEnquiryById(req, res) {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support"];
-      if (role && !validRoles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
-        });
+      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      if (role) {
+        const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
+        if (!normalizedRole) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid role. Must be one of: ${validRoles.join(", ")}`,
+          });
+        }
       }
 
       // Validate pincode if provided
@@ -790,348 +799,348 @@ async getEnquiryById(req, res) {
   },
 
   // Add this to enquiryController object in enquiry/controller.js
-async deleteEnquiry(req, res) {
-  try {
-    const { id } = req.params;
+  async deleteEnquiry(req, res) {
+    try {
+      const { id } = req.params;
 
-    // Validate enquiry ID
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({
+      // Validate enquiry ID
+      if (!id || isNaN(parseInt(id))) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid enquiry ID",
+        });
+      }
+
+      // Find the enquiry
+      const enquiry = await Enquiry.findByPk(id);
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found",
+        });
+      }
+
+      // Check authorization (only Admin or Manager can delete)
+      if (!['Admin', 'Manager'].includes(req.user.role)) {
+        return res.status(403).json({
+          success: false,
+          message: "Only Admin or Manager can delete enquiries",
+        });
+      }
+
+      // Delete the enquiry (cascading delete will handle related internal notes due to onDelete: 'CASCADE' in EnquiryInternalNote model)
+      await enquiry.destroy();
+
+      res.json({
+        success: true,
+        message: "Enquiry deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete enquiry error:", error);
+      res.status(500).json({
         success: false,
-        message: "Invalid enquiry ID",
+        message: `Error deleting enquiry: ${error.message}`,
       });
     }
-
-    // Find the enquiry
-    const enquiry = await Enquiry.findByPk(id);
-    if (!enquiry) {
-      return res.status(404).json({
-        success: false,
-        message: "Enquiry not found",
-      });
-    }
-
-    // Check authorization (only Admin or Manager can delete)
-    if (!['Admin', 'Manager'].includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only Admin or Manager can delete enquiries",
-      });
-    }
-
-    // Delete the enquiry (cascading delete will handle related internal notes due to onDelete: 'CASCADE' in EnquiryInternalNote model)
-    await enquiry.destroy();
-
-    res.json({
-      success: true,
-      message: "Enquiry deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete enquiry error:", error);
-    res.status(500).json({
-      success: false,
-      message: `Error deleting enquiry: ${error.message}`,
-    });
-  }
-},
+  },
   // ADD INTERNAL NOTE (separate method)
-async addInternalNote(req, res) {
-  try {
-    const { id: enquiryId } = req.params;
-    const { note, noteType, isImportant, followUpDate, userId, productId } = req.body;
+  async addInternalNote(req, res) {
+    try {
+      const { id: enquiryId } = req.params;
+      const { note, noteType, isImportant, followUpDate, userId, productId } = req.body;
 
-    console.log("Adding internal note:");
-    console.log("Enquiry ID:", enquiryId);
-    console.log("Staff User ID:", req.user?.id);
-    console.log("Note:", note);
-    console.log("Request body:", req.body);
+      console.log("Adding internal note:");
+      console.log("Enquiry ID:", enquiryId);
+      console.log("Staff User ID:", req.user?.id);
+      console.log("Note:", note);
+      console.log("Request body:", req.body);
 
-    // Validate required fields with detailed checks
-    if (!note || typeof note !== 'string' || note.trim().length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Note content is required and cannot be empty" 
-      });
-    }
-
-    if (!enquiryId || isNaN(parseInt(enquiryId))) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Valid enquiry ID is required" 
-      });
-    }
-
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ 
-        success: false, 
-        message: "User authentication required" 
-      });
-    }
-
-    // Verify enquiry exists
-    const enquiry = await Enquiry.findByPk(parseInt(enquiryId));
-    if (!enquiry) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Enquiry not found" 
-      });
-    }
-
-    // Create internal note with explicit validation and type conversion
-    const noteData = {
-      enquiryId: parseInt(enquiryId),
-      staffUserId: parseInt(req.user.id),
-      note: note.trim(),
-      noteType: noteType && ['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType) 
-        ? noteType 
-        : 'Follow-up',
-      isImportant: Boolean(isImportant),
-      followUpDate: followUpDate || null,
-      userId: userId ? parseInt(userId) : null,
-      productId: productId ? parseInt(productId) : null
-    };
-
-    console.log("Creating note with validated data:", noteData);
-
-    // Validate all required fields are present before creation
-    if (!noteData.enquiryId || !noteData.staffUserId || !noteData.note) {
-      console.error("Missing required fields:", {
-        enquiryId: noteData.enquiryId,
-        staffUserId: noteData.staffUserId,
-        note: noteData.note
-      });
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields for internal note creation"
-      });
-    }
-
-    const internalNote = await EnquiryInternalNote.create(noteData);
-
-    // Fetch the created note with associations
-    const enrichedNote = await EnquiryInternalNote.findByPk(internalNote.id, {
-      include: [
-        { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
-      ],
-    });
-
-    res.status(201).json({ 
-      success: true, 
-      message: "Internal note added successfully", 
-      data: enrichedNote 
-    });
-  } catch (error) {
-    console.error("Add internal note error:", error);
-    console.error("Error details:", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-    
-    if (error.name === 'SequelizeValidationError') {
-      const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
-      return res.status(400).json({ 
-        success: false, 
-        message: "Validation error", 
-        errors: validationErrors 
-      });
-    }
-    
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
-
-// GET INTERNAL NOTES FOR ENQUIRY
-async getInternalNotes(req, res) {
-  try {
-    const { id: enquiryId } = req.params;
-    const { page = 1, limit = 20 } = req.query;
-
-    if (!enquiryId || isNaN(parseInt(enquiryId))) {
-      return res.status(400).json({ success: false, message: "Valid enquiry ID is required" });
-    }
-
-    const notes = await EnquiryInternalNote.findAndCountAll({
-      where: { enquiryId: parseInt(enquiryId) },
-      include: [
-        { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
-      ],
-      limit: parseInt(limit),
-      offset: (page - 1) * limit,
-      order: [["createdAt", "DESC"]]
-    });
-
-    res.json({
-      success: true,
-      data: notes.rows,
-      pagination: {
-        page: parseInt(page),
-        totalPages: Math.ceil(notes.count / limit),
-        totalItems: notes.count,
-      },
-    });
-  } catch (error) {
-    console.error("Get internal notes error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
-
-// UPDATE INTERNAL NOTE
-async updateInternalNote(req, res) {
-  try {
-    const { noteId } = req.params;
-    const { note, noteType, isImportant, followUpDate } = req.body;
-
-    if (!noteId || isNaN(parseInt(noteId))) {
-      return res.status(400).json({ success: false, message: "Valid note ID is required" });
-    }
-
-    const internalNote = await EnquiryInternalNote.findByPk(parseInt(noteId));
-    if (!internalNote) {
-      return res.status(404).json({ success: false, message: "Internal note not found" });
-    }
-
-    // Only allow the creator or admin to update
-    if (internalNote.staffUserId !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: "Not authorized to update this note" });
-    }
-
-    // Update with explicit validation
-    const updateData = {};
-    if (note !== undefined && note !== null) {
-      if (typeof note !== 'string' || note.trim().length === 0) {
-        return res.status(400).json({ success: false, message: "Note cannot be empty" });
+      // Validate required fields with detailed checks
+      if (!note || typeof note !== 'string' || note.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Note content is required and cannot be empty"
+        });
       }
-      updateData.note = note.trim();
-    }
-    if (noteType !== undefined) {
-      if (['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType)) {
-        updateData.noteType = noteType;
+
+      if (!enquiryId || isNaN(parseInt(enquiryId))) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid enquiry ID is required"
+        });
       }
-    }
-    if (isImportant !== undefined) updateData.isImportant = Boolean(isImportant);
-    if (followUpDate !== undefined) updateData.followUpDate = followUpDate;
 
-    await internalNote.update(updateData);
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({
+          success: false,
+          message: "User authentication required"
+        });
+      }
 
-    const updated = await EnquiryInternalNote.findByPk(parseInt(noteId), {
-      include: [
-        { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
-      ],
-    });
+      // Verify enquiry exists
+      const enquiry = await Enquiry.findByPk(parseInt(enquiryId));
+      if (!enquiry) {
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found"
+        });
+      }
 
-    res.json({ success: true, message: "Internal note updated", data: updated });
-  } catch (error) {
-    console.error("Update internal note error:", error);
-    
-    if (error.name === 'SequelizeValidationError') {
-      const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
-      return res.status(400).json({ 
-        success: false, 
-        message: "Validation error", 
-        errors: validationErrors 
+      // Create internal note with explicit validation and type conversion
+      const noteData = {
+        enquiryId: parseInt(enquiryId),
+        staffUserId: parseInt(req.user.id),
+        note: note.trim(),
+        noteType: noteType && ['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType)
+          ? noteType
+          : 'Follow-up',
+        isImportant: Boolean(isImportant),
+        followUpDate: followUpDate || null,
+        userId: userId ? parseInt(userId) : null,
+        productId: productId ? parseInt(productId) : null
+      };
+
+      console.log("Creating note with validated data:", noteData);
+
+      // Validate all required fields are present before creation
+      if (!noteData.enquiryId || !noteData.staffUserId || !noteData.note) {
+        console.error("Missing required fields:", {
+          enquiryId: noteData.enquiryId,
+          staffUserId: noteData.staffUserId,
+          note: noteData.note
+        });
+        return res.status(400).json({
+          success: false,
+          message: "Missing required fields for internal note creation"
+        });
+      }
+
+      const internalNote = await EnquiryInternalNote.create(noteData);
+
+      // Fetch the created note with associations
+      const enrichedNote = await EnquiryInternalNote.findByPk(internalNote.id, {
+        include: [
+          { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
+        ],
       });
+
+      res.status(201).json({
+        success: true,
+        message: "Internal note added successfully",
+        data: enrichedNote
+      });
+    } catch (error) {
+      console.error("Add internal note error:", error);
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+
+      if (error.name === 'SequelizeValidationError') {
+        const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
+        return res.status(400).json({
+          success: false,
+          message: "Validation error",
+          errors: validationErrors
+        });
+      }
+
+      res.status(500).json({ success: false, message: error.message });
     }
-    
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
+  },
 
-// DELETE INTERNAL NOTE
-async deleteInternalNote(req, res) {
-  try {
-    const { noteId } = req.params;
+  // GET INTERNAL NOTES FOR ENQUIRY
+  async getInternalNotes(req, res) {
+    try {
+      const { id: enquiryId } = req.params;
+      const { page = 1, limit = 20 } = req.query;
 
-    if (!noteId || isNaN(parseInt(noteId))) {
-      return res.status(400).json({ success: false, message: "Valid note ID is required" });
-    }
+      if (!enquiryId || isNaN(parseInt(enquiryId))) {
+        return res.status(400).json({ success: false, message: "Valid enquiry ID is required" });
+      }
 
-    const internalNote = await EnquiryInternalNote.findByPk(parseInt(noteId));
-    if (!internalNote) {
-      return res.status(404).json({ success: false, message: "Internal note not found" });
-    }
+      const notes = await EnquiryInternalNote.findAndCountAll({
+        where: { enquiryId: parseInt(enquiryId) },
+        include: [
+          { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
+        ],
+        limit: parseInt(limit),
+        offset: (page - 1) * limit,
+        order: [["createdAt", "DESC"]]
+      });
 
-    // Only allow the creator or admin to delete
-    if (internalNote.staffUserId !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: "Not authorized to delete this note" });
-    }
-
-    await internalNote.destroy();
-    res.json({ success: true, message: "Internal note deleted" });
-  } catch (error) {
-    console.error("Delete internal note error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-},
-
-// GET FOLLOW-UP DASHBOARD FOR ENQUIRIES
-async getFollowUpDashboard(req, res) {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const { days = 7 } = req.query;
-    
-    const upcomingDate = new Date();
-    upcomingDate.setDate(upcomingDate.getDate() + parseInt(days));
-    const futureDate = upcomingDate.toISOString().split('T')[0];
-
-    const followUps = await EnquiryInternalNote.findAll({
-      where: {
-        followUpDate: {
-          [Op.between]: [today, futureDate]
-        }
-      },
-      include: [
-        {
-          model: Enquiry,
-          as: "enquiry",
-          include: [
-            { model: User, as: "user", attributes: ["id", "name", "email"] },
-            { model: Product, as: "product", attributes: ["id", "name"] }
-          ]
+      res.json({
+        success: true,
+        data: notes.rows,
+        pagination: {
+          page: parseInt(page),
+          totalPages: Math.ceil(notes.count / limit),
+          totalItems: notes.count,
         },
-        { model: User, as: "staffUser", attributes: ["id", "name"] }
-      ],
-      order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
-    });
+      });
+    } catch (error) {
+      console.error("Get internal notes error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
 
-    const overdue = await EnquiryInternalNote.findAll({
-      where: {
-        followUpDate: {
-          [Op.lt]: today
+  // UPDATE INTERNAL NOTE
+  async updateInternalNote(req, res) {
+    try {
+      const { noteId } = req.params;
+      const { note, noteType, isImportant, followUpDate } = req.body;
+
+      if (!noteId || isNaN(parseInt(noteId))) {
+        return res.status(400).json({ success: false, message: "Valid note ID is required" });
+      }
+
+      const internalNote = await EnquiryInternalNote.findByPk(parseInt(noteId));
+      if (!internalNote) {
+        return res.status(404).json({ success: false, message: "Internal note not found" });
+      }
+
+      // Only allow the creator or admin to update
+      if (internalNote.staffUserId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, message: "Not authorized to update this note" });
+      }
+
+      // Update with explicit validation
+      const updateData = {};
+      if (note !== undefined && note !== null) {
+        if (typeof note !== 'string' || note.trim().length === 0) {
+          return res.status(400).json({ success: false, message: "Note cannot be empty" });
         }
-      },
-      include: [
-        {
-          model: Enquiry,
-          as: "enquiry",
-          include: [
-            { model: User, as: "user", attributes: ["id", "name", "email"] },
-            { model: Product, as: "product", attributes: ["id", "name"] }
-          ]
-        },
-        { model: User, as: "staffUser", attributes: ["id", "name"] }
-      ],
-      order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
-    });
-
-    res.json({
-      success: true,
-      data: {
-        upcoming: followUps,
-        overdue: overdue,
-        summary: {
-          upcomingCount: followUps.length,
-          overdueCount: overdue.length,
-          importantUpcoming: followUps.filter(note => note.isImportant).length,
-          importantOverdue: overdue.filter(note => note.isImportant).length
+        updateData.note = note.trim();
+      }
+      if (noteType !== undefined) {
+        if (['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType)) {
+          updateData.noteType = noteType;
         }
       }
-    });
-  } catch (error) {
-    console.error("Get follow-up dashboard error:", error);
-    res.status(500).json({ success: false, message: error.message });
+      if (isImportant !== undefined) updateData.isImportant = Boolean(isImportant);
+      if (followUpDate !== undefined) updateData.followUpDate = followUpDate;
+
+      await internalNote.update(updateData);
+
+      const updated = await EnquiryInternalNote.findByPk(parseInt(noteId), {
+        include: [
+          { model: User, as: "staffUser", attributes: ["id", "name", "email"] }
+        ],
+      });
+
+      res.json({ success: true, message: "Internal note updated", data: updated });
+    } catch (error) {
+      console.error("Update internal note error:", error);
+
+      if (error.name === 'SequelizeValidationError') {
+        const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
+        return res.status(400).json({
+          success: false,
+          message: "Validation error",
+          errors: validationErrors
+        });
+      }
+
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // DELETE INTERNAL NOTE
+  async deleteInternalNote(req, res) {
+    try {
+      const { noteId } = req.params;
+
+      if (!noteId || isNaN(parseInt(noteId))) {
+        return res.status(400).json({ success: false, message: "Valid note ID is required" });
+      }
+
+      const internalNote = await EnquiryInternalNote.findByPk(parseInt(noteId));
+      if (!internalNote) {
+        return res.status(404).json({ success: false, message: "Internal note not found" });
+      }
+
+      // Only allow the creator or admin to delete
+      if (internalNote.staffUserId !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, message: "Not authorized to delete this note" });
+      }
+
+      await internalNote.destroy();
+      res.json({ success: true, message: "Internal note deleted" });
+    } catch (error) {
+      console.error("Delete internal note error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // GET FOLLOW-UP DASHBOARD FOR ENQUIRIES
+  async getFollowUpDashboard(req, res) {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { days = 7 } = req.query;
+
+      const upcomingDate = new Date();
+      upcomingDate.setDate(upcomingDate.getDate() + parseInt(days));
+      const futureDate = upcomingDate.toISOString().split('T')[0];
+
+      const followUps = await EnquiryInternalNote.findAll({
+        where: {
+          followUpDate: {
+            [Op.between]: [today, futureDate]
+          }
+        },
+        include: [
+          {
+            model: Enquiry,
+            as: "enquiry",
+            include: [
+              { model: User, as: "user", attributes: ["id", "name", "email"] },
+              { model: Product, as: "product", attributes: ["id", "name"] }
+            ]
+          },
+          { model: User, as: "staffUser", attributes: ["id", "name"] }
+        ],
+        order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
+      });
+
+      const overdue = await EnquiryInternalNote.findAll({
+        where: {
+          followUpDate: {
+            [Op.lt]: today
+          }
+        },
+        include: [
+          {
+            model: Enquiry,
+            as: "enquiry",
+            include: [
+              { model: User, as: "user", attributes: ["id", "name", "email"] },
+              { model: Product, as: "product", attributes: ["id", "name"] }
+            ]
+          },
+          { model: User, as: "staffUser", attributes: ["id", "name"] }
+        ],
+        order: [["followUpDate", "ASC"], ["isImportant", "DESC"]]
+      });
+
+      res.json({
+        success: true,
+        data: {
+          upcoming: followUps,
+          overdue: overdue,
+          summary: {
+            upcomingCount: followUps.length,
+            overdueCount: overdue.length,
+            importantUpcoming: followUps.filter(note => note.isImportant).length,
+            importantOverdue: overdue.filter(note => note.isImportant).length
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Get follow-up dashboard error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
   }
-}
 
 };
 
