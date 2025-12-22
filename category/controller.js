@@ -34,11 +34,11 @@ const buildTree = (categories, parentId = null, req = null) => {
 const getDescendants = async (catId) => {
   try {
     // FIXED: Use raw recursive CTE query for better performance (assumes MySQL 8+/MariaDB 10.2+)
-    const [results] = await sequelize.query(`
+    const results = await sequelize.query(`
       WITH RECURSIVE category_tree AS (
-        SELECT id FROM Categories WHERE id = :catId
+        SELECT id FROM categories WHERE id = :catId
         UNION ALL
-        SELECT c.id FROM Categories c
+        SELECT c.id FROM categories c
         INNER JOIN category_tree ct ON c.parentId = ct.id
       )
       SELECT id FROM category_tree WHERE id != :catId
@@ -46,27 +46,27 @@ const getDescendants = async (catId) => {
       replacements: { catId },
       type: Sequelize.QueryTypes.SELECT
     });
-    
+
     return results.map(r => r.id);
   } catch (error) {
     console.error('Error fetching descendants:', error);
     // Fallback to original loop if CTE fails
     const descendants = [];
     const queue = [catId];
-    
+
     while (queue.length > 0) {
       const currentId = queue.shift();
       const children = await Category.findAll({
         where: { parentId: currentId },
         attributes: ['id'],
       });
-      
+
       for (const child of children) {
         descendants.push(child.id);
         queue.push(child.id);
       }
     }
-    
+
     return descendants;
   }
 };
@@ -99,8 +99,8 @@ const getCategoryTree = async (req, res) => {
         }
       ],
       attributes: [
-        'id', 
-        'name', 
+        'id',
+        'name',
         'parentId',
         'image',
         [sequelize.fn('COUNT', sequelize.col('products.id')), 'productCount']
@@ -111,8 +111,8 @@ const getCategoryTree = async (req, res) => {
     });
 
     if (!categories.length) {
-      return res.status(200).json({ 
-        success: true, 
+      return res.status(200).json({
+        success: true,
         categories: [],
         message: 'No categories found'
       });
@@ -125,18 +125,18 @@ const getCategoryTree = async (req, res) => {
       parentId: c.parentId,
       productCount: parseInt(c.productCount) || 0,
     }));
-    
+
     const tree = buildTree(mappedCategories, null, req);
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       categories: tree,
       totalCategories: categories.length
     });
   } catch (err) {
     console.error('Error fetching category tree:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to fetch categories',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -157,17 +157,17 @@ const getSubCategories = async (req, res) => {
     } else {
       categoryId = parseInt(parentId, 10);
       if (isNaN(categoryId)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Invalid parent category ID' 
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid parent category ID'
         });
       }
-      
+
       const parentExists = await Category.findByPk(categoryId);
       if (!parentExists) {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Parent category not found' 
+        return res.status(404).json({
+          success: false,
+          message: 'Parent category not found'
         });
       }
     }
@@ -204,7 +204,7 @@ const getSubCategories = async (req, res) => {
       };
     }));
 
-    res.json({ 
+    res.json({
       success: true,
       subcategories: response,
       pagination: {
@@ -218,8 +218,8 @@ const getSubCategories = async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching subcategories:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to fetch subcategories',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -337,27 +337,27 @@ const createSubCategory = async (req, res) => {
 // Update category
 const updateCategory = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { id } = req.params;
     const { name, parentId } = req.body;
-    
+
     const categoryId = parseInt(id, 10);
     if (isNaN(categoryId)) {
       await transaction.rollback();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid category ID' 
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid category ID'
       });
     }
 
     const category = await Category.findByPk(categoryId, { transaction });
-    
+
     if (!category) {
       await transaction.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Category not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Category not found'
       });
     }
 
@@ -369,32 +369,32 @@ const updateCategory = async (req, res) => {
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim().length < 2) {
         await transaction.rollback();
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Category name must be at least 2 characters long' 
+        return res.status(400).json({
+          success: false,
+          message: 'Category name must be at least 2 characters long'
         });
       }
 
       const trimmedName = name.trim();
-      
+
       if (trimmedName !== category.name) {
         const existingCategory = await Category.findOne({
-          where: { 
+          where: {
             name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), Sequelize.fn('LOWER', trimmedName)),
             parentId: category.parentId,
             id: { [Op.ne]: categoryId }
           },
           transaction
         });
-        
+
         if (existingCategory) {
           await transaction.rollback();
-          return res.status(409).json({ 
-            success: false, 
-            message: 'Category name already exists at this level' 
+          return res.status(409).json({
+            success: false,
+            message: 'Category name already exists at this level'
           });
         }
-        
+
         updateData.name = trimmedName;
         hasChanges = true;
       }
@@ -422,20 +422,20 @@ const updateCategory = async (req, res) => {
     // Handle parentId update
     if (parentId !== undefined) {
       let parsedParentId;
-      
+
       if (parentId === null || parentId === '' || parentId === 'null') {
         parsedParentId = null;
       } else {
         parsedParentId = parseInt(parentId, 10);
         if (isNaN(parsedParentId)) {
           await transaction.rollback();
-          return res.status(400).json({ 
-            success: false, 
-            message: 'Invalid parent category ID' 
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid parent category ID'
           });
         }
       }
-      
+
       if (parsedParentId !== category.parentId) {
         // If changing from main category to subcategory, remove image and cleanup
         if (parsedParentId !== null && category.image) {
@@ -446,32 +446,32 @@ const updateCategory = async (req, res) => {
 
         if (parsedParentId === categoryId) {
           await transaction.rollback();
-          return res.status(400).json({ 
-            success: false, 
-            message: 'Category cannot be its own parent' 
+          return res.status(400).json({
+            success: false,
+            message: 'Category cannot be its own parent'
           });
         }
-        
+
         if (parsedParentId !== null) {
           const descendants = await getDescendants(categoryId);
           if (descendants.includes(parsedParentId)) {
             await transaction.rollback();
-            return res.status(400).json({ 
-              success: false, 
-              message: 'Cannot set a descendant as the parent (would create a cycle)' 
+            return res.status(400).json({
+              success: false,
+              message: 'Cannot set a descendant as the parent (would create a cycle)'
             });
           }
-          
+
           const parentExists = await Category.findByPk(parsedParentId, { transaction });
           if (!parentExists) {
             await transaction.rollback();
-            return res.status(404).json({ 
-              success: false, 
-              message: 'Parent category not found' 
+            return res.status(404).json({
+              success: false,
+              message: 'Parent category not found'
             });
           }
         }
-        
+
         updateData.parentId = parsedParentId;
         hasChanges = true;
       }
@@ -535,8 +535,8 @@ const updateCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error updating category:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to update category',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -550,9 +550,9 @@ const getCategoryById = async (req, res) => {
 
     const categoryId = parseInt(id, 10);
     if (isNaN(categoryId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid category ID' 
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid category ID'
       });
     }
 
@@ -582,9 +582,9 @@ const getCategoryById = async (req, res) => {
     });
 
     if (!category) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Category not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Category not found'
       });
     }
 
@@ -618,8 +618,8 @@ const getCategoryById = async (req, res) => {
     res.json({ success: true, category: response });
   } catch (err) {
     console.error('Error fetching category:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to fetch category',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -768,10 +768,10 @@ const deleteCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error deleting category:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete category', 
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };
@@ -780,14 +780,14 @@ const deleteCategory = async (req, res) => {
 const searchCategories = async (req, res) => {
   try {
     const { q } = req.query;
-    
+
     if (!q || q.trim().length < 2) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Search query must be at least 2 characters long' 
+      return res.status(400).json({
+        success: false,
+        message: 'Search query must be at least 2 characters long'
       });
     }
-    
+
     const categories = await Category.findAll({
       where: {
         name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${q.trim().toLowerCase()}%`)
@@ -803,7 +803,7 @@ const searchCategories = async (req, res) => {
       limit: 20,
       order: [['name', 'ASC']]
     });
-    
+
     const results = categories.map(cat => ({
       id: cat.id,
       name: cat.name,
@@ -813,7 +813,7 @@ const searchCategories = async (req, res) => {
       parentName: cat.parent?.name || null,
       isSubcategory: !!cat.parentId,
     }));
-    
+
     res.json({
       success: true,
       categories: results,
@@ -822,8 +822,8 @@ const searchCategories = async (req, res) => {
     });
   } catch (err) {
     console.error('Error searching categories:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to search categories',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -892,15 +892,15 @@ const checkCategoryDeletion = async (req, res) => {
           parentId: sub.parentId
         })),
         affectedCategoryIds: allCategoryIds,
-        suggestions: canDelete ? 
-          ['Category can be safely deleted'] : 
+        suggestions: canDelete ?
+          ['Category can be safely deleted'] :
           ['Move products to another category', 'Deactivate products first', 'Use force delete']
       }
     });
   } catch (err) {
     console.error('Error checking category deletion:', err);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Failed to check category deletion impact',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -981,10 +981,10 @@ const forceDeleteCategory = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error('Error force deleting category:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to force delete category', 
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to force delete category',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 };

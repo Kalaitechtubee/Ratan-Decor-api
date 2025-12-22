@@ -173,32 +173,65 @@ const getProducts = async (req, res) => {
       }
     }
 
-    // DESIGN NUMBER FILTERING
+    // DESIGN NUMBER FILTERING (Number-based only)
     const designNumberConditions = [];
+
+    // Ensure designNumber column is treated as numeric for range comparisons
+    // but only if it contains numeric values
+    const numericCheck = sequelize.where(
+      sequelize.col('designNumber'),
+      { [Op.regexp]: '^[0-9]+$' }
+    );
+
     if (designNumber) {
-      designNumberConditions.push({ [Op.like]: `%${designNumber.trim()}%` });
+      const trimmedDesign = designNumber.trim();
+      if (/^\d+$/.test(trimmedDesign)) {
+        // If it's a number, we can search by exact numeric match or partial but restricted to digits
+        designNumberConditions.push(numericCheck);
+        designNumberConditions.push(
+          sequelize.where(
+            sequelize.col('designNumber'),
+            { [Op.like]: `%${trimmedDesign}%` }
+          )
+        );
+      }
     }
+
     if (minDesignNumber || maxDesignNumber) {
-      const rangeCondition = {};
+      designNumberConditions.push(numericCheck);
+
       if (minDesignNumber) {
-        const num = Number(minDesignNumber);
-        if (!isNaN(num)) rangeCondition[Op.gte] = num;
+        const minNum = parseInt(minDesignNumber);
+        if (!isNaN(minNum)) {
+          designNumberConditions.push(
+            sequelize.where(
+              sequelize.literal('CAST(designNumber AS UNSIGNED)'),
+              { [Op.gte]: minNum }
+            )
+          );
+        }
       }
+
       if (maxDesignNumber) {
-        const num = Number(maxDesignNumber);
-        if (!isNaN(num)) rangeCondition[Op.lte] = num;
-      }
-      if (Object.keys(rangeCondition).length > 0) {
-        designNumberConditions.push(rangeCondition);
+        const maxNum = parseInt(maxDesignNumber);
+        if (!isNaN(maxNum)) {
+          designNumberConditions.push(
+            sequelize.where(
+              sequelize.literal('CAST(designNumber AS UNSIGNED)'),
+              { [Op.lte]: maxNum }
+            )
+          );
+        }
       }
     }
 
     if (designNumberConditions.length > 0) {
-      if (designNumberConditions.length === 1) {
-        whereClause.designNumber = designNumberConditions[0];
-      } else {
-        whereClause.designNumber = { [Op.and]: designNumberConditions };
+      if (!whereClause[Op.and]) {
+        whereClause[Op.and] = [];
+      } else if (!Array.isArray(whereClause[Op.and])) {
+        whereClause[Op.and] = [whereClause[Op.and]];
       }
+      whereClause[Op.and].push(...designNumberConditions);
     }
 
     // MULTI-SELECT BRAND NAME FILTER

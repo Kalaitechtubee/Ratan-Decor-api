@@ -349,21 +349,8 @@ const register = async (req, res) => {
       if (userType) finalUserTypeId = userType.id;
     }
 
-    if (!finalUserTypeId) {
-      let defaultTypeName = ['customer'].includes(requestedRole) ? 'customer' : requestedRole;
-      let defaultType = await UserType.findOne({ where: { name: defaultTypeName } });
-      if (!defaultType) {
-        defaultType = await UserType.findOne({ where: { name: 'customer' } });
-        if (!defaultType) {
-          defaultType = await UserType.create({
-            name: 'customer',
-            description: 'Default user type',
-            isActive: true
-          });
-        }
-      }
-      finalUserTypeId = defaultType.id;
-    }
+    // If no userTypeId is provided or found, finalUserTypeId remains the provided userTypeId (or null)
+    // The User model allows allowNull: true for userTypeId, so this is safe and prevents automatic creation.
 
     const userData = {
       name,

@@ -1,7 +1,7 @@
 
 const { UserType, User, Category } = require('../models');
 const { Op, Sequelize } = require('sequelize');
-const { generateImageUrl } = require('../middleware/upload'); 
+const { generateImageUrl } = require('../middleware/upload');
 
 const userTypeController = {
 
@@ -36,7 +36,7 @@ const userTypeController = {
   async getUserTypeById(req, res) {
     try {
       const { id } = req.params;
-      
+
       if (!Number.isInteger(parseInt(id, 10))) {
         return res.status(400).json({
           success: false,
@@ -143,7 +143,7 @@ const userTypeController = {
       }
 
       const userType = await UserType.findByPk(parseInt(id, 10));
-      
+
       if (!userType) {
         return res.status(404).json({
           success: false,
@@ -174,17 +174,17 @@ const userTypeController = {
         }
       }
 
-    
+
       const updateData = {};
       if (name) updateData.name = name.trim();
       if (description !== undefined) updateData.description = description?.trim() || null;
       if (req.file) updateData.icon = req.file.filename;
-      
+
       if (isActive !== undefined) {
-   
+
         if (isActive === false) {
           const userCount = await User.count({ where: { userTypeId: id } });
-          
+
           if (userCount > 0) {
             return res.status(400).json({
               success: false,
@@ -195,7 +195,7 @@ const userTypeController = {
 
           try {
             const categoryCount = await Category.count({ where: { userTypeId: id } });
-            
+
             if (categoryCount > 0) {
               return res.status(400).json({
                 success: false,
@@ -236,21 +236,21 @@ const userTypeController = {
     }
   },
 
-  
+
   async deleteUserType(req, res) {
     try {
       const { id } = req.params;
-      const fallbackTypeId = 1; 
+      const targetId = parseInt(id, 10);
 
-      if (!Number.isInteger(parseInt(id, 10))) {
+      if (!Number.isInteger(targetId)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid user type ID'
         });
       }
 
-      const userType = await UserType.findByPk(parseInt(id, 10));
-      
+      const userType = await UserType.findByPk(targetId);
+
       if (!userType) {
         return res.status(404).json({
           success: false,
@@ -258,41 +258,62 @@ const userTypeController = {
         });
       }
 
-      
-      if (parseInt(id, 10) === fallbackTypeId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Cannot delete the default user type'
-        });
-      }
+      // Find an alternative active user type to act as fallback
+      const fallbackType = await UserType.findOne({
+        where: {
+          id: { [Op.ne]: targetId },
+          isActive: true
+        },
+        attributes: ['id']
+      });
 
-      
+      const fallbackTypeId = fallbackType ? fallbackType.id : null;
+
+      // Reassign users to the fallback type (or null if no fallback)
       const [reassignedUsers] = await User.update(
         { userTypeId: fallbackTypeId },
-        { where: { userTypeId: id } }
+        { where: { userTypeId: targetId } }
       );
 
-    
+      // Reassign categories to the fallback type
       let reassignedCategories = 0;
       try {
         const [count] = await Category.update(
           { userTypeId: fallbackTypeId },
-          { where: { userTypeId: id } }
+          { where: { userTypeId: targetId } }
         );
         reassignedCategories = count;
       } catch (categoryError) {
         console.warn('Category reassignment skipped:', categoryError.message);
       }
 
-     
+      // Reassign enquiries to the fallback type
+      let reassignedEnquiries = 0;
+      try {
+        const [count] = await sequelize.models.Enquiry.update(
+          { userType: fallbackTypeId },
+          { where: { userType: targetId } }
+        );
+        reassignedEnquiries = count;
+      } catch (enquiryError) {
+        console.warn('Enquiry reassignment skipped:', enquiryError.message);
+      }
+
+      // Deactivate the user type
       await userType.update({ isActive: false });
+
+      const fallbackMsg = fallbackTypeId
+        ? `reassigned to default type (ID: ${fallbackTypeId}).`
+        : "updated to null (no fallback user type available).";
 
       res.json({
         success: true,
-        message: `User type deleted successfully. ${reassignedUsers} user(s) reassigned to default type.`,
+        message: `User type deleted successfully. ${reassignedUsers} user(s) ${fallbackMsg}`,
         data: {
           reassignedUsers,
-          reassignedCategories
+          reassignedCategories,
+          reassignedEnquiries,
+          fallbackTypeId
         }
       });
     } catch (error) {
