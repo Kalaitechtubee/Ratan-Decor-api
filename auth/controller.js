@@ -195,6 +195,12 @@ const login = async (req, res) => {
         status: user.status,
         company: user.company || 'Ratan Decor',
         mobile: user.mobile,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        country: user.country,
+        pincode: user.pincode,
+        zipCode: user.zipCode, // legacy support if needed
         userTypeId: user.userTypeId,
         userTypeName: user.userType ? user.userType.name : null
       },
@@ -628,6 +634,11 @@ const getProfile = async (req, res) => {
         status: user.status,
         mobile: user.mobile,
         company: user.company,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        country: user.country,
+        pincode: user.pincode,
         userTypeId: user.userTypeId,
         userTypeName: user.userType?.name
       }
