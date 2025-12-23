@@ -53,9 +53,9 @@ const getDescendants = async (catId) => {
     // FIXED: Use raw recursive CTE query for better performance (assumes MySQL 8+/MariaDB 10.2+)
     const results = await sequelize.query(`
       WITH RECURSIVE category_tree AS (
-        SELECT id FROM categories WHERE id = :catId
+        SELECT id FROM \`categories\` WHERE id = :catId
         UNION ALL
-        SELECT c.id FROM categories c
+        SELECT c.id FROM \`categories\` c
         INNER JOIN category_tree ct ON c.parentId = ct.id
       )
       SELECT id FROM category_tree WHERE id != :catId
@@ -63,6 +63,11 @@ const getDescendants = async (catId) => {
       replacements: { catId },
       type: Sequelize.QueryTypes.SELECT
     });
+
+    // FIXED: Handle undefined/null results
+    if (!results || !Array.isArray(results)) {
+      throw new Error('CTE query returned invalid results');
+    }
 
     return results.map(r => r.id);
   } catch (error) {
@@ -807,7 +812,7 @@ const searchCategories = async (req, res) => {
 
     const categories = await Category.findAll({
       where: {
-        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('name')), 'LIKE', `%${q.trim().toLowerCase()}%`)
+        name: Sequelize.where(Sequelize.fn('LOWER', Sequelize.col('Category.name')), 'LIKE', `%${q.trim().toLowerCase()}%`)
       },
       include: [
         {

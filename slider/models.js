@@ -42,13 +42,6 @@ const Slider = sequelize.define(
       allowNull: true,
       defaultValue: [],
       comment: 'Array of image filenames (up to 5 images)',
-      get() {
-        const value = this.getDataValue('images');
-        return value ? (Array.isArray(value) ? value : JSON.parse(value)) : [];
-      },
-      set(value) {
-        this.setDataValue('images', Array.isArray(value) ? JSON.stringify(value) : value);
-      },
     },
     isActive: {
       type: DataTypes.BOOLEAN,

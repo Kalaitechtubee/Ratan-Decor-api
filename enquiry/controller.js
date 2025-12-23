@@ -131,6 +131,30 @@ const enquiryController = {
         formattedVideoCallTime = formatTimeForStorage(videoCallTime);
       }
 
+      // Resolve userType: accept numeric ID or name
+      let finalUserTypeId = null;
+      if (userType) {
+        if (!isNaN(parseInt(userType, 10))) {
+          finalUserTypeId = parseInt(userType, 10);
+        } else {
+          const userTypeRecord = await UserType.findOne({
+            where: { name: userType.toString().trim() },
+          });
+          if (!userTypeRecord) {
+            // Optional: You can choose to error out or fall back to a default.
+            // For now, let's try to find a default "General" type if specific type fails, or error.
+            // But let's stick to error if specific type provided is invalid, 
+            // OR if it's "General" and not found, maybe just null?
+            // Let's return error for consistency with updateEnquiry.
+            return res.status(400).json({
+              success: false,
+              message: `Invalid userType: ${userType}`,
+            });
+          }
+          finalUserTypeId = userTypeRecord.id;
+        }
+      }
+
       const enquiry = await Enquiry.create({
         userId: finalUserId,
         productId: parsedProductId,
@@ -140,7 +164,7 @@ const enquiryController = {
         companyName: companyName?.trim() || null,
         state: state.trim(),
         city: city.trim(),
-        userType: userType || null,
+        userType: finalUserTypeId,
         source: source || "Email",
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,

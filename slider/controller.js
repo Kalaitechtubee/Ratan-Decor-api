@@ -5,8 +5,24 @@ const fs = require('fs').promises;
 const path = require('path');
 const { generateImageUrl } = require('../utils/imageUtils');
 
+// Helper to safely parse images
+const safeParseImages = (data) => {
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
 // Helper function to cleanup files
 const cleanupFiles = async (filenames, uploadDir) => {
+  if (!Array.isArray(filenames) || filenames.length === 0) return;
+
   await Promise.all(
     filenames.map(async (filename) => {
       if (!filename) return;
@@ -34,7 +50,7 @@ const getAllSliders = async (req, res) => {
     });
 
     const slidersWithUrls = sliders.map(slider => {
-      const images = slider.images || [];
+      const images = safeParseImages(slider.images);
       return {
         id: slider.id,
         subtitle: slider.subtitle,
@@ -90,7 +106,7 @@ const getSliderById = async (req, res) => {
       });
     }
 
-    const images = slider.images || [];
+    const images = safeParseImages(slider.images);
 
     res.json({
       success: true,
@@ -140,10 +156,10 @@ const createSlider = async (req, res) => {
     // Handle image uploads
     let imageFilenames = [];
     if (req.files && req.files.images) {
-      const uploadedFiles = Array.isArray(req.files.images) 
-        ? req.files.images 
+      const uploadedFiles = Array.isArray(req.files.images)
+        ? req.files.images
         : [req.files.images];
-      
+
       imageFilenames = uploadedFiles
         .slice(0, 5) // Limit to 5 images
         .map(file => file.filename);
@@ -161,7 +177,7 @@ const createSlider = async (req, res) => {
 
     await transaction.commit();
 
-    const images = slider.images || [];
+    const images = safeParseImages(slider.images);
 
     res.status(201).json({
       success: true,
@@ -224,7 +240,7 @@ const updateSlider = async (req, res) => {
     let updateData = {};
     let hasChanges = false;
     const uploadDir = path.join(__dirname, '..', 'uploads', 'sliders');
-    const currentImages = slider.images || [];
+    const currentImages = safeParseImages(slider.images);
 
     // Handle title update
     if (title !== undefined) {
@@ -289,13 +305,13 @@ const updateSlider = async (req, res) => {
 
     // Handle images update
     let finalImages = currentImages;
-    
+
     // Parse existing images from request (if provided)
     let existingImagesArray = [];
     if (existingImages) {
       try {
-        existingImagesArray = typeof existingImages === 'string' 
-          ? JSON.parse(existingImages) 
+        existingImagesArray = typeof existingImages === 'string'
+          ? JSON.parse(existingImages)
           : existingImages;
         if (!Array.isArray(existingImagesArray)) {
           existingImagesArray = [];
@@ -310,8 +326,8 @@ const updateSlider = async (req, res) => {
     // Get new uploaded files
     let newImageFilenames = [];
     if (req.files && req.files.images) {
-      const uploadedFiles = Array.isArray(req.files.images) 
-        ? req.files.images 
+      const uploadedFiles = Array.isArray(req.files.images)
+        ? req.files.images
         : [req.files.images];
       newImageFilenames = uploadedFiles.map(file => file.filename);
     }
@@ -321,7 +337,7 @@ const updateSlider = async (req, res) => {
 
     // Find images to delete (images that were removed)
     const imagesToDelete = currentImages.filter(img => !finalImages.includes(img));
-    
+
     if (JSON.stringify(finalImages.sort()) !== JSON.stringify(currentImages.sort())) {
       updateData.images = finalImages;
       hasChanges = true;
@@ -334,7 +350,7 @@ const updateSlider = async (req, res) => {
 
     if (!hasChanges) {
       await transaction.rollback();
-      const images = slider.images || [];
+      const images = safeParseImages(slider.images);
       return res.status(200).json({
         success: true,
         message: 'No changes detected',
@@ -361,7 +377,7 @@ const updateSlider = async (req, res) => {
     await transaction.commit();
 
     const updatedSlider = await Slider.findByPk(sliderId);
-    const images = updatedSlider.images || [];
+    const images = safeParseImages(updatedSlider.images);
 
     res.json({
       success: true,
@@ -421,7 +437,7 @@ const deleteSlider = async (req, res) => {
     }
 
     // Cleanup images
-    const images = slider.images || [];
+    const images = safeParseImages(slider.images);
     if (images.length > 0) {
       const uploadDir = path.join(__dirname, '..', 'uploads', 'sliders');
       await cleanupFiles(images, uploadDir);

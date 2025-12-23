@@ -60,6 +60,57 @@ const getCookieNames = (req) => {
 };
 
 // -----------------------------
+// Authentication Middleware (Optional - no 401 on failure)
+// -----------------------------
+const authenticateTokenOptional = async (req, res, next) => {
+  try {
+    const cookieNames = getCookieNames(req);
+    const accessToken = req.cookies[cookieNames.accessToken];
+    const refreshToken = req.cookies[cookieNames.refreshToken];
+
+    const setAccessCookie = (token) => {
+      res.cookie(cookieNames.accessToken, token, getCookieOptions(15 * 60 * 1000));
+      res.setHeader('X-New-Access-Token', token);
+    };
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return next();
+
+    // Try access token
+    if (accessToken && !sessionSecurity.isTokenBlacklisted(accessToken)) {
+      try {
+        const decoded = verifyAccessToken(accessToken);
+        const result = await loadAndSetUser(req, res, decoded.id);
+        if (!result.error) {
+          req.token = accessToken;
+          return next();
+        }
+      } catch (err) { }
+    }
+
+    // Try refresh token
+    if (refreshToken && !sessionSecurity.isRefreshBlacklisted(refreshToken)) {
+      try {
+        const decodedRefresh = verifyRefreshToken(refreshToken);
+        const result = await loadAndSetUser(req, res, decodedRefresh.id);
+        if (!result.error) {
+          const newAccessToken = generateAccessToken(result.user);
+          setAccessCookie(newAccessToken);
+          req.token = newAccessToken;
+          return next();
+        }
+      } catch (err) { }
+    }
+
+    // No valid token found, just continue properly as guest
+    next();
+  } catch (err) {
+    // If error occurs, just treat as guest
+    next();
+  }
+};
+
+// -----------------------------
 // Authentication Middleware (Cookie-based with client type support)
 // -----------------------------
 const authenticateToken = async (req, res, next) => {
@@ -283,6 +334,7 @@ const requireOwnDataOrStaff = async (req, res, next) => {
 
 module.exports = {
   authenticateToken,
+  authenticateTokenOptional,
   authorizeRoles,
   moduleAccess,
   requireOwnDataOrStaff,

@@ -1,5 +1,5 @@
 
-const { UserType, User, Category } = require('../models');
+const { UserType, User, Category, Enquiry } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { generateImageUrl } = require('../middleware/upload');
 
@@ -290,7 +290,7 @@ const userTypeController = {
       // Reassign enquiries to the fallback type
       let reassignedEnquiries = 0;
       try {
-        const [count] = await sequelize.models.Enquiry.update(
+        const [count] = await Enquiry.update(
           { userType: fallbackTypeId },
           { where: { userType: targetId } }
         );

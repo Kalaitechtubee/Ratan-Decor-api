@@ -4,16 +4,26 @@ const router = express.Router();
 const enquiryController = require("../enquiry/controller");
 const {
   authenticateToken,
+  authenticateTokenOptional,
 } = require("../middleware/auth");
 const { sanitizeInput, auditLogger, rateLimits } = require("../middleware/security");
 
 // Global middlewares (authentication + security only)
-router.use(authenticateToken);     // Must be logged in
-router.use(sanitizeInput);         // Prevent XSS / injection
-router.use(rateLimits.auth);       // Rate limiting for authenticated users
+// Note: router.use(authenticateToken) was previously here checking strict auth for ALL routes.
+// We moved it down or use specific routes now.
 
-// Enquiry Routes (no role restrictions)
-router.post("/create", auditLogger, enquiryController.createEnquiry);
+router.use(sanitizeInput);         // Prevent XSS / injection
+// router.use(rateLimits.auth);       // Rate limiting for authenticated users - This relies on authenticateToken usually. 
+// We should apply rate limits per route or handle guest rate limits separately.
+// For now, let's keep it simple:
+
+// Enquiry Routes (Public/Optional Auth)
+router.post("/create", authenticateTokenOptional, auditLogger, enquiryController.createEnquiry);
+
+
+// Middleware for remaining authenticated routes
+router.use(authenticateToken);
+router.use(rateLimits.auth);       // Apply auth rate limits to authenticated routes
 
 router.get("/all", auditLogger, enquiryController.getAllEnquiries);
 
