@@ -32,12 +32,12 @@ const rateLimits = {
   ),
   general: createRateLimiter(
     15 * 60 * 1000,
-    300,
+    1000,
     'Too many requests. Please try again later.'
   ),
   admin: createRateLimiter(
     10 * 60 * 1000,
-    300,
+    1000,
     'Too many admin operations. Please try again in 10 minutes.'
   )
 };
@@ -48,7 +48,7 @@ const suspiciousActivityTracker = new Map();
 const trackSuspiciousActivity = (req, res, next) => {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
-  
+
   if (!suspiciousActivityTracker.has(ip)) {
     suspiciousActivityTracker.set(ip, {
       failedLogins: 0,
@@ -56,7 +56,7 @@ const trackSuspiciousActivity = (req, res, next) => {
       blockedUntil: 0
     });
   }
-  
+
   const tracker = suspiciousActivityTracker.get(ip);
   if (tracker.blockedUntil > now) {
     return res.status(429).json({
@@ -65,11 +65,11 @@ const trackSuspiciousActivity = (req, res, next) => {
       blockedUntil: new Date(tracker.blockedUntil).toISOString()
     });
   }
-  
+
   if (now - tracker.lastFailedLogin > 60 * 60 * 1000) {
     tracker.failedLogins = 0;
   }
-  
+
   req.securityTracker = tracker;
   next();
 };
@@ -83,12 +83,12 @@ const enhanceLoginSecurity = (loginController) => {
     const originalJson = res.json;
     let statusCode = 200;
     let responseData = null;
-    
+
     res.status = function (code) {
       statusCode = code;
       return originalStatus.call(this, code);
     };
-    
+
     res.json = function (data) {
       responseData = data;
       if (statusCode === 401 || statusCode === 403) {
@@ -103,7 +103,7 @@ const enhanceLoginSecurity = (loginController) => {
       }
       return originalJson.call(this, responseData);
     };
-    
+
     return loginController(req, res);
   };
 };
@@ -138,11 +138,11 @@ const sanitizeInput = (req, res, next) => {
       }
     }
   };
-  
+
   if (req.body) sanitize(req.body);
   if (req.query) sanitize(req.query);
   if (req.params) sanitize(req.params);
-  
+
   next();
 };
 
@@ -223,14 +223,14 @@ const secureLogout = (req, res) => {
   try {
     const accessToken = req.token || req.cookies?.accessToken;
     const refreshToken = req.cookies?.refreshToken;
-    
+
     if (accessToken) sessionSecurity.blacklistToken(accessToken);
     if (refreshToken) sessionSecurity.blacklistRefreshToken(refreshToken);
-    
+
     const clearOptions = getCookieOptions();
     res.clearCookie('accessToken', clearOptions);
     res.clearCookie('refreshToken', clearOptions);
-    
+
     return res.json({
       success: true,
       message: 'Logout successful. Tokens invalidated and cookies cleared.'

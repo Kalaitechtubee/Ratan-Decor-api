@@ -24,7 +24,9 @@ const Order = sequelize.define('Order', {
     allowNull: false,
   },
   paymentStatus: {
-    type: DataTypes.ENUM('Awaiting', 'Approved', 'Rejected'),
+    // Using STRING instead of ENUM to handle existing data with non-standard values
+    // Valid values should be: 'Pending', 'Awaiting', 'Received', 'Not Received'
+    type: DataTypes.STRING(50),
     defaultValue: 'Awaiting',
   },
   total: {

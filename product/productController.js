@@ -59,6 +59,7 @@ const processProductData = (product, req) => {
       category = {
         id: cat.id,
         name: cat.name,
+        parentId: cat.parentId || (cat.parent ? cat.parent.id : null),
         parent: {
           id: cat.parent.id,
           name: cat.parent.name,
@@ -109,9 +110,10 @@ const processProductData = (product, req) => {
     averageRating: rawData.averageRating || "0.00",
     totalRatings: rawData.totalRatings || 0,
 
-    // CLEAN CATEGORY - No parentId, clean structure
+    // CLEAN CATEGORY - Includes parentId for admin compatibility
     category,
     categoryId: rawData.categoryId,
+    subcategoryId: category && category.parentId ? rawData.categoryId : null,
 
     // Timestamps
     createdAt: rawData.createdAt,
@@ -526,6 +528,12 @@ const getProducts = async (req, res) => {
         inactive: inactiveCount,
       },
 
+      // Root level counts for frontend compatibility
+      totalCount,
+      activeCount,
+      inactiveCount,
+      count: count, // This matches findAndCountAll's result
+
       // Current user role
       userRole,
 
@@ -801,10 +809,14 @@ const searchProductsByName = async (req, res) => {
       return productData;
     });
     res.json({
+      success: true,
       products: processedProducts,
-      count,
-      totalPages: Math.ceil(count / limit),
-      currentPage: Number(page),
+      pagination: {
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: Number(page),
+        perPage: Number(limit),
+      },
       userType: userType || null,
       userRole
     });
@@ -828,7 +840,14 @@ const getProductById = async (req, res) => {
     }
     const product = await Product.findOne({
       where: whereClause,
-      include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }]
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name', 'parentId'],
+          include: [{ model: Category, as: 'parent', attributes: ['id', 'name'] }]
+        }
+      ]
     });
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
