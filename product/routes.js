@@ -5,7 +5,7 @@ const {
   createProduct, getProducts, getProductByName,
   searchProductsByName, getProductById, updateProduct,
   updateProductAll, deleteProduct, addProductRating, getProductRatings
-} = require('./productController');
+} = require('./controller');
 const { authenticateToken } = require('../middleware/auth');
 const { uploadFields, handleUploadError } = require('../middleware/upload');
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');

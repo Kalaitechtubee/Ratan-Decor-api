@@ -12,7 +12,7 @@ module.exports = (sequelize, DataTypes) => {
     email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      // unique: true, // Removed to prevent duplicate index creation
       validate: { isEmail: true, notEmpty: true }
     },
 
@@ -73,7 +73,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
 
-   
+
     rejectionReason: {
       type: DataTypes.TEXT,
       allowNull: true
@@ -84,7 +84,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
 
-    
+
     loginAttempts: {
       type: DataTypes.INTEGER,
       defaultValue: 0
@@ -98,7 +98,14 @@ module.exports = (sequelize, DataTypes) => {
 
   }, {
     tableName: 'users',
-    timestamps: true
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['email'],
+        name: 'users_email_unique'
+      }
+    ]
   });
 
   return User;

@@ -9,8 +9,7 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
     dialect: "mysql",
-    logging: false, // optional: disables SQL logging
-    // Added connection timeout for better reliability
+    logging: false,
     acquireTimeout: 60000,
     timeout: 60000,
     pool: {
