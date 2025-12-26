@@ -1,7 +1,7 @@
 // admin/controller.js (no changes needed, as it aligns with permissions via middleware)
 const { User, Enquiry, Order, Product, Category } = require('../models');
 const { Op, fn, col } = require('sequelize');
-const { canCreateRole } = require('../auth/controller');
+const AuthService = require('../auth/service');
 
 // Get all pending users
 const getPendingUsers = async (req, res) => {
@@ -239,7 +239,7 @@ const updateUserRole = async (req, res) => {
     }
 
     // Security: Role-based permissions
-    if (role && !canCreateRole(currentUser.role, role)) {
+    if (role && !AuthService.canCreateRole(currentUser.role, role)) {
       return res.status(403).json({
         success: false,
         message: `${currentUser.role} cannot assign ${role} role`,

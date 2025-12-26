@@ -43,6 +43,11 @@ const getAllUsers = async (req, res) => {
       userTypeName,
       staffOnly,
       includeStaff,
+      startDate,
+      endDate,
+      state,
+      city,
+      pincode
     } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
@@ -53,6 +58,7 @@ const getAllUsers = async (req, res) => {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { email: { [Op.like]: `%${search}%` } },
+        { mobile: { [Op.like]: `%${search}%` } },
       ];
     }
     if (role) {
@@ -64,6 +70,18 @@ const getAllUsers = async (req, res) => {
     }
     if (status) {
       where.status = status;
+    }
+
+    if (state) where.state = { [Op.like]: `%${state}%` };
+    if (city) where.city = { [Op.like]: `%${city}%` };
+    if (pincode) where.pincode = pincode;
+
+    if (startDate && endDate) {
+      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    } else if (startDate) {
+      where.createdAt = { [Op.gte]: new Date(startDate) };
+    } else if (endDate) {
+      where.createdAt = { [Op.lte]: new Date(endDate) };
     }
 
     // Default behaviour: return only client roles for /api/users
@@ -99,9 +117,43 @@ const getAllUsers = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
+    // Calculate summary statistics (respecting filters except status/role for complete breakdown)
+    const baseWhere = Object.fromEntries(Object.entries(where).filter(([k]) => !['status', 'role'].includes(k)));
+
+    // Manual stats calculation to be more efficient than separate counts
+    const statusStats = await User.findAll({
+      where: baseWhere,
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['status'],
+      raw: true
+    });
+
+    const roleStats = await User.findAll({
+      where: baseWhere,
+      attributes: ['role', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['role'],
+      raw: true
+    });
+
+    const summary = {
+      totalUsers: count, // Count matching current filters
+      statusBreakdown: {},
+      roleBreakdown: {}
+    };
+
+    statusStats.forEach(stat => {
+      summary.statusBreakdown[stat.status] = parseInt(stat.count);
+    });
+
+    roleStats.forEach(stat => {
+      summary.roleBreakdown[stat.role] = parseInt(stat.count);
+    });
+
     res.json({
       success: true,
+      users: rows, // Maintain consistent 'users' key for some frontend expectations
       data: rows,
+      summary,
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(count / limitNum),
@@ -117,7 +169,19 @@ const getAllUsers = async (req, res) => {
 
 const getAllStaffUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status, userTypeName, role } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      userTypeName,
+      role,
+      startDate,
+      endDate,
+      state,
+      city,
+      pincode
+    } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
     const offset = (pageNum - 1) * limitNum;
@@ -138,10 +202,23 @@ const getAllStaffUsers = async (req, res) => {
       where[Op.or] = [
         { name: { [Op.like]: `%${search}%` } },
         { email: { [Op.like]: `%${search}%` } },
+        { mobile: { [Op.like]: `%${search}%` } },
       ];
     }
     if (status) {
       where.status = status;
+    }
+
+    if (state) where.state = { [Op.like]: `%${state}%` };
+    if (city) where.city = { [Op.like]: `%${city}%` };
+    if (pincode) where.pincode = pincode;
+
+    if (startDate && endDate) {
+      where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+    } else if (startDate) {
+      where.createdAt = { [Op.gte]: new Date(startDate) };
+    } else if (endDate) {
+      where.createdAt = { [Op.lte]: new Date(endDate) };
     }
 
     const include = [
@@ -164,9 +241,45 @@ const getAllStaffUsers = async (req, res) => {
       order: [['createdAt', 'DESC']],
     });
 
+    // Calculate summary statistics for staff
+    const baseStaffWhere = { role: { [Op.in]: STAFF_ROLES } };
+    // Add same filters except status/role
+    Object.entries(where).forEach(([k, v]) => {
+      if (!['status', 'role'].includes(k)) baseStaffWhere[k] = v;
+    });
+
+    const statusStats = await User.findAll({
+      where: baseStaffWhere,
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['status'],
+      raw: true
+    });
+
+    const roleStats = await User.findAll({
+      where: baseStaffWhere,
+      attributes: ['role', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['role'],
+      raw: true
+    });
+
+    const summary = {
+      totalUsers: count,
+      statusBreakdown: {},
+      roleBreakdown: {}
+    };
+
+    statusStats.forEach(stat => {
+      summary.statusBreakdown[stat.status] = parseInt(stat.count);
+    });
+
+    roleStats.forEach(stat => {
+      summary.roleBreakdown[stat.role] = parseInt(stat.count);
+    });
+
     res.json({
       success: true,
       staffUsers: rows,
+      summary,
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(count / limitNum),

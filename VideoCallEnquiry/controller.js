@@ -79,13 +79,60 @@ const videoCallEnquiryController = {
       return res.status(500).json({ success: false, message: "Failed to create enquiry", error: error.message });
     }
   },
-  // Get All with internal notes
+  // Get All with internal notes and enhanced filtering
   async getAll(req, res) {
     try {
-      const { page = 1, limit = 10, status, search, includeNotes = false } = req.query;
+      const {
+        page = 1,
+        limit = 10,
+        status,
+        search,
+        source,
+        startDate,
+        endDate,
+        userType,
+        state,
+        city,
+        role,
+        pincode,
+        includeNotes = false
+      } = req.query;
+
       const where = {};
 
       if (status) where.status = status;
+      if (source) where.source = source;
+
+      // Date Range Filter
+      if (startDate && endDate) {
+        where.createdAt = { [Op.between]: [new Date(startDate), new Date(endDate)] };
+      } else if (startDate) {
+        where.createdAt = { [Op.gte]: new Date(startDate) };
+      } else if (endDate) {
+        where.createdAt = { [Op.lte]: new Date(endDate) };
+      }
+
+      const includes = [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email", "role"],
+          where: {},
+          required: false // Default to false, unless filtering by user attributes
+        },
+        { model: Product, as: "product", attributes: ["id", "name", "generalPrice"] },
+      ];
+
+      // Filter by User Attributes (State, City, Pincode, Role, UserType)
+      if (state || city || role || pincode || userType) {
+        includes[0].required = true;
+        if (state) includes[0].where.state = { [Op.like]: `%${state}%` };
+        if (city) includes[0].where.city = { [Op.like]: `%${city}%` };
+        if (role) includes[0].where.role = role;
+        if (pincode) includes[0].where.pincode = pincode;
+        if (userType) includes[0].where.userTypeId = userType;
+      }
+
       if (search) {
         where[Op.or] = [
           { name: { [Op.like]: `%${search}%` } },
@@ -93,11 +140,6 @@ const videoCallEnquiryController = {
           { phoneNo: { [Op.like]: `%${search}%` } },
         ];
       }
-
-      const includes = [
-        { model: User, as: "user", attributes: ["id", "name", "email", "role"] },
-        { model: Product, as: "product", attributes: ["id", "name", "generalPrice"] },
-      ];
 
       if (includeNotes === 'true') {
         includes.push({
@@ -118,6 +160,26 @@ const videoCallEnquiryController = {
         order: [["createdAt", "DESC"]],
       });
 
+      // Calculate status breakdown for summary cards
+      const statusStats = await VideoCallEnquiry.findAll({
+        where,
+        attributes: [
+          'status',
+          [VideoCallEnquiry.sequelize.fn('COUNT', VideoCallEnquiry.sequelize.col('id')), 'count'],
+        ],
+        group: ['status'],
+        raw: true
+      });
+
+      const summary = {
+        totalItems: await VideoCallEnquiry.count({ where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')) }),
+        statusBreakdown: {}
+      };
+
+      statusStats.forEach(stat => {
+        summary.statusBreakdown[stat.status] = parseInt(stat.count);
+      });
+
       // Format time for display in AM/PM format
       const formattedData = result.rows.map(enquiry => ({
         ...enquiry.toJSON(),
@@ -127,10 +189,12 @@ const videoCallEnquiryController = {
       res.json({
         success: true,
         data: formattedData,
+        summary,
         pagination: {
           page: parseInt(page),
           totalPages: Math.ceil(result.count / limit),
           totalItems: result.count,
+          limit: parseInt(limit),
         },
       });
     } catch (error) {
@@ -143,7 +207,7 @@ const videoCallEnquiryController = {
   async getById(req, res) {
     try {
       const { includeNotes = false } = req.query;
-      
+
       // Basic includes (always fetch these for auth check)
       const basicIncludes = [
         { model: User, as: "user", attributes: ["id", "name", "email", "role"] },
@@ -174,9 +238,9 @@ const videoCallEnquiryController = {
       }
 
       if (!authorized) {
-        return res.status(403).json({ 
-          success: false, 
-          message: "Unauthorized access to this enquiry. Authenticated users must be owners or staff; unauthenticated users must provide a matching email query parameter." 
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized access to this enquiry. Authenticated users must be owners or staff; unauthenticated users must provide a matching email query parameter."
         });
       }
 
@@ -301,32 +365,32 @@ const videoCallEnquiryController = {
 
       // Validate required fields with detailed checks
       if (!note || typeof note !== 'string' || note.trim().length === 0) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Note content is required and cannot be empty" 
+        return res.status(400).json({
+          success: false,
+          message: "Note content is required and cannot be empty"
         });
       }
 
       if (!enquiryId || isNaN(parseInt(enquiryId))) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Valid enquiry ID is required" 
+        return res.status(400).json({
+          success: false,
+          message: "Valid enquiry ID is required"
         });
       }
 
       if (!req.user || !req.user.id) {
-        return res.status(401).json({ 
-          success: false, 
-          message: "User authentication required" 
+        return res.status(401).json({
+          success: false,
+          message: "User authentication required"
         });
       }
 
       // Verify enquiry exists
       const enquiry = await VideoCallEnquiry.findByPk(parseInt(enquiryId));
       if (!enquiry) {
-        return res.status(404).json({ 
-          success: false, 
-          message: "Enquiry not found" 
+        return res.status(404).json({
+          success: false,
+          message: "Enquiry not found"
         });
       }
 
@@ -335,8 +399,8 @@ const videoCallEnquiryController = {
         enquiryId: parseInt(enquiryId),
         staffUserId: parseInt(req.user.id),
         note: note.trim(),
-        noteType: noteType && ['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType) 
-          ? noteType 
+        noteType: noteType && ['Follow-up', 'Contact Attempt', 'Meeting Notes', 'Status Update', 'Other'].includes(noteType)
+          ? noteType
           : 'Follow-up',
         isImportant: Boolean(isImportant),
         followUpDate: followUpDate || null,
@@ -368,10 +432,10 @@ const videoCallEnquiryController = {
         ],
       });
 
-      res.status(201).json({ 
-        success: true, 
-        message: "Internal note added successfully", 
-        data: enrichedNote 
+      res.status(201).json({
+        success: true,
+        message: "Internal note added successfully",
+        data: enrichedNote
       });
     } catch (error) {
       console.error("Add internal note error:", error);
@@ -380,16 +444,16 @@ const videoCallEnquiryController = {
         message: error.message,
         stack: error.stack
       });
-      
+
       if (error.name === 'SequelizeValidationError') {
         const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
-        return res.status(400).json({ 
-          success: false, 
-          message: "Validation error", 
-          errors: validationErrors 
+        return res.status(400).json({
+          success: false,
+          message: "Validation error",
+          errors: validationErrors
         });
       }
-      
+
       res.status(500).json({ success: false, message: error.message });
     }
   },
@@ -476,16 +540,16 @@ const videoCallEnquiryController = {
       res.json({ success: true, message: "Internal note updated", data: updated });
     } catch (error) {
       console.error("Update internal note error:", error);
-      
+
       if (error.name === 'SequelizeValidationError') {
         const validationErrors = error.errors.map(err => `${err.path}: ${err.message}`);
-        return res.status(400).json({ 
-          success: false, 
-          message: "Validation error", 
-          errors: validationErrors 
+        return res.status(400).json({
+          success: false,
+          message: "Validation error",
+          errors: validationErrors
         });
       }
-      
+
       res.status(500).json({ success: false, message: error.message });
     }
   },
@@ -522,7 +586,7 @@ const videoCallEnquiryController = {
     try {
       const today = new Date().toISOString().split('T')[0];
       const { days = 7 } = req.query;
-      
+
       const upcomingDate = new Date();
       upcomingDate.setDate(upcomingDate.getDate() + parseInt(days));
       const futureDate = upcomingDate.toISOString().split('T')[0];

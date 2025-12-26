@@ -1,4 +1,4 @@
-const { Enquiry, User, Product, EnquiryInternalNote, UserType } = require("../models");
+const { Enquiry, User, Product, EnquiryInternalNote, UserType, sequelize } = require("../models");
 const { Op } = require("sequelize");
 const jwt = require('jsonwebtoken');
 const { formatTimeForStorage, formatTimeForDisplay, isValidTime } = require("../utils/timeUtils");
@@ -266,6 +266,10 @@ const enquiryController = {
         city,
         role,
         pincode,
+        priority,
+        startDate,
+        endDate,
+        userTypeName,
         includeNotes = false
       } = req.query;
 
@@ -290,12 +294,49 @@ const enquiryController = {
         ];
       }
       if (status) where.status = status;
-      if (source) where.source = source;
+
+      // Source mapping for frontend values
+      if (source) {
+        const sourceMap = {
+          email: "email",
+          phone: "phone",
+          whatsapp: "phone",
+          videocall: "phone",
+          video: "phone",
+          website: "website",
+          chat: "chat",
+          social: "social-media",
+          "social-media": "social-media",
+          other: "other",
+        };
+        const normalizedSource = source.toString().toLowerCase();
+        where.source = sourceMap[normalizedSource] || normalizedSource;
+      }
+
       if (userType) where.userType = userType;
+
+      // Support for filtering by UserType name
+      if (userTypeName) {
+        const ut = await UserType.findOne({ where: { name: userTypeName } });
+        if (ut) where.userType = ut.id;
+      }
+
       if (state) where.state = state;
       if (city) where.city = city;
       if (role) where.role = role;
       if (pincode) where.pincode = pincode;
+      if (priority) where.priority = priority;
+
+      // Date range filtering
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt[Op.gte] = new Date(startDate);
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt[Op.lte] = end;
+        }
+      }
 
       const include = [
         {
@@ -352,10 +393,31 @@ const enquiryController = {
         }
       });
 
+      // Calculate status breakdown for summary cards
+      const statusStats = await Enquiry.findAll({
+        where, // Important: stats should respect current filters except status
+        attributes: [
+          'status',
+          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+        ],
+        group: ['status'],
+        raw: true
+      });
+
+      const summary = {
+        totalEnquiries: await Enquiry.count({ where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')) }),
+        statusBreakdown: {}
+      };
+
+      statusStats.forEach(stat => {
+        summary.statusBreakdown[stat.status] = parseInt(stat.count);
+      });
+
       res.json({
         success: true,
         message: "Enquiries retrieved successfully",
         data: enquiries.rows,
+        summary,
         pagination: {
           currentPage: pageNum,
           totalPages: Math.ceil(enquiries.count / limitNum),
