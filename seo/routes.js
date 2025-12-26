@@ -6,22 +6,19 @@ const seoController = require("./controllers");
 const { authenticateToken } = require("../middleware/auth");
 const { sanitizeInput, auditLogger, rateLimits } = require('../middleware/security');
 
-// Global middlewares
-router.use(authenticateToken);
+// Global middlewares - Sanitization and rate limiting for all
 router.use(sanitizeInput);
 router.use(rateLimits.auth);
 
-// Public Authenticated Routes
+// Public Routes (GET requests for SEO data)
 router.get("/", auditLogger, seoController.getAllSeo);
 router.get("/pagenames", auditLogger, seoController.getAllPageNames);
 router.get("/page/:pageName", auditLogger, seoController.getSeoByPageName);
 router.get("/:id", auditLogger, seoController.getSeoById);
 
-// Protected Routes (token only — no role checks)
-router.post("/", auditLogger, seoController.createSeo);
-
-router.put("/:id", auditLogger, seoController.updateSeo);
-
-router.delete("/:id", auditLogger, seoController.deleteSeo);
+// Protected Routes (Mutations require token)
+router.post("/", authenticateToken, auditLogger, seoController.createSeo);
+router.put("/:id", authenticateToken, auditLogger, seoController.updateSeo);
+router.delete("/:id", authenticateToken, auditLogger, seoController.deleteSeo);
 
 module.exports = router;

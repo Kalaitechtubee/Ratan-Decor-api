@@ -744,7 +744,12 @@ const updateProduct = async (req, res) => {
 
         const uploadDir = path.join(__dirname, '..', 'uploads', 'products');
         let finalImage = null;
-        let finalImages = [...(product.images || []), ...(req.files?.images?.map(f => f.filename) || [])];
+
+        // Ensure JSON fields are parsed if they come as strings from DB
+        const currentImages = ProductService.safeJsonParse(product.images, []);
+        const currentVisibleTo = ProductService.safeJsonParse(product.visibleTo, []);
+
+        let finalImages = [...currentImages, ...(req.files?.images?.map(f => f.filename) || [])];
         if (req.files?.image?.[0]) {
             if (product?.image) {
                 await ProductService.cleanupFiles([product.image], uploadDir);
@@ -753,7 +758,7 @@ const updateProduct = async (req, res) => {
         } else {
             finalImage = product?.image || null;
         }
-        const removedImages = (product?.images || []).filter(img => !keptImages.includes(img));
+        const removedImages = currentImages.filter(img => !keptImages.includes(img));
         if (removedImages.length > 0) {
             await ProductService.cleanupFiles(removedImages, uploadDir);
         }
@@ -874,15 +879,22 @@ const updateProductAll = async (req, res) => {
         const uploadDir = path.join(__dirname, '..', 'uploads', 'products');
         const product = await Product.findByPk(id);
         if (!product) return res.status(404).json({ message: 'Product not found' });
+
         let finalImage = product.image;
-        let finalImages = [...(product.images || []), ...(req.files?.images?.map(f => f.filename) || [])];
+
+        // Safely get current images as array
+        const currentImages = ProductService.safeJsonParse(product.images, []);
+        const currentVisibleTo = ProductService.safeJsonParse(product.visibleTo, []);
+
+        let finalImages = [...currentImages, ...(req.files?.images?.map(f => f.filename) || [])];
         if (req.files?.image?.[0]) {
             if (product.image) {
                 await ProductService.cleanupFiles([product.image], uploadDir);
             }
             finalImage = req.files.image[0].filename;
         }
-        const removedImages = (product.images || []).filter(img => !keptImages.includes(img));
+
+        const removedImages = currentImages.filter(img => !keptImages.includes(img));
         if (removedImages.length > 0) {
             await ProductService.cleanupFiles(removedImages, uploadDir);
         }

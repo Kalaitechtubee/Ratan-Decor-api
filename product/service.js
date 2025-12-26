@@ -38,13 +38,19 @@ class ProductService {
     processProductData(product, req) {
         const rawData = product.toJSON ? product.toJSON() : { ...product };
 
+        // Ensure JSON fields are parsed if they come as strings
+        const images = this.safeJsonParse(rawData.images, []);
+        const visibleTo = this.safeJsonParse(rawData.visibleTo, []);
+        const colors = this.safeJsonParse(rawData.colors, []);
+        const specifications = this.safeJsonParse(rawData.specifications, {});
+
         // Build image URLs
         const imageUrls = [];
         if (rawData.image) {
             imageUrls.push(this.getImageUrl(rawData.image, req));
         }
-        if (rawData.images && Array.isArray(rawData.images)) {
-            rawData.images.forEach(img => {
+        if (images && Array.isArray(images)) {
+            images.forEach(img => {
                 if (img) imageUrls.push(this.getImageUrl(img, req));
             });
         }
@@ -89,9 +95,9 @@ class ProductService {
             size: rawData.size || null,
             thickness: rawData.thickness || null,
             unitType: rawData.unitType || null,
-            colors: rawData.colors && rawData.colors.length > 0 ? rawData.colors : [],
-            specifications: rawData.specifications && Object.keys(rawData.specifications).length > 0
-                ? rawData.specifications
+            colors: colors.length > 0 ? colors : [],
+            specifications: specifications && Object.keys(specifications).length > 0
+                ? specifications
                 : null,
 
             // Pricing
@@ -103,7 +109,7 @@ class ProductService {
 
             // Status & visibility
             isActive: rawData.isActive,
-            visibleTo: rawData.visibleTo || [],
+            visibleTo: visibleTo || [],
 
             // Ratings
             averageRating: rawData.averageRating || "0.00",

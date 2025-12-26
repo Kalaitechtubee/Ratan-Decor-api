@@ -17,9 +17,11 @@ router.get('/', auditLogger, getProfile);
 // Update logged-in user's profile
 router.put('/', auditLogger, updateProfile);
 
-// Redirect to user's order list
+// Redirect to user's order list while preserving pagination/filter params
 router.get('/orders', auditLogger, (req, res) => {
-  res.redirect(`/api/orders?userId=${req.user.id}`);
+  const queryParams = new URLSearchParams(req.query);
+  queryParams.set('userId', req.user.id);
+  res.redirect(`/api/orders?${queryParams.toString()}`);
 });
 
 module.exports = router;
