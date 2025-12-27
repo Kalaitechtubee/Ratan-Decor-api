@@ -57,7 +57,7 @@ const getOrders = async (req, res) => {
 
   try {
     const currentUserId = req.user.id;
-    const { status, paymentStatus, customer, startDate, endDate, page = 1, limit = 10, sortBy = 'orderDate', sortOrder = 'DESC', userId } = req.query;
+    const { status, paymentStatus, customer, startDate, endDate, page = 1, limit = 10, sortBy = 'orderDate', sortOrder = 'DESC', userId, orderId } = req.query;
     const isStaff = ['SuperAdmin', 'Admin', 'Sales'].includes(userRole);
 
     if (!isStaff) {
@@ -70,6 +70,7 @@ const getOrders = async (req, res) => {
     // Build query
     const where = {};
     if (targetUserId) where.userId = targetUserId;
+    if (orderId) where.id = orderId; // Add filter for orderId
     if (status) where.status = Array.isArray(status) ? { [Op.in]: status } : status;
     if (paymentStatus) where.paymentStatus = Array.isArray(paymentStatus) ? { [Op.in]: paymentStatus } : paymentStatus;
     if (startDate || endDate) {
@@ -123,7 +124,8 @@ const getOrders = async (req, res) => {
     });
 
     // Stats
-    const whereForStats = (isStaff && !userId) ? {} : { userId: targetUserId || currentUserId };
+    // Use the same 'where' clause for stats to reflect current filters
+    const whereForStats = { ...where };
     const orderSummary = await OrderService.getOrderSummary(count, limit, page, whereForStats);
 
     res.json({
