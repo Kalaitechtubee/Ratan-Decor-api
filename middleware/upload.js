@@ -10,7 +10,9 @@ const uploadDirs = {
   categories: path.join(uploadDir, 'categories'),
   userTypes: path.join(uploadDir, 'userTypes'),
   sliders: path.join(uploadDir, 'sliders'),
-  defaults: path.join(uploadDir, 'defaults')
+
+  defaults: path.join(uploadDir, 'defaults'),
+  catalog: path.join(uploadDir, 'catalog')
 };
 
 Object.entries(uploadDirs).forEach(([name, dir]) => {
@@ -50,6 +52,21 @@ const uploadConfigs = {
     allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
     maxSize: 10 * 1024 * 1024, // 10MB
     maxFiles: 5
+  },
+  catalog: {
+    path: uploadDirs.catalog,
+    prefix: 'catalog',
+    allowedTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+      'text/csv'
+    ],
+    maxSize: 50 * 1024 * 1024, // 50MB
+    maxFiles: 1
   }
 };
 
@@ -120,6 +137,14 @@ const uploaders = {
     limits: {
       fileSize: uploadConfigs.sliders.maxSize,
       files: uploadConfigs.sliders.maxFiles
+    }
+  }),
+  catalog: multer({
+    storage: createStorage('catalog'),
+    fileFilter: createFileFilter('catalog'),
+    limits: {
+      fileSize: uploadConfigs.catalog.maxSize,
+      files: uploadConfigs.catalog.maxFiles
     }
   })
 };
@@ -220,6 +245,26 @@ const uploadSliderImages = (req, res, next) => {
   });
 };
 
+const uploadCatalogFile = (req, res, next) => {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
+  }
+
+  uploaders.catalog.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'File size too large. Maximum 50MB.',
+          error: 'FILE_TOO_LARGE'
+        });
+      }
+      return next(err);
+    }
+    next();
+  });
+};
+
 const handleUploadError = (error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     const errorResponses = {
@@ -257,7 +302,7 @@ const handleUploadError = (error, req, res, next) => {
       success: false,
       message: error.message,
       error: 'INVALID_FILE_TYPE',
-      allowedTypes: 'JPEG, JPG, PNG, WEBP (SVG for user types only)'
+      allowedTypes: 'Images (JPEG, PNG, WEBP, SVG) or Documents (PDF, DOC, DOCX, XLS, XLSX, TXT, CSV)'
     });
   }
 
@@ -385,6 +430,7 @@ module.exports = {
   uploadCategoryImage,
   uploadUserTypeIcon,
   uploadSliderImages,
+  uploadCatalogFile,
   handleUploadError,
 
   // Utilities

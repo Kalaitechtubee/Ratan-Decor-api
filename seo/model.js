@@ -10,7 +10,6 @@ const Seo = sequelize.define("Seo", {
   pageName: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
     validate: {
       notEmpty: true,
       len: [1, 255]
@@ -26,21 +25,22 @@ const Seo = sequelize.define("Seo", {
   },
   description: {
     type: DataTypes.TEXT,
-    allowNull: true,
-    validate: {
-      len: [0, 1000]
-    }
+    allowNull: true
   },
   keywords: {
     type: DataTypes.TEXT,
-    allowNull: true,
-    validate: {
-      len: [0, 1000]
-    }
+    allowNull: true
   }
 }, {
   tableName: "seo",
   timestamps: true,
+  indexes: [
+    {
+      unique: true,
+      fields: ['pageName'],
+      name: 'seo_page_name_unique'
+    }
+  ]
 });
 
 module.exports = Seo;

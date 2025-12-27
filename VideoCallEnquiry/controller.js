@@ -160,19 +160,34 @@ const videoCallEnquiryController = {
         order: [["createdAt", "DESC"]],
       });
 
-      // Calculate status breakdown for summary cards
+      // Calculate status breakdown for summary cards - must include User join if filtering by user attributes
+      const statsIncludes = [];
+      if (state || city || role || pincode || userType) {
+        statsIncludes.push({
+          model: User,
+          as: "user",
+          attributes: [],
+          where: includes[0].where,
+          required: true
+        });
+      }
+
       const statusStats = await VideoCallEnquiry.findAll({
         where,
+        include: statsIncludes,
         attributes: [
           'status',
-          [VideoCallEnquiry.sequelize.fn('COUNT', VideoCallEnquiry.sequelize.col('id')), 'count'],
+          [VideoCallEnquiry.sequelize.fn('COUNT', VideoCallEnquiry.sequelize.col('VideoCallEnquiry.id')), 'count'],
         ],
         group: ['status'],
         raw: true
       });
 
       const summary = {
-        totalItems: await VideoCallEnquiry.count({ where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')) }),
+        totalItems: await VideoCallEnquiry.count({
+          where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')),
+          include: statsIncludes
+        }),
         statusBreakdown: {}
       };
 

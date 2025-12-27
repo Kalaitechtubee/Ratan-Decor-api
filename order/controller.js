@@ -206,6 +206,7 @@ const updateOrder = async (req, res) => {
     if (status) updates.status = status;
     if (paymentStatus) updates.paymentStatus = paymentStatus;
     if (notes) updates.notes = notes;
+    if (req.body.expectedDeliveryDate) updates.expectedDeliveryDate = req.body.expectedDeliveryDate;
 
     await order.update(updates);
     res.json({ success: true, message: 'Order updated successfully', order });

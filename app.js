@@ -43,7 +43,7 @@ const app = express();
    FILE UPLOAD SETUP
 ============================================================= */
 const uploadsPath = path.join(__dirname, 'uploads');
-const uploadFolders = ['products', 'categories', 'userTypes', 'sliders', 'defaults'];
+const uploadFolders = ['products', 'categories', 'userTypes', 'sliders', 'defaults', 'catalog'];
 
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(uploadsPath, { recursive: true, mode: 0o755 });
@@ -190,6 +190,7 @@ app.use('/api/seo', seoRoutes);
 app.use('/api/video-call-enquiries', videoCallEnquiryRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/sliders', sliderRoutes);
+app.use('/api/catalog', require('./catalog/routes'));
 
 /* =============================================================
    SWAGGER

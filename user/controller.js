@@ -703,6 +703,10 @@ const getUserOrderHistory = async (req, res) => {
       };
     });
 
+    // Calculate total spent across all orders
+    const totalSpent = await Order.sum('total', { where: { userId: userId } });
+    orderSummary.totalSpent = totalSpent || 0;
+
     const paymentStats = await Order.findAll({
       where: { userId: userId },
       attributes: [

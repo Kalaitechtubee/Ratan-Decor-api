@@ -91,7 +91,7 @@ const enquiryController = {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      const validRoles = ["customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
       if (role) {
         const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
         if (!normalizedRole) {
@@ -170,7 +170,7 @@ const enquiryController = {
         videoCallDate: videoCallDate || null,
         videoCallTime: formattedVideoCallTime || null,
         status: "New",
-        role: role || req.user?.role || "Customer",
+        role: role || req.user?.role || "customer",
         pincode: cleanPincode,
         productDesignNumber: productDesignNumber?.trim() || null,
       });
@@ -393,19 +393,34 @@ const enquiryController = {
         }
       });
 
-      // Calculate status breakdown for summary cards
+      // Calculate status breakdown for summary cards - must include User join if filtering by user attributes
+      const statsIncludes = [];
+      if (state || city || role || pincode || userType || userTypeName) {
+        statsIncludes.push({
+          model: User,
+          as: "user",
+          attributes: [],
+          where: include[0].where || {},
+          required: true
+        });
+      }
+
       const statusStats = await Enquiry.findAll({
-        where, // Important: stats should respect current filters except status
+        where,
+        include: statsIncludes,
         attributes: [
           'status',
-          [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+          [sequelize.fn('COUNT', sequelize.col('Enquiry.id')), 'count'],
         ],
         group: ['status'],
         raw: true
       });
 
       const summary = {
-        totalEnquiries: await Enquiry.count({ where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')) }),
+        totalEnquiries: await Enquiry.count({
+          where: Object.fromEntries(Object.entries(where).filter(([k]) => k !== 'status')),
+          include: statsIncludes
+        }),
         statusBreakdown: {}
       };
 
@@ -588,7 +603,7 @@ const enquiryController = {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      const validRoles = ["customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
       if (role) {
         const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
         if (!normalizedRole) {
@@ -782,7 +797,7 @@ const enquiryController = {
         });
       }
 
-      const validRoles = ["Customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
+      const validRoles = ["customer", "Architect", "Dealer", "Admin", "Manager", "Sales", "Support", "General", "SuperAdmin"];
       if (role) {
         const normalizedRole = validRoles.find(r => r.toLowerCase() === role.toLowerCase());
         if (!normalizedRole) {
