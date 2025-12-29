@@ -1,5 +1,5 @@
 // admin/controller.js (no changes needed, as it aligns with permissions via middleware)
-const { User, Enquiry, Order, Product, Category } = require('../models');
+const { User, Enquiry, Order, OrderItem, Product, Category, sequelize } = require('../models');
 const { Op, fn, col } = require('sequelize');
 const AuthService = require('../auth/service');
 
@@ -16,9 +16,37 @@ const getPendingUsers = async (req, res) => {
       ];
     }
 
+    const include = [];
+    if (req.query.includeOrders === 'true') {
+      include.push({
+        model: Order,
+        as: 'orders',
+        separate: true,
+        include: [{
+          model: OrderItem,
+          as: 'orderItems',
+          include: [{
+            model: Product,
+            as: 'product'
+          }]
+        }]
+      });
+    }
+
+    const attributes = { exclude: ['password'] };
+    if (req.query.includeOrderStats === 'true') {
+      attributes.include = [
+        [sequelize.literal(`(SELECT COUNT(*) FROM orders AS o WHERE o.userId = User.id)`), 'totalOrders'],
+        [sequelize.literal(`(SELECT COUNT(*) FROM orders AS o WHERE o.userId = User.id AND o.status = 'Delivered')`), 'deliveredOrders'],
+        [sequelize.literal(`(SELECT SUM(total) FROM orders AS o WHERE o.userId = User.id AND o.paymentStatus = 'Completed')`), 'totalSpent'],
+      ];
+    }
+
     const users = await User.findAndCountAll({
       where,
-      attributes: { exclude: ['password'] },
+      attributes,
+      include,
+      distinct: true,
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: (parseInt(page) - 1) * parseInt(limit),

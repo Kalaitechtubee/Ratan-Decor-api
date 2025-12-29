@@ -58,7 +58,7 @@ const videoCallEnquiryController = {
         phoneNo: phoneNo.replace(/[^0-9+]/g, ""), // Clean phone number
         videoCallDate,
         videoCallTime: formatTimeForStorage(videoCallTime), // Convert to 24-hour format for storage
-        source: source || "Guest",
+        source: source || "VideoCall",
         notes: notes || null,
       });
 
@@ -172,8 +172,13 @@ const videoCallEnquiryController = {
         });
       }
 
+      // ✅ FIX: Calculate status breakdown WITHOUT status filter (global stats)
+      const globalWhere = Object.fromEntries(
+        Object.entries(where).filter(([k]) => k !== 'status')
+      );
+
       const statusStats = await VideoCallEnquiry.findAll({
-        where,
+        where: globalWhere,  // ✅ Use globalWhere instead of where
         include: statsIncludes,
         attributes: [
           'status',

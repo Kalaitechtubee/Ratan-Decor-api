@@ -18,7 +18,7 @@ const startServer = async () => {
     // 2️⃣ SAFE sync logic
     if (process.env.NODE_ENV === 'development') {
       console.log('⚠️ DEV mode: syncing with alter');
-      await sequelize.sync({ alter: true });
+      await sequelize.sync({ alter: false });
     } else {
       console.log('🔒 PROD mode: safe sync (NO alter)');
       await sequelize.sync(); // ✅ THIS IS THE FIX

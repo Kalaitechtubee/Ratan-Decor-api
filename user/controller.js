@@ -47,7 +47,8 @@ const getAllUsers = async (req, res) => {
       endDate,
       state,
       city,
-      pincode
+      pincode,
+      includeOrderStats
     } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
@@ -108,35 +109,94 @@ const getAllUsers = async (req, res) => {
       },
     ];
 
+    const attributes = { exclude: ['password'] };
+    if (includeOrderStats === 'true') {
+      attributes.include = [
+        [
+          sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM orders AS o
+            WHERE o.userId = User.id
+          )`),
+          'totalOrders'
+        ],
+        [
+          sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM orders AS o
+            WHERE o.userId = User.id AND o.status = 'Completed'
+          )`),
+          'deliveredOrders'
+        ],
+        [
+          sequelize.literal(`(
+            SELECT COALESCE(SUM(o.total), 0)
+            FROM orders AS o
+            WHERE o.userId = User.id
+          )`),
+          'totalSpent'
+        ]
+      ];
+    }
+
+    if (req.query.includeOrders === 'true') {
+      // Use top-level imports for Order, OrderItem, Product
+      include.push({
+        model: Order,
+        as: 'orders',
+        separate: true, // Fetch orders in a separate query to handle pagination correctly
+        include: [{
+          model: OrderItem,
+          as: 'orderItems',
+          include: [{
+            model: Product,
+            as: 'product'
+          }]
+        }]
+      });
+    }
+
     const { rows, count } = await User.findAndCountAll({
       where,
-      attributes: { exclude: ['password'] },
+      distinct: true,
+      attributes,
       include,
       limit: limitNum,
       offset,
       order: [['createdAt', 'DESC']],
     });
 
-    // Calculate summary statistics (respecting filters except status/role for complete breakdown)
-    const baseWhere = Object.fromEntries(Object.entries(where).filter(([k]) => !['status', 'role'].includes(k)));
+    const globalWhere = {};
+    if (staffOnly === 'true') {
+      globalWhere.role = { [Op.in]: STAFF_ROLES };
+    } else if (includeStaff === 'true') {
+      // no role restriction for global count
+    } else {
+      // Always restrict to CLIENT_ROLES for /api/users endpoint (default behavior)
+      globalWhere.role = { [Op.in]: CLIENT_ROLES };
+    }
+    const globalCount = await User.count({
+      where: globalWhere,
+      distinct: true
+    });
 
-    // Manual stats calculation to be more efficient than separate counts
+    // Calculate summary statistics (global, not filtered by status/role)
     const statusStats = await User.findAll({
-      where: baseWhere,
-      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      where: globalWhere,
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('User.id'))), 'count']],
       group: ['status'],
       raw: true
     });
 
     const roleStats = await User.findAll({
-      where: baseWhere,
-      attributes: ['role', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      where: globalWhere,
+      attributes: ['role', [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('User.id'))), 'count']],
       group: ['role'],
       raw: true
     });
 
     const summary = {
-      totalUsers: count, // Count matching current filters
+      totalUsers: globalCount, // ✅ FIXED: Always use global count
       statusBreakdown: {},
       roleBreakdown: {}
     };
@@ -182,9 +242,10 @@ const getAllStaffUsers = async (req, res) => {
       city,
       pincode
     } = req.query;
+    const isExport = limit === 'all' || req.query.export === 'true';
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
-    const offset = (pageNum - 1) * limitNum;
+    const limitNum = isExport ? null : Math.max(1, Math.min(100, parseInt(limit) || 10));
+    const offset = isExport ? 0 : (pageNum - 1) * limitNum;
 
     const where = {
       role: { [Op.in]: STAFF_ROLES }
@@ -234,6 +295,7 @@ const getAllStaffUsers = async (req, res) => {
 
     const { rows, count } = await User.findAndCountAll({
       where,
+      distinct: true,  // ✅ FIX: Count distinct users, not joined rows
       attributes: { exclude: ['password'] },
       include,
       limit: limitNum,
@@ -250,20 +312,26 @@ const getAllStaffUsers = async (req, res) => {
 
     const statusStats = await User.findAll({
       where: baseStaffWhere,
-      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('User.id'))), 'count']],
       group: ['status'],
       raw: true
     });
 
     const roleStats = await User.findAll({
       where: baseStaffWhere,
-      attributes: ['role', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      attributes: ['role', [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('User.id'))), 'count']],
       group: ['role'],
       raw: true
     });
 
+    // ✅ FIX: Calculate global total count (not filtered by status/role)
+    const globalCount = await User.count({
+      where: baseStaffWhere,
+      distinct: true
+    });
+
     const summary = {
-      totalUsers: count,
+      totalUsers: globalCount,  // ✅ Use global count, not filtered count
       statusBreakdown: {},
       roleBreakdown: {}
     };
@@ -590,7 +658,8 @@ const getUserOrderHistory = async (req, res) => {
       ],
       order: [[sortBy, sortOrder.toUpperCase()]],
       limit: Number(limit),
-      offset: Number(offset)
+      offset: Number(offset),
+      distinct: true
     });
 
     const processedOrders = orders.map(order => {

@@ -5,7 +5,21 @@ const CategoryService = require('./service');
 // Get all categories as nested tree
 const getCategoryTree = async (req, res) => {
   try {
+    const { type, parentId } = req.query;
+
+    let where = {};
+    if (type === 'main') {
+      where.parentId = null;
+    } else if (type === 'sub') {
+      where.parentId = { [Op.ne]: null };
+    }
+
+    if (parentId && parentId !== 'null') {
+      where.parentId = parseInt(parentId, 10);
+    }
+
     const categories = await Category.findAll({
+      where,
       include: [{ model: Product, as: 'products', attributes: [], required: false }],
       attributes: [
         'id', 'name', 'parentId', 'image',
@@ -26,8 +40,12 @@ const getCategoryTree = async (req, res) => {
       productCount: parseInt(c.productCount) || 0,
     }));
 
-    const tree = CategoryService.buildTree(mappedCategories, null, req);
-    res.json({ success: true, categories: tree, totalCategories: categories.length });
+    if (type || (parentId && parentId !== 'null')) {
+      res.json({ success: true, categories: mappedCategories, totalCategories: categories.length });
+    } else {
+      const tree = CategoryService.buildTree(mappedCategories, null, req);
+      res.json({ success: true, categories: tree, totalCategories: categories.length });
+    }
   } catch (err) {
     console.error('Error fetching category tree:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch categories' });

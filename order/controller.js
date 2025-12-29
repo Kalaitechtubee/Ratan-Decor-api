@@ -91,6 +91,7 @@ const getOrders = async (req, res) => {
 
     const { count, rows: orders } = await Order.findAndCountAll({
       where,
+      distinct: true,  // ✅ FIX: Count distinct orders, not joined rows
       include: [
         {
           model: OrderItem, as: 'orderItems',
@@ -123,10 +124,9 @@ const getOrders = async (req, res) => {
       return orderData;
     });
 
-    // Stats
-    // Use the same 'where' clause for stats to reflect current filters
-    const whereForStats = { ...where };
-    const orderSummary = await OrderService.getOrderSummary(count, limit, page, whereForStats);
+    // Stats - GLOBAL (not affected by filters)
+    // This follows industry-standard admin dashboard behavior
+    const orderSummary = await OrderService.getOrderSummary();
 
     res.json({
       success: true,
@@ -256,9 +256,9 @@ const deleteOrder = async (req, res) => {
 };
 
 const getOrderStats = async (req, res) => {
-  // Basic stats implementation
+  // Global stats implementation
   try {
-    const stats = await OrderService.getOrderSummary(0, 0, 0, {}); // Helper usage or generic
+    const stats = await OrderService.getOrderSummary();
     res.json({ success: true, stats });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

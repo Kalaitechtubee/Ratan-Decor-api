@@ -20,10 +20,25 @@ exports.createSeo = async (req, res) => {
   }
 };
 
+const { Op } = require("sequelize");
+
 // Get all SEO entries (all page SEO details)
 exports.getAllSeo = async (req, res) => {
   try {
-    const seoList = await Seo.findAll();
+    const { search } = req.query;
+    let where = {};
+
+    if (search) {
+      where = {
+        [Op.or]: [
+          { pageName: { [Op.like]: `%${search}%` } },
+          { title: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } }
+        ]
+      };
+    }
+
+    const seoList = await Seo.findAll({ where });
     res.json({ success: true, data: seoList });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -79,7 +94,7 @@ exports.updateSeo = async (req, res) => {
     }
 
     const { pageName, title, description, keywords } = req.body;
-    
+
     // Validate required fields
     if (!pageName || !title) {
       return res.status(400).json({ success: false, message: "pageName and title are required" });

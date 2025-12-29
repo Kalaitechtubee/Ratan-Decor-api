@@ -102,8 +102,24 @@ const enquiryController = {
         }
       }
 
-      const validSources = ["Email", "WhatsApp", "Phone", "VideoCall"];
-      if (source && !validSources.includes(source)) {
+      const validSources = ["Email", "WhatsApp", "Phone", "VideoCall", "Website"];
+
+      const sourceMap = {
+        email: "email",
+        phone: "phone",
+        whatsapp: "phone",
+        videocall: "phone",
+        video: "phone",
+        website: "website",
+        chat: "chat",
+        social: "social-media",
+        "social-media": "social-media",
+        other: "other",
+      };
+      const normalizedSource = source ? source.toString().toLowerCase() : null;
+      const mappedSource = normalizedSource ? (sourceMap[normalizedSource] || normalizedSource) : null;
+
+      if (mappedSource && !validSources.map(s => s.toLowerCase()).includes(normalizedSource) && !Object.keys(sourceMap).includes(normalizedSource)) {
         return res.status(400).json({
           success: false,
           message: `Invalid source. Must be one of: ${validSources.join(", ")}`,
@@ -165,7 +181,7 @@ const enquiryController = {
         state: state.trim(),
         city: city.trim(),
         userType: finalUserTypeId,
-        source: source || "Email",
+        source: mappedSource || "website",
         notes: notes?.trim() || null,
         videoCallDate: videoCallDate || null,
         videoCallTime: formattedVideoCallTime || null,
@@ -405,8 +421,13 @@ const enquiryController = {
         });
       }
 
+      // ✅ FIX: Calculate status breakdown WITHOUT status filter (global stats)
+      const globalWhere = Object.fromEntries(
+        Object.entries(where).filter(([k]) => k !== 'status')
+      );
+
       const statusStats = await Enquiry.findAll({
-        where,
+        where: globalWhere,  // ✅ Use globalWhere instead of where
         include: statsIncludes,
         attributes: [
           'status',
@@ -622,7 +643,7 @@ const enquiryController = {
       }
 
       // Normalize source to match model enum (lowercase)
-      const validSources = ["website", "phone", "email", "chat", "social-media", "other"];
+      const validSources = ["website", "phone", "email", "chat", "social-media", "other", "Website"];
       const sourceMap = {
         email: "email",
         phone: "phone",
@@ -921,13 +942,15 @@ const enquiryController = {
         });
       }
 
-      // Check authorization (only Admin or Manager can delete)
+      // Check authorization (authorization removed as requested)
+      /*
       if (!['Admin', 'Manager'].includes(req.user.role)) {
         return res.status(403).json({
           success: false,
           message: "Only Admin or Manager can delete enquiries",
         });
       }
+      */
 
       // Delete the enquiry (cascading delete will handle related internal notes due to onDelete: 'CASCADE' in EnquiryInternalNote model)
       await enquiry.destroy();

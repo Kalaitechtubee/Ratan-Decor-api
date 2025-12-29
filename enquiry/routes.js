@@ -19,6 +19,8 @@ router.use(sanitizeInput);         // Prevent XSS / injection
 
 // Enquiry Routes (Public/Optional Auth)
 router.post("/create", authenticateTokenOptional, auditLogger, enquiryController.createEnquiry);
+router.delete("/:id", auditLogger, enquiryController.deleteEnquiry); // Moved here to allow public access
+
 
 
 // Middleware for remaining authenticated routes
@@ -33,7 +35,8 @@ router.put("/:id", auditLogger, enquiryController.updateEnquiry);
 
 router.put("/:id/status", auditLogger, enquiryController.updateEnquiryStatus);
 
-router.delete("/:id", auditLogger, enquiryController.deleteEnquiry);
+// router.delete("/:id", auditLogger, enquiryController.deleteEnquiry); // Moved to public section
+
 
 // Internal Notes (no role restrictions)
 router.post("/:id/internal-notes", auditLogger, enquiryController.addInternalNote);

@@ -250,43 +250,50 @@ class OrderService {
         }
     }
 
-    async getOrderSummary(count, limit, page, whereForStats) {
-        const orderSummary = {
-            totalOrders: count,
-            totalPages: Math.ceil(count / limit),
-            currentPage: Number(page),
-            ordersPerPage: Number(limit),
-            statusBreakdown: {},
-            paymentStatusBreakdown: {}
-        };
+    async getOrderSummary() {
+        // GLOBAL STATS ONLY - These should NEVER change based on filters
+        // This is industry-standard admin dashboard behavior
 
+        // Get GLOBAL total orders count (no filters)
+        // Use distinct: true to avoid counting duplicates from JOINs
+        const globalTotalOrders = await Order.count({
+            distinct: true,
+            col: 'id'
+        });
+
+        // Get GLOBAL status breakdown (no filters)
         const statusStats = await Order.findAll({
-            where: whereForStats,
             attributes: [
                 'status',
-                [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+                [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('Order.id'))), 'count'],
                 [sequelize.fn('SUM', sequelize.col('total')), 'totalAmount']
             ],
             group: ['status'],
             raw: true
         });
 
+        // Get GLOBAL payment status breakdown (no filters)
+        const paymentStats = await Order.findAll({
+            attributes: [
+                'paymentStatus',
+                [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('Order.id'))), 'count'],
+                [sequelize.fn('SUM', sequelize.col('total')), 'totalAmount']
+            ],
+            group: ['paymentStatus'],
+            raw: true
+        });
+
+        const orderSummary = {
+            totalOrders: globalTotalOrders,  // GLOBAL count - never changes
+            statusBreakdown: {},
+            paymentStatusBreakdown: {}
+        };
+
         statusStats.forEach(stat => {
             orderSummary.statusBreakdown[stat.status] = {
                 count: parseInt(stat.count),
                 totalAmount: parseFloat(stat.totalAmount || 0)
             };
-        });
-
-        const paymentStats = await Order.findAll({
-            where: whereForStats,
-            attributes: [
-                'paymentStatus',
-                [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-                [sequelize.fn('SUM', sequelize.col('total')), 'totalAmount']
-            ],
-            group: ['paymentStatus'],
-            raw: true
         });
 
         paymentStats.forEach(stat => {
