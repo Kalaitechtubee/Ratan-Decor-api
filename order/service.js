@@ -250,19 +250,20 @@ class OrderService {
         }
     }
 
-    async getOrderSummary() {
-        // GLOBAL STATS ONLY - These should NEVER change based on filters
-        // This is industry-standard admin dashboard behavior
+    async getOrderSummary(userId = null) {
+        // Build base where clause
+        const where = userId ? { userId } : {};
 
-        // Get GLOBAL total orders count (no filters)
-        // Use distinct: true to avoid counting duplicates from JOINs
-        const globalTotalOrders = await Order.count({
+        // Get total orders count (filtered by user if provided)
+        const totalOrders = await Order.count({
+            where,
             distinct: true,
             col: 'id'
         });
 
-        // Get GLOBAL status breakdown (no filters)
+        // Get status breakdown (filtered by user if provided)
         const statusStats = await Order.findAll({
+            where,
             attributes: [
                 'status',
                 [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('Order.id'))), 'count'],
@@ -272,8 +273,9 @@ class OrderService {
             raw: true
         });
 
-        // Get GLOBAL payment status breakdown (no filters)
+        // Get payment status breakdown (filtered by user if provided)
         const paymentStats = await Order.findAll({
+            where,
             attributes: [
                 'paymentStatus',
                 [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('Order.id'))), 'count'],
@@ -284,7 +286,7 @@ class OrderService {
         });
 
         const orderSummary = {
-            totalOrders: globalTotalOrders,  // GLOBAL count - never changes
+            totalOrders,
             statusBreakdown: {},
             paymentStatusBreakdown: {}
         };

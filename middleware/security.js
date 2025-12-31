@@ -94,9 +94,9 @@ const enhanceLoginSecurity = (loginController) => {
       if (statusCode === 401 || statusCode === 403) {
         tracker.failedLogins++;
         tracker.lastFailedLogin = Date.now();
-        if (tracker.failedLogins >= 8) {
-          tracker.blockedUntil = Date.now() + (30 * 60 * 1000);
-          console.warn(`IP ${ip} blocked for 30 minutes due to repeated failures`);
+        if (tracker.failedLogins >= 20) {
+          tracker.blockedUntil = Date.now() + (5 * 60 * 1000);
+          console.warn(`IP ${ip} blocked for 5 minutes due to repeated failures`);
         }
       } else if (statusCode === 200) {
         tracker.failedLogins = 0;

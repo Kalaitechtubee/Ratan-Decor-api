@@ -124,9 +124,8 @@ const getOrders = async (req, res) => {
       return orderData;
     });
 
-    // Stats - GLOBAL (not affected by filters)
-    // This follows industry-standard admin dashboard behavior
-    const orderSummary = await OrderService.getOrderSummary();
+    // Stats - Filtered if customer view, global only for generic staff view
+    const orderSummary = await OrderService.getOrderSummary(targetUserId);
 
     res.json({
       success: true,
@@ -256,9 +255,14 @@ const deleteOrder = async (req, res) => {
 };
 
 const getOrderStats = async (req, res) => {
-  // Global stats implementation
+  if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required' });
+
   try {
-    const stats = await OrderService.getOrderSummary();
+    const isStaff = ['SuperAdmin', 'Admin', 'Sales'].includes(req.user.role);
+    // Regular users ONLY see their own stats. Staff see global stats unless they filter.
+    const userId = isStaff ? (req.query.userId || null) : req.user.id;
+
+    const stats = await OrderService.getOrderSummary(userId);
     res.json({ success: true, stats });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

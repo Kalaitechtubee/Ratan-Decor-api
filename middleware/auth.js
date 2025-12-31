@@ -19,11 +19,33 @@ const loadAndSetUser = async (req, res, userId) => {
     }
 
     // Check if user is approved (SuperAdmin and Admin bypass pending check)
-    if (user.role !== 'SuperAdmin' && user.role !== 'Admin' && user.status !== 'Approved') {
-      const message = user.status === 'Pending'
-        ? 'Account pending approval. Please wait for admin approval.'
-        : 'Account has been rejected. Contact support for assistance.';
-      return { error: { status: 403, message, status: user.status } };
+    const userRole = user.role?.toLowerCase();
+    const isAdmin = user.role === 'SuperAdmin' || user.role === 'Admin';
+    const isArchitectOrDealer = userRole === 'architect' || userRole === 'dealer';
+    const isPending = user.status === 'Pending';
+    const isRejected = user.status === 'Rejected';
+
+    // Strictly block rejected users
+    if (isRejected && !isAdmin) {
+      return {
+        error: {
+          status: 403,
+          message: 'Account has been rejected. Contact support for assistance.',
+          status: user.status
+        }
+      };
+    }
+
+    // Allow pending Architect/Dealer users to pass through (view-only access handled by frontend)
+    // Only block if NOT an admin AND NOT a trade user AND still pending
+    if (!isAdmin && !isArchitectOrDealer && isPending) {
+      return {
+        error: {
+          status: 403,
+          message: 'Account pending approval. Please wait for admin approval.',
+          status: user.status
+        }
+      };
     }
 
     // Set user info on request object

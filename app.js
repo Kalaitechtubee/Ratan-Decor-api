@@ -159,7 +159,7 @@ app.use('/uploads', (req, res) => {
 /* =============================================================
    GLOBAL SECURITY MIDDLEWARE
 ============================================================= */
-app.use(trackSuspiciousActivity);
+
 app.use(sanitizeInput);
 app.use(auditLogger);
 

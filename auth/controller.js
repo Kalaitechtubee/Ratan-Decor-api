@@ -55,12 +55,28 @@ const login = async (req, res) => {
     }
 
     // Check user approval status
-    if (user.role !== 'SuperAdmin' && user.role !== 'Admin' && user.status !== 'Approved') {
+    const userRole = user.role?.toLowerCase();
+    const isAdminOrSuperAdmin = user.role === 'SuperAdmin' || user.role === 'Admin';
+    const isArchitectOrDealer = userRole === 'architect' || userRole === 'dealer';
+    const isPending = user.status === 'Pending';
+    const isRejected = user.status === 'Rejected';
+
+    // Block rejected users completely
+    if (isRejected && !isAdminOrSuperAdmin) {
       return res.status(403).json({
         success: false,
-        message: user.status === 'Pending'
-          ? "Account pending approval. Please wait for admin approval."
-          : "Account has been rejected. Contact support for assistance.",
+        message: "Your account has been rejected. Please contact support for assistance.",
+        status: user.status
+      });
+    }
+
+    // Allow pending Architect/Dealer users to log in with limited access
+    // They will be redirected to check-status page on frontend
+    // Only block if not admin/superadmin, not architect/dealer, and still pending
+    if (!isAdminOrSuperAdmin && !isArchitectOrDealer && isPending) {
+      return res.status(403).json({
+        success: false,
+        message: "Account pending approval. Please wait for admin approval.",
         status: user.status
       });
     }
@@ -71,6 +87,14 @@ const login = async (req, res) => {
     // Set cookies
     res.cookie(cookieNames.refreshToken, refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
     res.cookie(cookieNames.accessToken, accessToken, getCookieOptions(15 * 60 * 1000));
+
+    // Determine appropriate message based on status
+    let message = 'Login successful';
+    let requiresApproval = false;
+    if (isArchitectOrDealer && isPending) {
+      message = 'Login successful. Your account is pending approval. You have view-only access.';
+      requiresApproval = true;
+    }
 
     return res.json({
       success: true,
@@ -92,7 +116,8 @@ const login = async (req, res) => {
         userTypeId: user.userTypeId,
         userTypeName: user.userType ? user.userType.name : null
       },
-      message: 'Login successful'
+      message,
+      requiresApproval
     });
   } catch (error) {
     console.error('Login error:', error);
